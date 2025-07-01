@@ -216,6 +216,13 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("gemma3n") => {
                 vec![ModelCapability::TextInference]
             }
+            model_type if model_type.starts_with("gemma3") => {
+                if model_type.contains(":1b") {
+                    vec![ModelCapability::TextInference]
+                } else {
+                    vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+                }
+            }
             model_type if model_type.starts_with("regex") => {
                 vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
             }
@@ -935,8 +942,6 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("qwen2.5-coder")
                     || model.model_type.starts_with("qwen2.5vl")
                     || model.model_type.starts_with("qwq")
-                    || model.model_type.starts_with("gemma3n")
-                    || model.model_type.starts_with("gemma3")
                     || model.model_type.starts_with("qwen3")
                     || model.model_type.starts_with("devstral")
                     || model.model_type.starts_with("deepseek-r1:14b")
@@ -989,7 +994,6 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("mistral-large")
                     || model.model_type.starts_with("mistral-pixtral")
                     || model.model_type.starts_with("magistral")
-                    || model.model_type.starts_with("gemma3n")
             }
             LLMProviderInterface::Claude(_) => true, // All Claude models support tool calling
             LLMProviderInterface::ShinkaiBackend(_) => true,

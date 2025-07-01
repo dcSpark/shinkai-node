@@ -185,18 +185,42 @@ impl JobManager {
         eprintln!("# of images: {:?}", image_files.len());
 
         if image_files.len() > 0 {
-            let db_weak = Arc::downgrade(&db);
-            let agent_capabilities = ModelCapabilitiesManager::new(db_weak, user_profile.clone()).await;
-            let has_image_analysis = agent_capabilities.has_capability(ModelCapability::ImageAnalysis).await;
+            // Check if the specific LLM provider being used has ImageAnalysis capability
+            let has_image_analysis = if let Some(provider) = &llm_provider_found {
+                // Get the specific model for this provider
+                let model = match provider {
+                    ProviderOrAgent::LLMProvider(llm_provider) => llm_provider.model.clone(),
+                    ProviderOrAgent::Agent(agent) => {
+                        // For agents, get the underlying LLM provider
+                        let llm_id = &agent.llm_provider_id;
+                        if let Ok(Some(llm_provider)) = db.get_llm_provider(llm_id, &user_profile) {
+                            llm_provider.model.clone()
+                        } else {
+                            shinkai_log(
+                                ShinkaiLogOption::JobExecution,
+                                ShinkaiLogLevel::Error,
+                                "Could not retrieve LLM provider for agent",
+                            );
+                            return Err(LLMProviderError::LLMProviderNotFound);
+                        }
+                    }
+                };
+                
+                // Check if this specific model has ImageAnalysis capability
+                ModelCapabilitiesManager::get_llm_provider_capabilities(&model)
+                    .contains(&ModelCapability::ImageAnalysis)
+            } else {
+                false
+            };
 
             if !has_image_analysis {
                 shinkai_log(
                     ShinkaiLogOption::JobExecution,
                     ShinkaiLogLevel::Error,
-                    "Agent does not have ImageAnalysis capability",
+                    "The specific LLM provider being used does not have ImageAnalysis capability",
                 );
                 return Err(LLMProviderError::LLMProviderMissingCapabilities(
-                    "Agent does not have ImageAnalysis capability".to_string(),
+                    "The specific LLM provider being used does not have ImageAnalysis capability".to_string(),
                 ));
             }
         }
