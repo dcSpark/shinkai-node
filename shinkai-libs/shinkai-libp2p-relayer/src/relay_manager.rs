@@ -9,6 +9,9 @@ use libp2p::{
     tcp, yamux, Multiaddr, PeerId, Swarm, Transport,
 };
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
+use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
+use shinkai_message_primitives::schemas::agent_network_offering::AgentNetworkOfferingRequest;
 use x25519_dalek::{StaticSecret as EncryptionStaticKey};
 use std::time::{Duration, Instant, SystemTime};
 use dashmap::DashMap;
@@ -16,6 +19,7 @@ use shinkai_crypto_identities::ShinkaiRegistry;
 use crate::LibP2PRelayError;
 use serde::{Serialize, Deserialize};
 use chrono::{DateTime, Utc};
+use serde_json::Value;
 
 /// A queued message waiting to be delivered
 #[derive(Debug)]
@@ -38,8 +42,8 @@ pub struct ConnectionHealth {
     #[serde(with = "serde_system_time")]
     pub connection_established: SystemTime,
     /// Last ping round-trip time in milliseconds
-    #[serde(with = "serde_duration_option")]
-    pub last_ping_rtt: Option<Duration>,
+    #[serde(with = "serde_duration")]
+    pub last_ping_rtt: Duration,
 }
 
 /// HTTP payload for node status updates
@@ -49,6 +53,16 @@ pub struct NodeStatusPayload {
     #[serde(rename = "connectionHealth")]
     pub connection_health: Option<ConnectionHealth>,
     pub identity: Option<String>,
+}
+
+/// HTTP payload for node offerings updates
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NodeOfferingsPayload {
+    #[serde(rename = "nodeId")]
+    pub node_id: String,
+    #[serde(rename = "peerId")]
+    pub peer_id: String,
+    pub offering: Value,
 }
 
 // Custom serialization modules for SystemTime and Duration
@@ -75,26 +89,23 @@ mod serde_system_time {
     }
 }
 
-mod serde_duration_option {
+mod serde_duration {
     use super::*;
     use serde::{Serializer, Deserializer};
     
-    pub fn serialize<S>(duration_opt: &Option<Duration>, serializer: S) -> Result<S::Ok, S::Error>
+    pub fn serialize<S>(duration_opt: &Duration, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        match duration_opt {
-            Some(duration) => serializer.serialize_some(&(duration.as_secs_f64() * 1000.0)),
-            None => serializer.serialize_none(),
-        }
+        serializer.serialize_f64(duration_opt.as_secs_f64() * 1000.0)
     }
     
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Duration>, D::Error>
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Duration, D::Error>
     where
         D: Deserializer<'de>,
     {
-        let opt: Option<f64> = Option::deserialize(deserializer)?;
-        Ok(opt.map(|millis| Duration::from_secs_f64(millis / 1000.0)))
+        let millis: f64 = f64::deserialize(deserializer)?;
+        Ok(Duration::from_secs_f64(millis / 1000.0))
     }
 }
 
@@ -106,7 +117,7 @@ impl ConnectionHealth {
             ping_failures: 0,
             bytes_transferred: 0,
             connection_established: now,
-            last_ping_rtt: None,
+            last_ping_rtt: Duration::from_secs(0),
         }
     }
 
@@ -116,7 +127,7 @@ impl ConnectionHealth {
 
     pub fn record_ping_success(&mut self, rtt: Duration) {
         self.ping_failures = 0;
-        self.last_ping_rtt = Some(rtt);
+        self.last_ping_rtt = rtt;
         self.update_activity();
     }
 
@@ -415,12 +426,14 @@ impl RelayManager {
             
             // Spawn the HTTP request as a separate task to avoid blocking the event loop
             tokio::spawn(async move {
-                match client
-                    .post(&url)
-                    .json(&payload)
-                    .send()
-                    .await 
-                {
+                let mut request_builder = client.post(&url).json(&payload);
+                
+                // Add Authorization header if STATUS_ENDPOINT_TOKEN is set
+                if let Ok(token) = std::env::var("STATUS_ENDPOINT_TOKEN") {
+                    request_builder = request_builder.header("Authorization", format!("Bearer {}", token));
+                }
+                
+                match request_builder.send().await {
                     Ok(response) => {
                         if response.status().is_success() {
                             println!("✅ Successfully posted node status for peer {}: online={}", peer_id, online);
@@ -436,8 +449,88 @@ impl RelayManager {
         }
     }
 
+
     pub fn local_peer_id(&self) -> PeerId {
         *self.swarm.local_peer_id()
+    }
+
+    /// Request tool offerings from a connected node
+    async fn request_tool_offerings(&mut self, peer_id: PeerId) {
+        if let Some(identity) = self.find_identity_by_peer(&peer_id) {
+            println!("🔧 Requesting tool offerings from peer {} ({})", peer_id, identity);
+            
+            // Get the node's encryption public key from blockchain registry
+            let node_name = if let Ok(parsed_name) = shinkai_message_primitives::schemas::shinkai_name::ShinkaiName::new(identity.clone()) {
+                parsed_name.get_node_name_string()
+            } else {
+                identity.clone()
+            };
+
+            let node_encryption_public_key = match self.registry.get_identity_record(node_name.clone(), None).await {
+                Ok(identity_record) => {
+                    match shinkai_message_primitives::shinkai_utils::encryption::string_to_encryption_public_key(&identity_record.encryption_key) {
+                        Ok(key) => key,
+                        Err(e) => {
+                            println!("❌ Failed to parse node's encryption key for {}: {}", node_name, e);
+                            return;
+                        }
+                    }
+                }
+                Err(e) => {
+                    println!("❌ Failed to get node's identity from registry for {}: {}", node_name, e);
+                    return;
+                }
+            };
+            
+            // Create an AgentNetworkOfferingRequest message
+            let request = AgentNetworkOfferingRequest {
+                agent_identity: identity.clone(),
+            };
+            
+            let request_json = match serde_json::to_string(&request) {
+                Ok(json) => json,
+                Err(e) => {
+                    println!("❌ Failed to serialize tool offerings request: {}", e);
+                    return;
+                }
+            };
+            
+            // Create the message requesting tool offerings
+            // Encrypt it for the node so it can decrypt and process it
+            let request_message = match ShinkaiMessageBuilder::new(
+                self.config.encryption_secret_key.clone(),
+                self.config.identity_secret_key.clone(),
+                node_encryption_public_key, // Use node's public key for encryption
+            )
+            .message_raw_content(request_json)
+            .message_schema_type(MessageSchemaType::AgentNetworkOfferingRequest)
+            .internal_metadata(
+                "main".to_string(),
+                "main".to_string(),
+                shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod::None,
+                None,
+            )
+            .external_metadata(
+                identity.clone(),
+                self.config.relay_node_name.clone(),
+            )
+            .build() {
+                Ok(msg) => msg,
+                Err(e) => {
+                    println!("❌ Failed to build tool offerings request message: {}", e);
+                    return;
+                }
+            };
+
+            // Send the request via the request-response protocol
+            let outbound_id = self.swarm.behaviour_mut().request_response.send_request(&peer_id, request_message.clone());
+            println!("📤 Sent tool offerings request to peer {} with request ID {:?}", peer_id, outbound_id);
+            println!("🔧 Debug - Message sender: '{}', recipient: '{}'", 
+                request_message.external_metadata.sender, 
+                request_message.external_metadata.recipient);
+        } else {
+            println!("⚠️ No identity found for peer {}, cannot request tool offerings", peer_id);
+        }
     }
 
     /// Handle identity registration with conflict resolution
@@ -646,6 +739,9 @@ impl RelayManager {
                             // Post node status update after successful identification
                             let health = self.connection_health.get(&peer_id).map(|h| h.clone());
                             self.post_node_status(peer_id, true, health);
+                            
+                            // Request tool offerings from the newly identified node
+                            self.request_tool_offerings(peer_id).await;
                         } else {
                             let possible_identity = if info.agent_version.ends_with("shinkai") {
                                 if let Some(identity_part) = info.agent_version.split("@@").nth(1) {
@@ -660,6 +756,9 @@ impl RelayManager {
                                 // Post node status update after localhost registration
                                 let health = self.connection_health.get(&peer_id).map(|h| h.clone());
                                 self.post_node_status(peer_id, true, health);
+                                
+                                // Request tool offerings from the localhost node
+                                self.request_tool_offerings(peer_id).await;
                             } else {
                                 println!("❌ Could not parse identity from agent version: {}", info.agent_version);
                             }
@@ -737,7 +836,8 @@ impl RelayManager {
                                     target_identity.clone()
                                 };
 
-                                if request.external_metadata.recipient.contains(self.config.relay_node_name.as_str()) {
+                                if request.external_metadata.recipient.contains(self.config.relay_node_name.as_str()) && 
+                                   !request.external_metadata.intra_sender.is_empty() {
                                     println!("🔑 Relay: We need to re-encrypt the message from relay to {}", request.external_metadata.intra_sender);
                                     let peer_id = request.external_metadata.intra_sender.parse::<PeerId>().unwrap();
                                     request.external_metadata.intra_sender = request.external_metadata.sender.clone();
@@ -789,7 +889,103 @@ impl RelayManager {
                                 println!("🔄 Relay: Received direct message response from peer {}", peer);
                                 println!("   Message from: {} to: {}", 
                                     response.external_metadata.sender,
-                                    response.external_metadata.recipient);                  
+                                    response.external_metadata.recipient);
+
+                                // Check if this is an AgentNetworkOfferingResponse
+                                if let Ok(content) = response.get_message_content() {
+                                    if let Ok(schema) = response.get_message_content_schema() {
+                                        if schema == MessageSchemaType::AgentNetworkOfferingResponse {
+                                            println!("🔧 Received AgentNetworkOfferingResponse from peer {}", peer);
+                                            
+                                            // Parse the AgentNetworkOfferingResponse
+                                            match serde_json::from_str::<Value>(&content) {
+                                                Ok(offerings_array) => {
+                                                    // Process offerings in a separate async task
+                                                    let peer_id = peer;
+                                                    let offerings_clone = offerings_array.clone();
+                                                    let endpoint_url = self.config.status_endpoint_url.clone();
+                                                    let client = self.http_client.clone();
+                                                    
+                                                    tokio::spawn(async move {
+                                                        if let Some(ref endpoint_url) = endpoint_url {
+                                                            // Fetch nodeId
+                                                            let url = format!("{}/dapps/nodes/peerId/{}", endpoint_url, peer_id);
+                                                            let mut request_builder = client.get(&url);
+                                                            
+                                                            // Add Authorization header if STATUS_ENDPOINT_TOKEN is set
+                                                            if let Ok(token) = std::env::var("STATUS_ENDPOINT_TOKEN") {
+                                                                request_builder = request_builder.header("Authorization", format!("Bearer {}", token));
+                                                            }
+                                                            
+                                                            match request_builder.send().await {
+                                                                Ok(response) => {
+                                                                    if response.status().is_success() {
+                                                                        match response.json::<Value>().await {
+                                                                            Ok(json) => {
+                                                                                println!("🔧 Debug - NodeId response: {:?}", json);
+                                                                                if let Some(node_id) = json.get("id").and_then(|v| v.as_str()) {
+                                                                                    println!("✅ Successfully fetched nodeId {} for peer {}", node_id, peer_id);
+                                                                                    
+                                                                                    // Post offerings
+                                                                                    let offerings_url = format!("{}/dapps/offerings", endpoint_url);
+                                                                                    if let Some(offerings_array) = offerings_clone.as_array() {
+                                                                                        for offering in offerings_array {
+                                                                                            let payload = NodeOfferingsPayload {
+                                                                                                node_id: node_id.to_string(),
+                                                                                                peer_id: peer_id.to_string(),
+                                                                                                offering: offering.clone(),
+                                                                                            };
+
+                                                                                            let mut offerings_request_builder = client.post(&offerings_url).json(&payload);
+                                                                                            
+                                                                                            // Add Authorization header if STATUS_ENDPOINT_TOKEN is set
+                                                                                            if let Ok(token) = std::env::var("STATUS_ENDPOINT_TOKEN") {
+                                                                                                offerings_request_builder = offerings_request_builder.header("Authorization", format!("Bearer {}", token));
+                                                                                            }
+                                                                                            
+                                                                                            match offerings_request_builder.send().await {
+                                                                                                Ok(response) => {
+                                                                                                    if response.status().is_success() {
+                                                                                                        println!("✅ Successfully posted offering for peer {}", peer_id);
+                                                                                                    } else {
+                                                                                                        println!("⚠️ Failed to post offering for peer {}: HTTP {}", peer_id, response.status());
+                                                                                                    }
+                                                                                                }
+                                                                                                Err(e) => {
+                                                                                                    println!("❌ Error posting offering for peer {}: {}", peer_id, e);
+                                                                                                }
+                                                                                            }
+                                                                                        }
+                                                                                    }
+                                                                                } else {
+                                                                                    println!("⚠️ No nodeId found in response for peer {}", peer_id);
+                                                                                }
+                                                                            }
+                                                                            Err(e) => {
+                                                                                println!("❌ Failed to parse nodeId response for peer {}: {}", peer_id, e);
+                                                                            }
+                                                                        }
+                                                                    } else {
+                                                                        println!("⚠️ Failed to fetch nodeId for peer {}: HTTP {}", peer_id, response.status());
+                                                                    }
+                                                                }
+                                                                Err(e) => {
+                                                                    println!("❌ Error fetching nodeId for peer {}: {}", peer_id, e);
+                                                                }
+                                                            }
+                                                        }
+                                                    });
+                                                }
+                                                Err(e) => {
+                                                    println!("❌ Failed to parse AgentNetworkOfferingResponse from peer {}: {}", peer, e);
+                                                }
+                                            }
+                                            
+                                            // Don't relay tool offerings responses to other nodes
+                                            return Ok(());
+                                        }
+                                    }
+                                }                 
 
                                 if response.external_metadata.sender.starts_with("@@localhost.") {
                                     println!("🔑 Relay: We need to re-sign the outer layer of the message from localhost to {}", response.external_metadata.recipient);
