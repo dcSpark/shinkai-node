@@ -449,6 +449,109 @@ impl RelayManager {
         }
     }
 
+    /// Fetch current offerings for a peer and synchronize with local database
+    fn sync_peer_offerings(&self, peer_id: PeerId, new_offerings: Vec<Value>) {
+        if let Some(endpoint_url) = self.config.status_endpoint_url.clone() {
+            Self::spawn_sync_offerings_task(
+                self.http_client.clone(),
+                endpoint_url,
+                peer_id,
+                new_offerings,
+            );
+        }
+    }
+
+    /// Static function to handle offerings synchronization in a separate task
+    fn spawn_sync_offerings_task(
+        client: reqwest::Client,
+        endpoint_url: String,
+        peer_id: PeerId,
+        new_offerings: Vec<Value>,
+    ) {
+        tokio::spawn(async move {
+            let offerings_url = format!("{}/dapps/offerings/peerId/{}", endpoint_url, peer_id);
+            let mut request_builder = client.get(&offerings_url);
+            
+            // Add Authorization header if STATUS_ENDPOINT_TOKEN is set
+            if let Ok(token) = std::env::var("STATUS_ENDPOINT_TOKEN") {
+                request_builder = request_builder.header("Authorization", format!("Bearer {}", token));
+            }
+            
+            match request_builder.send().await {
+                Ok(response) => {
+                    if response.status().is_success() {
+                        match response.json::<Vec<Value>>().await {
+                            Ok(existing_offerings) => {
+                                println!("✅ Fetched {} existing offerings for peer {}", existing_offerings.len(), peer_id);
+                                
+                                // Find offerings that exist in database but not in new offerings
+                                let mut stale_offering_ids = Vec::new();
+                                
+                                for existing_offering in &existing_offerings {
+                                    if let Some(offering_id) = existing_offering.get("id").and_then(|v| v.as_str()) {
+                                        // Check if this offering exists in the new offerings
+                                        let found_in_new = new_offerings.iter().any(|new_offering| {
+                                            // Compare offerings by some unique identifier (e.g., tool_key or name)
+                                            if let (Some(existing_tool_key), Some(new_tool_key)) = (
+                                                existing_offering.get("tool_key").and_then(|v| v.as_str()),
+                                                new_offering.get("tool_key").and_then(|v| v.as_str())
+                                            ) {
+                                                existing_tool_key == new_tool_key
+                                            } else if let (Some(existing_name), Some(new_name)) = (
+                                                existing_offering.get("name").and_then(|v| v.as_str()),
+                                                new_offering.get("name").and_then(|v| v.as_str())
+                                            ) {
+                                                existing_name == new_name
+                                            } else {
+                                                false
+                                            }
+                                        });
+                                        
+                                        if !found_in_new {
+                                            stale_offering_ids.push(offering_id.to_string());
+                                        }
+                                    }
+                                }
+                                
+                                // Delete stale offerings
+                                for offering_id in stale_offering_ids {
+                                    let delete_url = format!("{}/dapps/offerings/{}", endpoint_url, offering_id);
+                                    let mut delete_request_builder = client.delete(&delete_url);
+                                    
+                                    // Add Authorization header if STATUS_ENDPOINT_TOKEN is set
+                                    if let Ok(token) = std::env::var("STATUS_ENDPOINT_TOKEN") {
+                                        delete_request_builder = delete_request_builder.header("Authorization", format!("Bearer {}", token));
+                                    }
+                                    
+                                    match delete_request_builder.send().await {
+                                        Ok(delete_response) => {
+                                            if delete_response.status().is_success() {
+                                                println!("✅ Successfully deleted stale offering {} for peer {}", offering_id, peer_id);
+                                            } else {
+                                                println!("⚠️ Failed to delete stale offering {} for peer {}: HTTP {}", offering_id, peer_id, delete_response.status());
+                                            }
+                                        }
+                                        Err(e) => {
+                                            println!("❌ Error deleting stale offering {} for peer {}: {}", offering_id, peer_id, e);
+                                        }
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                println!("❌ Failed to parse offerings response for peer {}: {}", peer_id, e);
+                            }
+                        }
+                    } else {
+                        println!("⚠️ Failed to fetch offerings for peer {}: HTTP {}", peer_id, response.status());
+                    }
+                }
+                Err(e) => {
+                    println!("❌ Error fetching offerings for peer {}: {}", peer_id, e);
+                }
+            }
+        });
+    }
+
 
     pub fn local_peer_id(&self) -> PeerId {
         *self.swarm.local_peer_id()
@@ -900,6 +1003,11 @@ impl RelayManager {
                                             // Parse the AgentNetworkOfferingResponse
                                             match serde_json::from_str::<Value>(&content) {
                                                 Ok(offerings_array) => {
+                                                    // First, synchronize offerings (fetch existing and delete stale ones)
+                                                    if let Some(offerings_vec) = offerings_array.as_array() {
+                                                        self.sync_peer_offerings(peer, offerings_vec.clone());
+                                                    }
+                                                    
                                                     // Process offerings in a separate async task
                                                     let peer_id = peer;
                                                     let offerings_clone = offerings_array.clone();
@@ -926,7 +1034,7 @@ impl RelayManager {
                                                                                 if let Some(node_id) = json.get("id").and_then(|v| v.as_str()) {
                                                                                     println!("✅ Successfully fetched nodeId {} for peer {}", node_id, peer_id);
                                                                                     
-                                                                                    // Post offerings
+                                                                                    // Post new offerings
                                                                                     let offerings_url = format!("{}/dapps/offerings", endpoint_url);
                                                                                     if let Some(offerings_array) = offerings_clone.as_array() {
                                                                                         for offering in offerings_array {
