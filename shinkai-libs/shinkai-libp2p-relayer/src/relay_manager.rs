@@ -182,6 +182,9 @@ pub struct RelayManager {
     cache_ttl: Duration,
     // HTTP client for status updates
     http_client: reqwest::Client,
+    // Identify event deduplication to reduce excessive processing
+    last_identify_events: DashMap<PeerId, Instant>,
+    identify_event_cooldown: Duration,
 }
 
 impl RelayManager {
@@ -274,6 +277,7 @@ impl RelayManager {
             .boxed();
 
         // Configure identify protocol - use same protocol version as Shinkai nodes
+        // Use conservative settings to reduce identify event frequency
         let identify = identify::Behaviour::new(identify::Config::new(
             "/shinkai/1.0.0".to_string(),
             local_key.public(),
@@ -282,8 +286,8 @@ impl RelayManager {
             relay_node_name,
             env!("CARGO_PKG_VERSION")
         ))
-        .with_interval(Duration::from_secs(60))
-        .with_push_listen_addr_updates(true)
+        .with_interval(Duration::from_secs(300)) // Reduced from 60s to 5 minutes
+        .with_push_listen_addr_updates(false)    // Disabled to reduce events
         .with_cache_size(100)
         .with_hide_listen_addrs(true));
 
@@ -327,8 +331,10 @@ impl RelayManager {
             request_response,
         };
 
-        // Create swarm with proper configuration
-        let mut swarm = Swarm::new(transport, behaviour, local_peer_id, Config::with_tokio_executor());
+        // Create swarm with proper configuration and connection limits
+        let swarm_config = Config::with_tokio_executor()
+            .with_idle_connection_timeout(Duration::from_secs(180)); // Close idle connections after 3 minutes
+        let mut swarm = Swarm::new(transport, behaviour, local_peer_id, swarm_config);
 
         // Listen on TCP - bind to all interfaces
         let tcp_listen_addr: Multiaddr = format!("/ip4/0.0.0.0/tcp/{}", listen_port)
@@ -386,6 +392,9 @@ impl RelayManager {
             cache_ttl: Duration::from_secs(600), // 10 minutes cache TTL
             // Initialize HTTP client
             http_client: reqwest::Client::new(),
+            // Initialize identify event deduplication
+            last_identify_events: DashMap::new(),
+            identify_event_cooldown: Duration::from_secs(30), // 30 second cooldown between identify processing
         })
     }
 
@@ -554,6 +563,34 @@ impl RelayManager {
 
     pub fn local_peer_id(&self) -> PeerId {
         *self.swarm.local_peer_id()
+    }
+
+    /// Request tool offerings from all connected non-localhost peers
+    async fn request_tool_offerings_from_all_peers(&mut self) {
+        let connected_peers: Vec<PeerId> = self.peer_identities.iter()
+            .filter_map(|entry| {
+                let peer_id = *entry.key();
+                // Only include peers that are:
+                // 1. Still connected
+                // 2. Not localhost peers
+                if self.swarm.is_connected(&peer_id) && !self.is_localhost_peer(&peer_id) {
+                    Some(peer_id)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        if connected_peers.is_empty() {
+            println!("🔧 No connected non-localhost peers to request tool offerings from");
+            return;
+        }
+
+        println!("🔧 Requesting tool offerings from {} connected non-localhost peers", connected_peers.len());
+        
+        for peer_id in connected_peers {
+            self.request_tool_offerings(peer_id).await;
+        }
     }
 
     /// Request tool offerings from a connected node
@@ -791,6 +828,8 @@ impl RelayManager {
         if let Some((_, identity)) = self.peer_identities.remove(peer_id) {
             println!("🔄 Peer {} with PeerId: {} unregistered - will update peer discovery information", identity, peer_id);
             self.registered_peers.remove(&identity);
+            // Clean up identify event tracking
+            self.last_identify_events.remove(peer_id);
         }
     }
 
@@ -883,6 +922,11 @@ impl RelayManager {
         let mut cleanup_timer = tokio::time::interval(Duration::from_secs(30)); // Clean up every 30 seconds
         let mut cache_cleanup_timer = tokio::time::interval(Duration::from_secs(300)); // Clean cache every 5 minutes
         
+        // Tool offerings request timer - runs every 4*PING_DURATION
+        let tool_offerings_interval = Duration::from_secs(self.config.ping_interval_secs * 4);
+        let mut tool_offerings_timer = tokio::time::interval(tool_offerings_interval);
+        println!("🔧 Tool offerings request timer set to {} seconds", tool_offerings_interval.as_secs());
+        
         loop {
             tokio::select! {
                 // Handle swarm events
@@ -896,6 +940,10 @@ impl RelayManager {
                 // Periodic cleanup of identity cache
                 _ = cache_cleanup_timer.tick() => {
                     self.cleanup_identity_cache();
+                }
+                // Periodic tool offerings requests
+                _ = tool_offerings_timer.tick() => {
+                    self.request_tool_offerings_from_all_peers().await;
                 }
             }
         }
@@ -920,16 +968,28 @@ impl RelayManager {
                 info,
                 connection_id,
             })) => {
+                // Check if we've recently processed an identify event for this peer (deduplication)
+                let should_process = if let Some(last_event) = self.last_identify_events.get(&peer_id) {
+                    last_event.elapsed() >= self.identify_event_cooldown
+                } else {
+                    true // First time, so process it
+                };
+
+                if !should_process {
+                    println!("🔄 Skipping identify event for peer {} (cooldown: {:?} remaining)", 
+                        peer_id, 
+                        self.identify_event_cooldown - self.last_identify_events.get(&peer_id).unwrap().elapsed());
+                    return Ok(());
+                }
+
+                // Record this identify event to prevent excessive processing
+                self.last_identify_events.insert(peer_id, Instant::now());
+                
                 println!("🔄 Identified peer: {} with agent version: {:?} and connection id: {}", peer_id, info.agent_version, connection_id);
                 
                 // Check if this peer is already registered
                 if let Some(existing_identity) = self.find_identity_by_peer(&peer_id) {
-                    println!("🔄 Peer {} already registered with identity: {} - requesting fresh tool offerings", peer_id, existing_identity);
-                    if info.agent_version.starts_with("@@localhost.") {
-                        println!("🔄 Peer {} is localhost, skipping tool offerings request", peer_id);
-                    } else {
-                        self.request_tool_offerings(peer_id).await;
-                    }
+                    println!("🔄 Peer {} already registered with identity: {}", peer_id, existing_identity);
                     return Ok(());
                 }
                 
@@ -949,10 +1009,12 @@ impl RelayManager {
                             
                             // Post node status update after successful identification
                             let health = self.connection_health.get(&peer_id).map(|h| h.clone());
-                            self.post_node_status(peer_id, true, health);
-                            
-                            // Request tool offerings from the newly identified node
-                            self.request_tool_offerings(peer_id).await;
+                            if !self.is_localhost_peer(&peer_id) {
+                                self.post_node_status(peer_id, true, health);
+                                
+                                // Request tool offerings from the newly identified non-localhost node
+                                self.request_tool_offerings(peer_id).await;
+                            }
                         } else {
                             let possible_identity = if info.agent_version.ends_with("shinkai") {
                                 if let Some(identity_part) = info.agent_version.split("@@").nth(1) {
@@ -964,9 +1026,7 @@ impl RelayManager {
                                 println!("🔑 Verification failed, registering peer {} with identity: {}, using peer id as identity.", peer_id, identity);
                                 self.handle_identity_registration(identity, peer_id, true).await;
                                 
-                                // Post node status update after localhost registration
-                                let health = self.connection_health.get(&peer_id).map(|h| h.clone());
-                                self.post_node_status(peer_id, true, health);
+                                // Note: No status update or tool offerings request for localhost peers
                             } else {
                                 println!("❌ Could not parse identity from agent version: {}", info.agent_version);
                             }
@@ -1197,6 +1257,8 @@ impl RelayManager {
                     self.unregister_peer(&peer_id);
                     // Clean up connection health tracking
                     self.connection_health.remove(&peer_id);
+                    // Clean up identify event tracking (redundant but safe)
+                    self.last_identify_events.remove(&peer_id);
                 }
             }
             _ => {}
@@ -1253,6 +1315,21 @@ impl RelayManager {
         
         if !self.identity_cache.is_empty() {
             println!("🧹 Identity cache cleanup complete. {} entries remaining", self.identity_cache.len());
+        }
+        
+        // Also clean up stale identify event tracking for disconnected peers
+        let mut stale_identify_peer_ids = Vec::new();
+        for entry in self.last_identify_events.iter() {
+            let peer_id = *entry.key();
+            // Check if peer is still connected
+            if !self.swarm.is_connected(&peer_id) {
+                stale_identify_peer_ids.push(peer_id);
+            }
+        }
+        
+        for peer_id in stale_identify_peer_ids {
+            self.last_identify_events.remove(&peer_id);
+            println!("🧹 Removed stale identify event tracking for disconnected peer: {}", peer_id);
         }
     }
 
