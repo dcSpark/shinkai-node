@@ -636,6 +636,100 @@ impl RelayManager {
         }
     }
 
+    /// Handle received tool offerings response from a peer
+    async fn handle_tool_offerings_response(&mut self, peer: PeerId, content: String) {
+        println!("🔧 Received AgentNetworkOfferingResponse from peer {}", peer);
+        
+        // Parse the AgentNetworkOfferingResponse
+        match serde_json::from_str::<Value>(&content) {
+            Ok(offerings_array) => {
+                // First, synchronize offerings (fetch existing and delete stale ones)
+                if let Some(offerings_vec) = offerings_array.as_array() {
+                    self.sync_peer_offerings(peer, offerings_vec.clone());
+                }
+                
+                // Process offerings in a separate async task
+                let peer_id = peer;
+                let offerings_clone = offerings_array.clone();
+                let endpoint_url = self.config.status_endpoint_url.clone();
+                let client = self.http_client.clone();
+                
+                tokio::spawn(async move {
+                    if let Some(ref endpoint_url) = endpoint_url {
+                        // Fetch nodeId
+                        let url = format!("{}/dapps/nodes/peerId/{}", endpoint_url, peer_id);
+                        let mut request_builder = client.get(&url);
+                        
+                        // Add Authorization header if STATUS_ENDPOINT_TOKEN is set
+                        if let Ok(token) = std::env::var("STATUS_ENDPOINT_TOKEN") {
+                            request_builder = request_builder.header("Authorization", format!("Bearer {}", token));
+                        }
+                        
+                        match request_builder.send().await {
+                            Ok(response) => {
+                                if response.status().is_success() {
+                                    match response.json::<Value>().await {
+                                        Ok(json) => {
+                                            println!("🔧 Debug - NodeId response: {:?}", json);
+                                            if let Some(node_id) = json.get("id").and_then(|v| v.as_str()) {
+                                                println!("✅ Successfully fetched nodeId {} for peer {}", node_id, peer_id);
+                                                
+                                                // Post new offerings
+                                                let offerings_url = format!("{}/dapps/offerings", endpoint_url);
+                                                if let Some(offerings_array) = offerings_clone.as_array() {
+                                                    for offering in offerings_array {
+                                                        let payload = NodeOfferingsPayload {
+                                                            node_id: node_id.to_string(),
+                                                            peer_id: peer_id.to_string(),
+                                                            offering: offering.clone(),
+                                                        };
+
+                                                        let mut offerings_request_builder = client.post(&offerings_url).json(&payload);
+                                                        
+                                                        // Add Authorization header if STATUS_ENDPOINT_TOKEN is set
+                                                        if let Ok(token) = std::env::var("STATUS_ENDPOINT_TOKEN") {
+                                                            offerings_request_builder = offerings_request_builder.header("Authorization", format!("Bearer {}", token));
+                                                        }
+                                                        
+                                                        match offerings_request_builder.send().await {
+                                                            Ok(response) => {
+                                                                if response.status().is_success() {
+                                                                    println!("✅ Successfully posted offering for peer {}", peer_id);
+                                                                } else {
+                                                                    println!("⚠️ Failed to post offering for peer {}: HTTP {}", peer_id, response.status());
+                                                                }
+                                                            }
+                                                            Err(e) => {
+                                                                println!("❌ Error posting offering for peer {}: {}", peer_id, e);
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            } else {
+                                                println!("⚠️ No nodeId found in response for peer {}", peer_id);
+                                            }
+                                        }
+                                        Err(e) => {
+                                            println!("❌ Failed to parse nodeId response for peer {}: {}", peer_id, e);
+                                        }
+                                    }
+                                } else {
+                                    println!("⚠️ Failed to fetch nodeId for peer {}: HTTP {}", peer_id, response.status());
+                                }
+                            }
+                            Err(e) => {
+                                println!("❌ Error fetching nodeId for peer {}: {}", peer_id, e);
+                            }
+                        }
+                    }
+                });
+            }
+            Err(e) => {
+                println!("❌ Failed to parse AgentNetworkOfferingResponse from peer {}: {}", peer, e);
+            }
+        }
+    }
+
     /// Handle identity registration with conflict resolution
     pub async fn handle_identity_registration(&mut self, mut identity: String, new_peer_id: PeerId, is_localhost: bool) {
         // If the identity is localhost, we need to check if the peer is localhost
@@ -815,13 +909,15 @@ impl RelayManager {
             SwarmEvent::Behaviour(RelayBehaviourEvent::Identify(IdentifyEvent::Received {
                 peer_id,
                 info,
-                ..
+                connection_id,
             })) => {
-                println!("Identified peer: {} with protocol version: {}", peer_id, info.protocol_version);
+                println!("Identified peer: {} with info: {:?} and connection id: {}", peer_id, info, connection_id);
                 
-                // Check if this peer is already registered to avoid unnecessary re-processing
+                // Check if this peer is already registered
                 if let Some(existing_identity) = self.find_identity_by_peer(&peer_id) {
-                    println!("🔄 Peer {} already registered with identity: {} - skipping re-identification", peer_id, existing_identity);
+                    println!("🔄 Peer {} already registered with identity: {} - requesting fresh tool offerings", peer_id, existing_identity);
+                    // Still request tool offerings to keep them synchronized
+                    self.request_tool_offerings(peer_id).await;
                     return Ok(());
                 }
                 
@@ -859,9 +955,6 @@ impl RelayManager {
                                 // Post node status update after localhost registration
                                 let health = self.connection_health.get(&peer_id).map(|h| h.clone());
                                 self.post_node_status(peer_id, true, health);
-                                
-                                // Request tool offerings from the localhost node
-                                self.request_tool_offerings(peer_id).await;
                             } else {
                                 println!("❌ Could not parse identity from agent version: {}", info.agent_version);
                             }
@@ -998,96 +1091,7 @@ impl RelayManager {
                                 if let Ok(content) = response.get_message_content() {
                                     if let Ok(schema) = response.get_message_content_schema() {
                                         if schema == MessageSchemaType::AgentNetworkOfferingResponse {
-                                            println!("🔧 Received AgentNetworkOfferingResponse from peer {}", peer);
-                                            
-                                            // Parse the AgentNetworkOfferingResponse
-                                            match serde_json::from_str::<Value>(&content) {
-                                                Ok(offerings_array) => {
-                                                    // First, synchronize offerings (fetch existing and delete stale ones)
-                                                    if let Some(offerings_vec) = offerings_array.as_array() {
-                                                        self.sync_peer_offerings(peer, offerings_vec.clone());
-                                                    }
-                                                    
-                                                    // Process offerings in a separate async task
-                                                    let peer_id = peer;
-                                                    let offerings_clone = offerings_array.clone();
-                                                    let endpoint_url = self.config.status_endpoint_url.clone();
-                                                    let client = self.http_client.clone();
-                                                    
-                                                    tokio::spawn(async move {
-                                                        if let Some(ref endpoint_url) = endpoint_url {
-                                                            // Fetch nodeId
-                                                            let url = format!("{}/dapps/nodes/peerId/{}", endpoint_url, peer_id);
-                                                            let mut request_builder = client.get(&url);
-                                                            
-                                                            // Add Authorization header if STATUS_ENDPOINT_TOKEN is set
-                                                            if let Ok(token) = std::env::var("STATUS_ENDPOINT_TOKEN") {
-                                                                request_builder = request_builder.header("Authorization", format!("Bearer {}", token));
-                                                            }
-                                                            
-                                                            match request_builder.send().await {
-                                                                Ok(response) => {
-                                                                    if response.status().is_success() {
-                                                                        match response.json::<Value>().await {
-                                                                            Ok(json) => {
-                                                                                println!("🔧 Debug - NodeId response: {:?}", json);
-                                                                                if let Some(node_id) = json.get("id").and_then(|v| v.as_str()) {
-                                                                                    println!("✅ Successfully fetched nodeId {} for peer {}", node_id, peer_id);
-                                                                                    
-                                                                                    // Post new offerings
-                                                                                    let offerings_url = format!("{}/dapps/offerings", endpoint_url);
-                                                                                    if let Some(offerings_array) = offerings_clone.as_array() {
-                                                                                        for offering in offerings_array {
-                                                                                            let payload = NodeOfferingsPayload {
-                                                                                                node_id: node_id.to_string(),
-                                                                                                peer_id: peer_id.to_string(),
-                                                                                                offering: offering.clone(),
-                                                                                            };
-
-                                                                                            let mut offerings_request_builder = client.post(&offerings_url).json(&payload);
-                                                                                            
-                                                                                            // Add Authorization header if STATUS_ENDPOINT_TOKEN is set
-                                                                                            if let Ok(token) = std::env::var("STATUS_ENDPOINT_TOKEN") {
-                                                                                                offerings_request_builder = offerings_request_builder.header("Authorization", format!("Bearer {}", token));
-                                                                                            }
-                                                                                            
-                                                                                            match offerings_request_builder.send().await {
-                                                                                                Ok(response) => {
-                                                                                                    if response.status().is_success() {
-                                                                                                        println!("✅ Successfully posted offering for peer {}", peer_id);
-                                                                                                    } else {
-                                                                                                        println!("⚠️ Failed to post offering for peer {}: HTTP {}", peer_id, response.status());
-                                                                                                    }
-                                                                                                }
-                                                                                                Err(e) => {
-                                                                                                    println!("❌ Error posting offering for peer {}: {}", peer_id, e);
-                                                                                                }
-                                                                                            }
-                                                                                        }
-                                                                                    }
-                                                                                } else {
-                                                                                    println!("⚠️ No nodeId found in response for peer {}", peer_id);
-                                                                                }
-                                                                            }
-                                                                            Err(e) => {
-                                                                                println!("❌ Failed to parse nodeId response for peer {}: {}", peer_id, e);
-                                                                            }
-                                                                        }
-                                                                    } else {
-                                                                        println!("⚠️ Failed to fetch nodeId for peer {}: HTTP {}", peer_id, response.status());
-                                                                    }
-                                                                }
-                                                                Err(e) => {
-                                                                    println!("❌ Error fetching nodeId for peer {}: {}", peer_id, e);
-                                                                }
-                                                            }
-                                                        }
-                                                    });
-                                                }
-                                                Err(e) => {
-                                                    println!("❌ Failed to parse AgentNetworkOfferingResponse from peer {}: {}", peer, e);
-                                                }
-                                            }
+                                            self.handle_tool_offerings_response(peer, content).await;
                                             
                                             // Don't relay tool offerings responses to other nodes
                                             return Ok(());
