@@ -8,10 +8,11 @@ use libp2p::{
     swarm::{NetworkBehaviour, SwarmEvent, Config},
     tcp, yamux, Multiaddr, PeerId, Swarm, Transport,
 };
-use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
+use shinkai_message_primitives::shinkai_message::shinkai_message::{MessageBody, MessageData, ShinkaiMessage};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_primitives::schemas::agent_network_offering::AgentNetworkOfferingRequest;
+use shinkai_message_primitives::shinkai_utils::encryption::encryption_public_key_to_string;
 use x25519_dalek::{StaticSecret as EncryptionStaticKey};
 use std::time::{Duration, Instant, SystemTime};
 use dashmap::DashMap;
@@ -670,7 +671,6 @@ impl RelayManager {
                                 if response.status().is_success() {
                                     match response.json::<Value>().await {
                                         Ok(json) => {
-                                            println!("🔧 Debug - NodeId response: {:?}", json);
                                             if let Some(node_id) = json.get("id").and_then(|v| v.as_str()) {
                                                 println!("✅ Successfully fetched nodeId {} for peer {}", node_id, peer_id);
                                                 
@@ -1016,13 +1016,28 @@ impl RelayManager {
                 match req_resp_event {
                     request_response::Event::Message { peer, message, .. } => {
                         eprintln!("🔄 Relay: Received request-response message from peer {}", peer);
-                        eprintln!("   Message: {:?}", message);
                         match message {
                             request_response::Message::Request { mut request, channel, .. } => {
                                 println!("🔄 Relay: Received direct message request from peer {}", peer);
                                 println!("   Message from: {} to: {}", 
                                     request.external_metadata.sender,
                                     request.external_metadata.recipient);
+                                
+                                // Check if this message is intended for the relay itself
+                                // (intra_sender is empty and recipient contains relay node name)
+                                if request.external_metadata.intra_sender.is_empty() && 
+                                   request.external_metadata.recipient.contains(&self.config.relay_node_name) {
+                                    println!("📩 Relay: Message is intended for the relay itself, processing locally");
+                                    
+                                    // Decrypt and process the message intended for the relay
+                                    if let Some(response) = self.process_relay_message(request, peer).await {
+                                        let _ = self.swarm.behaviour_mut().request_response.send_response(channel, response);
+                                    } else {
+                                        println!("❌ Relay: Failed to process message intended for relay");
+                                        // Send an error response or handle failure appropriately
+                                    }
+                                    return Ok(());
+                                }
                                 
                                 // Try to find the target peer by their identity
                                 let target_identity = &request.external_metadata.recipient;
@@ -1086,6 +1101,17 @@ impl RelayManager {
                                 println!("   Message from: {} to: {}", 
                                     response.external_metadata.sender,
                                     response.external_metadata.recipient);
+
+                                // Check if this response is intended for the relay itself
+                                // (intra_sender is empty and recipient contains relay node name)
+                                if response.external_metadata.intra_sender.is_empty() && 
+                                   response.external_metadata.recipient.contains(&self.config.relay_node_name) {
+                                    println!("📩 Relay: Response is intended for the relay itself, processing locally");
+                                    
+                                    // Process the response intended for the relay - no need to forward it
+                                    self.process_relay_response(response, peer).await;
+                                    return Ok(());
+                                }
 
                                 // Check if this is an AgentNetworkOfferingResponse
                                 if let Ok(content) = response.get_message_content() {
@@ -1214,7 +1240,255 @@ impl RelayManager {
         }
     }
 
-    async fn relay_message_encryption(&mut self, request: &mut ShinkaiMessage, target_node: &String) {
+    /// Process a message intended for the relay itself
+    async fn process_relay_message(&mut self, request: ShinkaiMessage, sender_peer: PeerId) -> Option<ShinkaiMessage> {
+        println!("🔓 Relay: Processing message intended for relay from peer {}", sender_peer);
+        
+        // Get sender's identity to get their encryption key
+        let sender_identity = if let Some(identity) = self.find_identity_by_peer(&sender_peer) {
+            identity
+        } else {
+            println!("❌ Relay: Could not find sender identity for peer {}", sender_peer);
+            return None;
+        };
+
+        // Get sender's encryption key from registry or use other field for localhost
+        let sender_enc_key = if sender_identity.contains("localhost") {
+            println!("🔑 Relay: Using other field for localhost sender");
+            match shinkai_message_primitives::shinkai_utils::encryption::string_to_encryption_public_key(&request.external_metadata.other) {
+                Ok(key) => key,
+                Err(e) => {
+                    println!("❌ Relay: Failed to parse sender's encryption key from other field: {}", e);
+                    return None;
+                }
+            }
+        } else {
+            // For registered nodes, get from blockchain registry
+            match self.registry.get_identity_record(sender_identity.clone(), None).await {
+                Ok(identity_record) => {
+                    match shinkai_message_primitives::shinkai_utils::encryption::string_to_encryption_public_key(&identity_record.encryption_key) {
+                        Ok(key) => key,
+                        Err(e) => {
+                            println!("❌ Relay: Failed to parse sender's encryption key: {}", e);
+                            return None;
+                        }
+                    }
+                }
+                Err(e) => {
+                    println!("❌ Relay: Failed to get sender's identity from registry: {}", e);
+                    return None;
+                }
+            }
+        };
+
+        // Decrypt the message using relay's private key and sender's public key
+        let decrypted_message = match request.decrypt_outer_layer(&self.config.encryption_secret_key, &sender_enc_key) {
+            Ok(message) => {
+                println!("✅ Relay: Successfully decrypted message intended for relay");
+                message
+            }
+            Err(e) => {
+                println!("❌ Relay: Failed to decrypt message intended for relay: {}", e);
+                return None;
+            }
+        };
+
+        // Try to decrypt inner layer as well if possible
+        let fully_decrypted = match decrypted_message.decrypt_inner_layer(&self.config.encryption_secret_key, &sender_enc_key) {
+            Ok(inner_message) => {
+                println!("✅ Relay: Successfully decrypted inner layer");
+                inner_message
+            }
+            Err(_) => {
+                println!("⚠️  Relay: Could not decrypt inner layer, using outer layer only");
+                decrypted_message
+            }
+        };
+
+        // Process the decrypted message content here
+        println!("📩 Relay: Processing decrypted message:");
+        println!("   From: {}", fully_decrypted.external_metadata.sender);
+        println!("   To: {}", fully_decrypted.external_metadata.recipient);
+
+        // Check if this is an AgentNetworkOfferingResponse
+        let message_schema = match &fully_decrypted.body {
+            MessageBody::Unencrypted(body) => match &body.message_data {
+                MessageData::Unencrypted(data) => &data.message_content_schema,
+                _ => {
+                    println!("⚠️  Relay: Message data is encrypted, cannot determine schema");
+                    return None;
+                }
+            },
+            _ => {
+                println!("⚠️  Relay: Message body is encrypted, cannot determine schema");
+                return None;
+            }
+        };
+
+        if *message_schema == MessageSchemaType::AgentNetworkOfferingResponse {
+            println!("🔧 Relay: Received AgentNetworkOfferingResponse, processing tool offerings");
+            
+            // Get the message content
+            let content = match &fully_decrypted.body {
+                MessageBody::Unencrypted(body) => match &body.message_data {
+                    MessageData::Unencrypted(data) => data.message_raw_content.clone(),
+                    _ => {
+                        println!("❌ Relay: Cannot extract content from encrypted message data");
+                        return self.create_ack_response(&request, &sender_enc_key, &fully_decrypted);
+                    }
+                },
+                _ => {
+                    println!("❌ Relay: Cannot extract content from encrypted message body");
+                    return self.create_ack_response(&request, &sender_enc_key, &fully_decrypted);
+                }
+            };
+            
+            self.handle_tool_offerings_response(sender_peer, content).await;
+            
+            // Send back an ACK after processing the offerings
+            return self.create_ack_response(&request, &sender_enc_key, &fully_decrypted);
+        }
+
+        // For other message types, create a simple ACK response
+        self.create_ack_response(&request, &sender_enc_key, &fully_decrypted)
+    }
+
+    /// Create an ACK response for a processed message
+    fn create_ack_response(
+        &self,
+        original_request: &ShinkaiMessage,
+        sender_encryption_key: &x25519_dalek::PublicKey,
+        _processed_message: &ShinkaiMessage,
+    ) -> Option<ShinkaiMessage> {
+        // Create a simple ACK message using the ShinkaiMessageBuilder
+        match ShinkaiMessageBuilder::ack_message(
+            self.config.encryption_secret_key.clone(),
+            self.config.identity_secret_key.clone(),
+            *sender_encryption_key,
+            self.config.relay_node_name.clone(),
+            original_request.external_metadata.sender.clone(),
+        ) {
+            Ok(ack_message) => {
+                println!("✅ Relay: Successfully created ACK response");
+                Some(ack_message)
+            }
+            Err(e) => {
+                println!("❌ Relay: Failed to create ACK response: {}", e);
+                None
+            }
+        }
+    }
+
+    /// Process a response message intended for the relay itself
+    async fn process_relay_response(&mut self, response: ShinkaiMessage, sender_peer: PeerId) {
+        println!("🔓 Relay: Processing response intended for relay from peer {}", sender_peer);
+        
+        // Get sender's identity to get their encryption key for decryption (if needed)
+        let sender_identity = if let Some(identity) = self.find_identity_by_peer(&sender_peer) {
+            identity
+        } else {
+            println!("❌ Relay: Could not find sender identity for peer {}", sender_peer);
+            return;
+        };
+
+        // Check if the response is encrypted and needs decryption
+        let decrypted_response = if response.encryption != shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod::None {
+            // Get sender's encryption key for decryption
+            let sender_enc_key = if sender_identity.contains("localhost") {
+                println!("🔑 Relay: Using other field for localhost sender");
+                match shinkai_message_primitives::shinkai_utils::encryption::string_to_encryption_public_key(&response.external_metadata.other) {
+                    Ok(key) => key,
+                    Err(e) => {
+                        println!("❌ Relay: Failed to parse sender's encryption key from other field: {}", e);
+                        return;
+                    }
+                }
+            } else {
+                // For registered nodes, get from blockchain registry
+                match self.registry.get_identity_record(sender_identity.clone(), None).await {
+                    Ok(identity_record) => {
+                        match shinkai_message_primitives::shinkai_utils::encryption::string_to_encryption_public_key(&identity_record.encryption_key) {
+                            Ok(key) => key,
+                            Err(e) => {
+                                println!("❌ Relay: Failed to parse sender's encryption key: {}", e);
+                                return;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        println!("❌ Relay: Failed to get sender's identity from registry: {}", e);
+                        return;
+                    }
+                }
+            };
+
+            // Decrypt the response using relay's private key and sender's public key
+            match response.decrypt_outer_layer(&self.config.encryption_secret_key, &sender_enc_key) {
+                Ok(message) => {
+                    println!("✅ Relay: Successfully decrypted response intended for relay");
+                    message
+                }
+                Err(e) => {
+                    println!("❌ Relay: Failed to decrypt response intended for relay: {}", e);
+                    return;
+                }
+            }
+        } else {
+            // Response is not encrypted, use as-is
+            println!("📩 Relay: Response is not encrypted, processing directly");
+            response
+        };
+
+        // Process the decrypted response content
+        println!("📩 Relay: Processing decrypted response:");
+        println!("   From: {}", decrypted_response.external_metadata.sender);
+        println!("   To: {}", decrypted_response.external_metadata.recipient);
+
+        // Check the message content and schema to determine how to process it
+        let message_content = match decrypted_response.get_message_content() {
+            Ok(content) => content,
+            Err(_) => {
+                println!("⚠️  Relay: Could not extract message content from response");
+                return;
+            }
+        };
+
+        let message_schema = match decrypted_response.get_message_content_schema() {
+            Ok(schema) => schema,
+            Err(_) => {
+                println!("⚠️  Relay: Could not extract message schema from response");
+                return;
+            }
+        };
+
+        println!("📩 Relay: Response content: {}", message_content);
+        println!("📩 Relay: Response schema: {:?}", message_schema);
+
+        // Handle different types of responses
+        match message_schema {
+            MessageSchemaType::AgentNetworkOfferingResponse => {
+                println!("🔧 Relay: Received AgentNetworkOfferingResponse in response, processing tool offerings");
+                self.handle_tool_offerings_response(sender_peer, message_content).await;
+            }
+            MessageSchemaType::TextContent => {
+                if message_content == "ACK" {
+                    println!("✅ Relay: Received ACK response from peer {}", sender_peer);
+                    // ACK responses are just confirmations, no special processing needed
+                } else {
+                    println!("📝 Relay: Received text response: {}", message_content);
+                    // Handle other text responses as needed
+                }
+            }
+            _ => {
+                println!("📩 Relay: Received response with schema {:?}, content: {}", message_schema, message_content);
+                // Handle other response types as needed
+            }
+        }
+        
+        println!("✅ Relay: Finished processing response from peer {}", sender_peer);
+    }
+
+async fn relay_message_encryption(&mut self, request: &mut ShinkaiMessage, target_node: &String) {
         // Parse recipient name
         let recipient_name = match shinkai_message_primitives::schemas::shinkai_name::ShinkaiName::new(target_node.clone()) {
             Ok(name) => name,
@@ -1309,7 +1583,6 @@ impl RelayManager {
                 println!("✅ Relay: Successfully decrypted and re-encrypted message for recipient");
                 
                 // Update the 'other' field to contain relay's public key for final decryption
-                use shinkai_message_primitives::shinkai_utils::encryption::encryption_public_key_to_string;
                 let relay_public_key = x25519_dalek::PublicKey::from(&self.config.encryption_secret_key);
                 re_encrypted_message.external_metadata.other = encryption_public_key_to_string(relay_public_key);
 

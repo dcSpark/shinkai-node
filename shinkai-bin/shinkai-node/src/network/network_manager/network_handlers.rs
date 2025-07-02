@@ -10,9 +10,9 @@ use ed25519_dalek::{SigningKey, VerifyingKey};
 use libp2p::{request_response::ResponseChannel, PeerId};
 use serde_json::json;
 use serde_json::Value;
-use shinkai_message_primitives::schemas::{agent_network_offering::{
+use shinkai_message_primitives::schemas::agent_network_offering::{
     AgentNetworkOfferingRequest, AgentNetworkOfferingResponse
-}, tool_router_key::ToolRouterKey};
+};
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::{
     schemas::{
@@ -24,7 +24,6 @@ use shinkai_message_primitives::{
     }
 };
 use shinkai_sqlite::SqliteManager;
-use shinkai_tools_primitives::tools::network_tool::NetworkTool;
 use std::sync::{Arc, Weak};
 use std::{io, net::SocketAddr};
 use tokio::sync::Mutex;
@@ -775,50 +774,20 @@ pub async fn handle_network_message_cases(
                 }
                 MessageSchemaType::AgentNetworkOfferingRequest => {
                     let requester = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
-                    println!("🔧 Received AgentNetworkOfferingRequest from peer {:?} ({})", sender_peer_id, requester);
-                    println!("🔧 Sender profile name: '{}', message sender: '{}'", sender_profile_name, message.external_metadata.sender);
-                    
-                    // Check if this is coming from the configured proxy/relay
-                    let proxy_connection = proxy_connection_info.lock().await;
-                    let is_from_configured_proxy = if let Some(proxy_info) = proxy_connection.as_ref() {
-                        let proxy_identity_str = proxy_info.proxy_identity.full_name.clone();
-                        println!("🔧 Configured proxy identity: '{}', checking against message sender: '{}'", proxy_identity_str, message.external_metadata.sender);
-                        proxy_identity_str == message.external_metadata.sender
+                    println!("AgentNetworkOfferingRequest received from: {:?}", requester);
+
+                    let ext_agent_offering_manager = if let Some(manager) = external_agent_offering_manager.upgrade() {
+                        manager
                     } else {
-                        println!("🔧 No proxy configured, rejecting AgentNetworkOfferingRequest");
-                        false
+                        return Ok(());
                     };
-                    drop(proxy_connection); // Release the lock
-                    
-                    if is_from_configured_proxy {
-                        println!("🔧 Handling tool offerings request from relay");
-                        // Handle tool offerings request from relay - return early
-                        return handle_relay_tool_offerings_request(
-                            message,
-                            sender_encryption_pk,
-                            sender_profile_name.clone(),
-                            my_encryption_secret_key,
-                            my_signature_secret_key,
-                            my_node_full_name,
-                            maybe_db,
-                            libp2p_event_sender.clone(),
-                            channel,
-                        ).await;
-                    } else {
-                        // Handle normal agent network offering request
-                        let ext_agent_offering_manager = if let Some(manager) = external_agent_offering_manager.upgrade() {
-                            manager
-                        } else {
-                            return Ok(());
-                        };
-                        if let Ok(_req) = serde_json::from_str::<AgentNetworkOfferingRequest>(
-                            &message.get_message_content().unwrap_or_default(),
-                        ) {
-                            let ext_manager = ext_agent_offering_manager.lock().await;
-                            let _ = ext_manager
-                                .network_agent_offering_requested(requester, Some(message.external_metadata))
-                                .await;
-                        }
+                    if let Ok(_req) = serde_json::from_str::<AgentNetworkOfferingRequest>(
+                        &message.get_message_content().unwrap_or_default(),
+                    ) {
+                        let ext_manager = ext_agent_offering_manager.lock().await;
+                        let _ = ext_manager
+                            .network_agent_offering_requested(requester, Some(message.external_metadata))
+                            .await;
                     }
                 }
                 MessageSchemaType::AgentNetworkOfferingResponse => {
@@ -923,134 +892,6 @@ pub async fn send_ack(
             std::io::ErrorKind::Other,
             "No channel defined.",
         )));
-    }
-
-    Ok(())
-}
-
-#[allow(clippy::too_many_arguments)]
-pub async fn handle_relay_tool_offerings_request(
-    _message: ShinkaiMessage,
-    sender_encryption_pk: x25519_dalek::PublicKey,
-    sender_profile_name: String,
-    my_encryption_secret_key: &EncryptionStaticKey,
-    my_signature_secret_key: &SigningKey,
-    my_node_full_name: &str,
-    maybe_db: Arc<SqliteManager>,
-    libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
-    channel: Option<ResponseChannel<ShinkaiMessage>>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    println!("🔧 Processing tool offerings request");
-    
-    // Get all tool offerings using the existing database query
-    let tool_offerings = match maybe_db.get_all_tool_offerings() {
-        Ok(offerings) => offerings,
-        Err(e) => {
-            eprintln!("❌ Failed to retrieve tool offerings: {}", e);
-            return Err(Box::new(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Failed to retrieve tool offerings: {}", e),
-            )));
-        }
-    };
-
-    // Get tools from the database using the tool keys
-    let mut detailed_tool_headers = Vec::new();
-    for tool_offering in tool_offerings {
-        let tool_key = &tool_offering.tool_key;
-        match maybe_db.get_tool_by_key(tool_key) {
-            Ok(tool) => {
-                let mut header = tool.to_header();
-                header.sanitize_config();
-                let tool_router_key_result =
-                    ToolRouterKey::to_network_router_key(&tool_offering.tool_key, &my_node_full_name.to_string());
-
-                let tool_router_key_str = match tool_router_key_result {
-                    Ok(key) => key,
-                    Err(_) => {
-                        // Skip tools with invalid router keys
-                        continue;
-                    }
-                };
-
-                let provider = match ShinkaiName::from_node_name(my_node_full_name.to_string()) {
-                    Ok(name) => name,
-                    Err(e) => {
-                        eprintln!("❌ Failed to convert node name to ShinkaiName: {}", e);
-                        continue;
-                    }
-                };
-
-                let combined_offering = serde_json::json!({
-                    "network_tool": NetworkTool {
-                        name: header.name,
-                        description: header.description,
-                        version: header.version,
-                        author: header.author,
-                        mcp_enabled: header.mcp_enabled,
-                        provider: provider,
-                        tool_router_key: tool_router_key_str,
-                        usage_type: tool_offering.usage_type.clone(),
-                        activated: header.enabled,
-                        config: header.config.unwrap_or_default(),
-                        input_args: header.input_args,
-                        output_arg: header.output_arg,
-                        embedding: None,
-                        restrictions: None,
-                    },
-                    "tool_offering": tool_offering
-                });
-                detailed_tool_headers.push(combined_offering);
-            }
-            Err(e) => {
-                eprintln!("❌ Failed to get tool for key {}: {}", tool_key, e);
-                // Continue with other tools instead of failing completely
-            }
-        }
-    }
-
-    // Create response message with tool offerings using AgentNetworkOfferingResponse format
-    // The new format is a direct array of combined objects containing network_tool and tool_offering
-    let response_content = serde_json::to_string(&detailed_tool_headers)?;
-
-    let response_message = match ShinkaiMessageBuilder::new(
-        clone_static_secret_key(my_encryption_secret_key),
-        clone_signature_secret_key(my_signature_secret_key),
-        sender_encryption_pk,
-    )
-    .message_raw_content(response_content)
-    .message_schema_type(MessageSchemaType::AgentNetworkOfferingResponse)
-    .internal_metadata(
-        "main".to_string(),
-        "main".to_string(),
-        shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod::None,
-        None,
-    )
-    .external_metadata(
-        sender_profile_name,
-        my_node_full_name.to_string(),
-    )
-    .build() {
-        Ok(msg) => msg,
-        Err(e) => {
-            eprintln!("❌ Failed to build tool offerings response message: {}", e);
-            return Err(Box::new(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Failed to build response message: {}", e),
-            )));
-        }
-    };
-
-    println!("✅ Sending tool offerings response with {} offerings", detailed_tool_headers.len());
-
-    // Send response back through the channel
-    if let Some(response_channel) = channel {
-        if let Some(sender) = libp2p_event_sender {
-            let _ = sender.send(NetworkEvent::SendResponse { 
-                message: response_message, 
-                channel: response_channel,
-            });
-        }
     }
 
     Ok(())
