@@ -436,9 +436,7 @@ impl RelayManager {
                 
                 match request_builder.send().await {
                     Ok(response) => {
-                        if response.status().is_success() {
-                            println!("✅ Successfully posted node status for peer {}: online={}", peer_id, online);
-                        } else {
+                        if !response.status().is_success() {
                             println!("⚠️ Failed to post node status for peer {}: HTTP {}", peer_id, response.status());
                         }
                     }
@@ -804,6 +802,17 @@ impl RelayManager {
         self.peer_identities.get(peer_id).map(|entry| entry.value().clone())
     }
 
+    /// Check if a peer is a localhost peer based on its identity
+    pub fn is_localhost_peer(&self, peer_id: &PeerId) -> bool {
+        if let Some(identity) = self.find_identity_by_peer(peer_id) {
+            // Localhost peers either have identities starting with "@@localhost." 
+            // or use their peer_id as identity (for unregistered localhost nodes)
+            identity.starts_with("@@localhost.") || identity == peer_id.to_string()
+        } else {
+            false
+        }
+    }
+
     /// Verify a peer's identity by checking their public key against the blockchain registry
     /// Uses caching to prevent blocking on repeated lookups
     async fn verify_peer_identity_internal(
@@ -911,13 +920,16 @@ impl RelayManager {
                 info,
                 connection_id,
             })) => {
-                println!("Identified peer: {} with info: {:?} and connection id: {}", peer_id, info, connection_id);
+                println!("🔄 Identified peer: {} with agent version: {:?} and connection id: {}", peer_id, info.agent_version, connection_id);
                 
                 // Check if this peer is already registered
                 if let Some(existing_identity) = self.find_identity_by_peer(&peer_id) {
                     println!("🔄 Peer {} already registered with identity: {} - requesting fresh tool offerings", peer_id, existing_identity);
-                    // Still request tool offerings to keep them synchronized
-                    self.request_tool_offerings(peer_id).await;
+                    if info.agent_version.starts_with("@@localhost.") {
+                        println!("🔄 Peer {} is localhost, skipping tool offerings request", peer_id);
+                    } else {
+                        self.request_tool_offerings(peer_id).await;
+                    }
                     return Ok(());
                 }
                 
@@ -977,7 +989,9 @@ impl RelayManager {
                             // Post updated health status
                             let health_clone = health.clone();
                             drop(health); // Release the mutable reference
-                            self.post_node_status(peer, true, Some(health_clone));
+                            if !self.is_localhost_peer(&peer) {
+                                self.post_node_status(peer, true, Some(health_clone));
+                            }
                         }
                     }
                     ping::Event { peer, result: Err(failure), .. } => {
@@ -993,7 +1007,9 @@ impl RelayManager {
                             drop(health);
                             
                             // Post updated health status
-                            self.post_node_status(peer, !is_unhealthy, Some(health_clone));
+                            if !self.is_localhost_peer(&peer) {
+                                self.post_node_status(peer, !is_unhealthy, Some(health_clone));
+                            }
                             
                             // Disconnect unhealthy connections
                             if is_unhealthy {
@@ -1283,10 +1299,7 @@ impl RelayManager {
 
         // Decrypt the message using relay's private key and sender's public key
         let decrypted_message = match request.decrypt_outer_layer(&self.config.encryption_secret_key, &sender_enc_key) {
-            Ok(message) => {
-                println!("✅ Relay: Successfully decrypted message intended for relay");
-                message
-            }
+            Ok(message) => message,
             Err(e) => {
                 println!("❌ Relay: Failed to decrypt message intended for relay: {}", e);
                 return None;
@@ -1295,20 +1308,12 @@ impl RelayManager {
 
         // Try to decrypt inner layer as well if possible
         let fully_decrypted = match decrypted_message.decrypt_inner_layer(&self.config.encryption_secret_key, &sender_enc_key) {
-            Ok(inner_message) => {
-                println!("✅ Relay: Successfully decrypted inner layer");
-                inner_message
-            }
+            Ok(inner_message) => inner_message,
             Err(_) => {
                 println!("⚠️  Relay: Could not decrypt inner layer, using outer layer only");
                 decrypted_message
             }
         };
-
-        // Process the decrypted message content here
-        println!("📩 Relay: Processing decrypted message:");
-        println!("   From: {}", fully_decrypted.external_metadata.sender);
-        println!("   To: {}", fully_decrypted.external_metadata.recipient);
 
         // Check if this is an AgentNetworkOfferingResponse
         let message_schema = match &fully_decrypted.body {
@@ -1424,25 +1429,15 @@ impl RelayManager {
 
             // Decrypt the response using relay's private key and sender's public key
             match response.decrypt_outer_layer(&self.config.encryption_secret_key, &sender_enc_key) {
-                Ok(message) => {
-                    println!("✅ Relay: Successfully decrypted response intended for relay");
-                    message
-                }
+                Ok(message) => message,
                 Err(e) => {
                     println!("❌ Relay: Failed to decrypt response intended for relay: {}", e);
                     return;
                 }
             }
         } else {
-            // Response is not encrypted, use as-is
-            println!("📩 Relay: Response is not encrypted, processing directly");
             response
         };
-
-        // Process the decrypted response content
-        println!("📩 Relay: Processing decrypted response:");
-        println!("   From: {}", decrypted_response.external_metadata.sender);
-        println!("   To: {}", decrypted_response.external_metadata.recipient);
 
         // Check the message content and schema to determine how to process it
         let message_content = match decrypted_response.get_message_content() {
@@ -1461,9 +1456,6 @@ impl RelayManager {
             }
         };
 
-        println!("📩 Relay: Response content: {}", message_content);
-        println!("📩 Relay: Response schema: {:?}", message_schema);
-
         // Handle different types of responses
         match message_schema {
             MessageSchemaType::AgentNetworkOfferingResponse => {
@@ -1473,15 +1465,12 @@ impl RelayManager {
             MessageSchemaType::TextContent => {
                 if message_content == "ACK" {
                     println!("✅ Relay: Received ACK response from peer {}", sender_peer);
-                    // ACK responses are just confirmations, no special processing needed
                 } else {
-                    println!("📝 Relay: Received text response: {}", message_content);
-                    // Handle other text responses as needed
+                    // TODO: Handle other text responses as needed in the future.
                 }
             }
             _ => {
-                println!("📩 Relay: Received response with schema {:?}, content: {}", message_schema, message_content);
-                // Handle other response types as needed
+                // TODO: Handle other response types as needed in the future.
             }
         }
         
