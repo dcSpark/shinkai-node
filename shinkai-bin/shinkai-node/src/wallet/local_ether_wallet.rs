@@ -29,6 +29,7 @@ pub struct LocalEthersWallet {
     pub address: Address,
     pub private_key: String,
     pub public_key: String,
+    pub mnemonic: Option<String>,
 }
 
 impl LocalEthersWallet {
@@ -54,6 +55,7 @@ impl LocalEthersWallet {
             address,
             private_key: wallet.private_key,
             public_key: wallet.public_key,
+            mnemonic: wallet.mnemonic,
         })
     }
 
@@ -86,6 +88,7 @@ impl LocalEthersWallet {
             address,
             private_key: wallet.private_key,
             public_key: wallet.public_key.unwrap_or_default(),
+            mnemonic: None,
         })
     }
 
