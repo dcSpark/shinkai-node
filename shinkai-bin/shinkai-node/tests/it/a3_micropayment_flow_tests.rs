@@ -747,6 +747,57 @@ fn micropayment_flow_test() {
                     Err(e) => eprintln!("Error searching tools: {:?}", e),
                 }
             }
+            {
+                eprintln!("Request network offering from node1");
+
+                let mut resp = None;
+                for attempt in 1..=3 {
+                    let (sender, receiver) = async_channel::bounded(1);
+                    node2_commands_sender
+                        .send(NodeCommand::V2ApiGetAgentNetworkOffering {
+                            bearer: api_v2_key.to_string(),
+                            node_name: node1_identity_name.to_string(),
+                            auto_check: true,
+                            res: sender,
+                        })
+                        .await
+                        .unwrap();
+                    let current_resp = receiver.recv().await.unwrap();
+                    
+                    // Check if response is Ok and has valid offerings
+                    let is_valid = if let Ok(val) = &current_resp {
+                        println!("val: {:?}", val);
+                        if let Some(offerings) = val.get("offerings") {
+                            if let Some(offerings_array) = offerings.as_array() {
+                                // Check that offerings array is not empty and contains valid offering objects
+                                !offerings_array.is_empty() && offerings_array.iter().all(|offering| {
+                                    offering.get("network_tool").is_some() && offering.get("tool_offering").is_some()
+                                })
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    };
+                    
+                    if is_valid {
+                        resp = Some(current_resp);
+                        break;
+                    } else {
+                        eprintln!("Attempt {} failed or returned empty values: {:?}", attempt, current_resp);
+                        if attempt < 3 {
+                            tokio::time::sleep(Duration::from_secs(2)).await;
+                        }
+                    }
+                }
+
+                assert!(resp.is_some(), "Failed to get valid network offering after 3 attempts");
+                let resp = resp.expect("All attempts failed to get network offering");
+                eprintln!("resp get agent network offering: {:?}", resp);
+            }
 
             //
             // Second Part of the Test

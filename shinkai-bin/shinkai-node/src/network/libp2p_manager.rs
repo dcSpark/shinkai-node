@@ -946,9 +946,37 @@ impl LibP2PManager {
 
     /// Check if we need to reconnect to relay and attempt reconnection with exponential backoff
     async fn check_and_reconnect_to_relay(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        // Only attempt reconnection if we have a relay address configured but are not connected
+        // Only attempt reconnection if we have a relay address configured
         if let Some(ref relay_addr) = self.relay_address.clone() {
-            if !self.is_connected_to_relay {
+            // Check actual swarm connection state first
+            let actually_connected_to_relay = if let Some(relay_peer_id) = self.relay_peer_id {
+                self.swarm.is_connected(&relay_peer_id)
+            } else {
+                false
+            };
+
+            // STRICT CHECK: If we have ANY connection to the relay, don't attempt reconnection
+            if actually_connected_to_relay {
+                // Update our local state if it was out of sync
+                if !self.is_connected_to_relay {
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Info,
+                        "📡 Detected existing relay connection - updating connection state, skipping reconnection",
+                    );
+                    if let Some(relay_peer_id) = self.relay_peer_id {
+                        self.mark_relay_connected(relay_peer_id);
+                    }
+                }
+                // Always return early if already connected - no reconnection needed
+                return Ok(());
+            }
+
+            // Only attempt reconnection if:
+            // 1. We're not connected according to our state AND
+            // 2. We're not actually connected according to the swarm AND  
+            // 3. Enough time has passed for backoff
+            if !self.is_connected_to_relay && !actually_connected_to_relay {
                 // Check if enough time has passed since last disconnection for backoff
                 if let Some(last_disconnect) = self.last_disconnection_time {
                     let backoff_duration = self.calculate_backoff_duration();
@@ -957,13 +985,43 @@ impl LibP2PManager {
                         return Ok(());
                     }
                 }
+
+                // Additional safety check: if we have connections but relay peer ID is unknown,
+                // be extra cautious about creating duplicate connections
+                let connected_peer_count = self.swarm.connected_peers().count();
+                if connected_peer_count > 0 && self.relay_peer_id.is_none() {
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Info,
+                        &format!("📡 Found {} existing connections but relay peer ID unknown - proceeding with reconnection attempt", connected_peer_count),
+                    );
+                }
                 
                 shinkai_log(
                     ShinkaiLogOption::Network,
                     ShinkaiLogLevel::Info,
-                    &format!("🔄 Attempting to reconnect to relay (attempt {}) at: {}", 
+                    &format!("🔄 No existing relay connection found - attempting reconnection (attempt {}) to: {}", 
                         self.reconnection_attempts + 1, relay_addr),
                 );
+                
+                // Final check: ensure we still don't have a connection just before dialing
+                let final_connection_check = if let Some(relay_peer_id) = self.relay_peer_id {
+                    self.swarm.is_connected(&relay_peer_id)
+                } else {
+                    false
+                };
+                
+                if final_connection_check {
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Info,
+                        "📡 Connection established during reconnection attempt - aborting dial",
+                    );
+                    if let Some(relay_peer_id) = self.relay_peer_id {
+                        self.mark_relay_connected(relay_peer_id);
+                    }
+                    return Ok(());
+                }
                 
                 // Attempt to reconnect
                 if let Err(e) = self.swarm.dial(relay_addr.clone()) {
@@ -1004,16 +1062,19 @@ impl LibP2PManager {
 
     /// Mark relay as connected and reset reconnection state
     fn mark_relay_connected(&mut self, peer_id: PeerId) {
-        self.is_connected_to_relay = true;
-        self.relay_peer_id = Some(peer_id);
-        self.reconnection_attempts = 0;
-        self.last_disconnection_time = None;
-        
-        shinkai_log(
-            ShinkaiLogOption::Network,
-            ShinkaiLogLevel::Info,
-            &format!("✅ Relay connection established with {} - reconnection state reset", peer_id),
-        );
+        // Only update state if it's actually changed to avoid spam
+        if !self.is_connected_to_relay || self.relay_peer_id != Some(peer_id) {
+            self.is_connected_to_relay = true;
+            self.relay_peer_id = Some(peer_id);
+            self.reconnection_attempts = 0;
+            self.last_disconnection_time = None;
+            
+            shinkai_log(
+                ShinkaiLogOption::Network,
+                ShinkaiLogLevel::Info,
+                &format!("✅ Relay connection established with {} - reconnection state reset", peer_id),
+            );
+        }
     }
 
     /// Mark relay as disconnected and start reconnection process
@@ -1021,21 +1082,31 @@ impl LibP2PManager {
         // Only mark as disconnected if this was our relay
         if let Some(relay_peer) = self.relay_peer_id {
             if relay_peer == peer_id {
-                self.is_connected_to_relay = false;
-                self.last_disconnection_time = Some(std::time::Instant::now());
-                
-                shinkai_log(
-                    ShinkaiLogOption::Network,
-                    ShinkaiLogLevel::Error,
-                    &format!("❌ Relay connection lost with {} - will attempt reconnection", peer_id),
-                );
-                
-                let next_attempt_in = self.calculate_backoff_duration();
-                shinkai_log(
-                    ShinkaiLogOption::Network,
-                    ShinkaiLogLevel::Info,
-                    &format!("🔄 Next reconnection attempt in {:?}", next_attempt_in),
-                );
+                // Check if we still have other connections to this relay peer
+                // Only mark as disconnected if there are no remaining connections
+                if !self.swarm.is_connected(&peer_id) {
+                    self.is_connected_to_relay = false;
+                    self.last_disconnection_time = Some(std::time::Instant::now());
+                    
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Error,
+                        &format!("❌ Relay connection lost with {} - will attempt reconnection", peer_id),
+                    );
+                    
+                    let next_attempt_in = self.calculate_backoff_duration();
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Info,
+                        &format!("🔄 Next reconnection attempt in {:?}", next_attempt_in),
+                    );
+                } else {
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Info,
+                        &format!("📡 One connection to relay {} closed, but other connections remain active", peer_id),
+                    );
+                }
             }
         }
     }

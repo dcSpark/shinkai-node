@@ -2,7 +2,7 @@ use crate::llm_provider::error::LLMProviderError;
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::managers::tool_router::ToolRouter;
 use crate::network::libp2p_manager::NetworkEvent;
-use crate::network::network_manager_utils::{get_proxy_builder_info_static, send_message_to_peer};
+use crate::network::network_manager_utils::send_message_to_peer;
 use crate::network::node::ProxyConnectionInfo;
 use crate::wallet::wallet_error;
 use crate::wallet::wallet_manager::WalletManager;
@@ -17,6 +17,7 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{
     ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry
 };
+use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ExternalMetadata;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
@@ -28,11 +29,11 @@ use shinkai_non_rust_code::functions::x402::settle_payment::settle_payment;
 use shinkai_non_rust_code::functions::x402::settle_payment::Input as SettleInput;
 use shinkai_non_rust_code::functions::x402::verify_payment::verify_payment;
 use shinkai_sqlite::SqliteManager;
+use shinkai_tools_primitives::tools::network_tool::NetworkTool;
 use std::collections::HashSet;
 use std::pin::Pin;
 use std::result::Result::Ok;
-use std::sync::Arc;
-use std::sync::Weak;
+use std::sync::{Arc, Weak};
 use std::{env, fmt};
 use tokio::sync::{Mutex, Semaphore};
 
@@ -1012,6 +1013,110 @@ impl ExtAgentOfferingsManager {
                 self.node_name.to_string(),
                 "".to_string(),
                 receiver_node_name,
+                "main".to_string(),
+                external_metadata,
+            )
+            .map_err(|e| AgentOfferingManagerError::OperationFailed(e.to_string()))?;
+
+            send_message_to_peer(
+                message,
+                self.db.clone(),
+                standard_identity,
+                self.my_encryption_secret_key.clone(),
+                self.identity_manager.clone(),
+                self.proxy_connection_info.clone(),
+                self.libp2p_event_sender.clone(),
+            )
+            .await?;
+        }
+
+        Ok(())
+    }
+
+    pub async fn network_agent_offering_requested(
+        &self,
+        requester_node_name: ShinkaiName,
+        external_metadata: Option<ExternalMetadata>,
+    ) -> Result<(), AgentOfferingManagerError> {
+        let db = self
+            .db
+            .upgrade()
+            .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
+
+        // Get all tool offerings from database
+        let tool_offerings = db.get_all_tool_offerings().map_err(|e| {
+            AgentOfferingManagerError::OperationFailed(format!("Failed to get all tool offerings: {:?}", e))
+        })?;
+
+        // Build the combined payload array
+        let mut payload = Vec::new();
+
+        for tool_offering in tool_offerings {
+            let tool = match db.get_tool_by_key(&tool_offering.tool_key) {
+                Ok(tool) => tool,
+                Err(_) => {
+                    // Skip tools that can't be found in the database
+                    continue;
+                }
+            };
+
+            let mut header = tool.to_header();
+            header.sanitize_config();
+
+            // Use the existing tool key from the offering
+            let tool_router_key_result =
+                ToolRouterKey::to_network_router_key(&tool_offering.tool_key, &self.node_name.to_string());
+
+            let tool_router_key_str = match tool_router_key_result {
+                Ok(key) => key,
+                Err(_) => {
+                    // Skip tools with invalid router keys
+                    continue;
+                }
+            };
+
+            let network_tool = NetworkTool {
+                name: header.name,
+                description: header.description,
+                version: header.version,
+                author: header.author,
+                mcp_enabled: header.mcp_enabled,
+                provider: self.node_name.clone(),
+                tool_router_key: tool_router_key_str,
+                usage_type: tool_offering.usage_type.clone(),
+                activated: header.enabled,
+                config: header.config.unwrap_or_default(),
+                input_args: header.input_args,
+                output_arg: header.output_arg,
+                embedding: None,
+                restrictions: None,
+            };
+
+            let combined_entry = serde_json::json!({
+                "network_tool": network_tool,
+                "tool_offering": tool_offering
+            });
+            payload.push(combined_entry);
+        }
+
+        if let Some(identity_manager_arc) = self.identity_manager.upgrade() {
+            let identity_manager = identity_manager_arc.lock().await;
+            let standard_identity = identity_manager
+                .external_profile_to_global_identity(&requester_node_name.to_string(), None)
+                .await
+                .map_err(|e| AgentOfferingManagerError::OperationFailed(e))?;
+            drop(identity_manager);
+            let receiver_public_key = standard_identity.node_encryption_public_key;
+
+            let message = ShinkaiMessageBuilder::create_generic_invoice_message(
+                payload,
+                MessageSchemaType::AgentNetworkOfferingResponse,
+                clone_static_secret_key(&self.my_encryption_secret_key),
+                clone_signature_secret_key(&self.my_signature_secret_key),
+                receiver_public_key,
+                self.node_name.to_string(),
+                "".to_string(),
+                requester_node_name.to_string(),
                 "main".to_string(),
                 external_metadata,
             )

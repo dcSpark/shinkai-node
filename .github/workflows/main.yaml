@@ -23,12 +23,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
+  build:
     runs-on:
       group: Shinkai Runners
       labels: self-hosted
     if: ${{ github.event_name == 'push' || !github.event.pull_request.draft }}
-    environment: FROM_WALLET_PRIVATE_KEY
     steps:
       - name: Checkout
         uses: actions/checkout@v3
@@ -40,17 +39,53 @@ jobs:
       - name: Build testing image
         run: docker build -t testing_image:${{ github.sha }} --build-arg COMMIT_SHA=${{ github.sha }} -f .github/Dockerfile .
 
+  test-primitives:
+    runs-on:
+      group: Shinkai Runners
+      labels: self-hosted
+    needs: build
+    if: ${{ github.event_name == 'push' || !github.event.pull_request.draft }}
+    steps:
       - name: Run tests primitives cargo tests
-        run: docker run --rm --name shinkai_node_tests_prim_${{ github.sha }}_${{ github.run_number }}_${{ github.run_attempt }} --entrypoint /entrypoints/run-main-primitives-cargo-tests.sh testing_image:${{ github.sha }}
+        run: docker run --rm --name shinkai_node_tests_prim_${{ github.sha }}_${{ github.run_number }}_${{ github.run_attempt }} testing_image:${{ github.sha }} /bin/bash -c "cd /app/shinkai-libs/shinkai-message-primitives && cargo test -- --test-threads=1 --nocapture"
 
+  test-main:
+    runs-on:
+      group: Shinkai Runners
+      labels: self-hosted
+    needs: build
+    if: ${{ github.event_name == 'push' || !github.event.pull_request.draft }}
+    environment: FROM_WALLET_PRIVATE_KEY
+    steps:
       - name: Run tests main cargo tests
         env:
           X402_PAY_TO: ${{ secrets.X402_PAY_TO }}
           X402_PRIVATE_KEY: ${{ secrets.X402_PRIVATE_KEY }}
           RESTORE_WALLET_MNEMONICS_NODE2: ${{ secrets.RESTORE_WALLET_MNEMONICS_NODE2 }}
           FROM_WALLET_PRIVATE_KEY: ${{ secrets.FROM_WALLET_PRIVATE_KEY }}
-        run: docker run --rm --name shinkai_node_tests_main_${{ github.sha }}_${{ github.run_number }}_${{ github.run_attempt }} --entrypoint /entrypoints/run-main-cargo-tests.sh -e X402_PAY_TO="${{ secrets.X402_PAY_TO }}" -e X402_PRIVATE_KEY="${{ secrets.X402_PRIVATE_KEY }}" -e RESTORE_WALLET_MNEMONICS_NODE2="${{ secrets.RESTORE_WALLET_MNEMONICS_NODE2 }}" -e FROM_WALLET_PRIVATE_KEY="${{ secrets.FROM_WALLET_PRIVATE_KEY }}" testing_image:${{ github.sha }}
+        run: docker run --rm --name shinkai_node_tests_main_${{ github.sha }}_${{ github.run_number }}_${{ github.run_attempt }} -e X402_PAY_TO="${{ secrets.X402_PAY_TO }}" -e X402_PRIVATE_KEY="${{ secrets.X402_PRIVATE_KEY }}" -e RESTORE_WALLET_MNEMONICS_NODE2="${{ secrets.RESTORE_WALLET_MNEMONICS_NODE2 }}" -e FROM_WALLET_PRIVATE_KEY="${{ secrets.FROM_WALLET_PRIVATE_KEY }}" testing_image:${{ github.sha }} /bin/bash -c "export IS_TESTING=1 && export SKIP_IMPORT_FROM_DIRECTORY=true && export WELCOME_MESSAGE=false && cd /app && cargo test -- --test-threads=1 --nocapture --skip node_integration_tests --skip a3_micropayment_flow_tests --skip a4_micropayment_localhost_tests"
 
+  test-integration:
+    runs-on:
+      group: Shinkai Runners
+      labels: self-hosted
+    needs: build
+    if: ${{ github.event_name == 'push' || !github.event.pull_request.draft }}
+    environment: FROM_WALLET_PRIVATE_KEY
+    steps:
+      - name: Run integration tests
+        env:
+          X402_PAY_TO: ${{ secrets.X402_PAY_TO }}
+          X402_PRIVATE_KEY: ${{ secrets.X402_PRIVATE_KEY }}
+          RESTORE_WALLET_MNEMONICS_NODE2: ${{ secrets.RESTORE_WALLET_MNEMONICS_NODE2 }}
+          FROM_WALLET_PRIVATE_KEY: ${{ secrets.FROM_WALLET_PRIVATE_KEY }}
+        run: docker run --rm --name shinkai_node_integration_tests_${{ github.sha }}_${{ github.run_number }}_${{ github.run_attempt }} -e X402_PAY_TO="${{ secrets.X402_PAY_TO }}" -e X402_PRIVATE_KEY="${{ secrets.X402_PRIVATE_KEY }}" -e RESTORE_WALLET_MNEMONICS_NODE2="${{ secrets.RESTORE_WALLET_MNEMONICS_NODE2 }}" -e FROM_WALLET_PRIVATE_KEY="${{ secrets.FROM_WALLET_PRIVATE_KEY }}" testing_image:${{ github.sha }} /bin/bash -c "export IS_TESTING=1 && export SKIP_IMPORT_FROM_DIRECTORY=true && export WELCOME_MESSAGE=false && cd /app && cargo test -- --test-threads=1 --nocapture node_integration_tests a3_micropayment_flow_tests a4_micropayment_localhost_tests"
+
+  cleanup:
+    runs-on:
+      group: Shinkai Runners
+      labels: self-hosted
+    needs: [test-primitives, test-main, test-integration]
+    steps:
       - name: Remove image
-        if: always()
         run: docker rmi testing_image:${{ github.sha }} || true

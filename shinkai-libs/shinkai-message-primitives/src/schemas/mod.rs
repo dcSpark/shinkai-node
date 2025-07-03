@@ -30,3 +30,4 @@ pub mod wallet_mixed;
 pub mod ws_types;
 pub mod x402_types;
 pub mod mcp_server;
+pub mod agent_network_offering;

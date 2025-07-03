@@ -1,16 +1,23 @@
 use crate::llm_provider::{
-    error::LLMProviderError, providers::shared::{openai_api::openai_prepare_messages, shared_model_logic::llama_prepare_messages}
+    error::LLMProviderError,
+    providers::shared::{openai_api::openai_prepare_messages, shared_model_logic::llama_prepare_messages},
 };
 use shinkai_message_primitives::{
     schemas::{
-        llm_message::LlmMessage, llm_providers::{
-            common_agent_llm_provider::ProviderOrAgent, serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider}
-        }, prompts::Prompt, shinkai_name::ShinkaiName
-    }, shinkai_utils::utils::count_tokens_from_message_llama3
+        llm_message::LlmMessage,
+        llm_providers::{
+            common_agent_llm_provider::ProviderOrAgent,
+            serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider},
+        },
+        prompts::Prompt,
+        shinkai_name::ShinkaiName,
+    },
+    shinkai_utils::utils::count_tokens_from_message_llama3,
 };
 use shinkai_sqlite::SqliteManager;
 use std::{
-    fmt, sync::{Arc, Weak}
+    fmt,
+    sync::{Arc, Weak},
 };
 
 #[derive(Debug)]
@@ -179,6 +186,9 @@ impl ModelCapabilitiesManager {
     fn get_shared_capabilities(model_type: &str) -> Vec<ModelCapability> {
         match model_type {
             model_type if model_type.starts_with("llama3") => vec![ModelCapability::TextInference],
+            model_type if model_type.starts_with("mistral-small3.2") || model_type.starts_with("mistral-small3.1") => {
+                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+            }
             model_type if model_type.starts_with("llama3.2-vision") => {
                 vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
             }
@@ -193,6 +203,25 @@ impl ModelCapabilitiesManager {
             }
             model_type if model_type.contains("minicpm-v") => {
                 vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+            }
+            model_type if model_type.starts_with("qwen2.5vl") => {
+                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+            }  
+            model_type if model_type.starts_with("devstral") => {
+                vec![ModelCapability::TextInference]
+            }
+            model_type if model_type.starts_with("magistral") => {
+                vec![ModelCapability::TextInference]
+            }
+            model_type if model_type.starts_with("gemma3n") => {
+                vec![ModelCapability::TextInference]
+            }
+            model_type if model_type.starts_with("gemma3") => {
+                if model_type.contains(":1b") {
+                    vec![ModelCapability::TextInference]
+                } else {
+                    vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+                }
             }
             model_type if model_type.starts_with("regex") => {
                 vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
@@ -600,6 +629,9 @@ impl ModelCapabilitiesManager {
         match model_type {
             model_type if model_type.starts_with("mistral:7b-instruct-v0.2") => 32_000,
             model_type if model_type.starts_with("mistral-nemo") => 128_000,
+            model_type if model_type.starts_with("mistral-small3.2") || model_type.starts_with("mistral-small3.1") => {
+                128_000
+            }
             model_type if model_type.starts_with("mistral-small") => 128_000,
             model_type if model_type.starts_with("mistral-large") => 128_000,
             model_type if model_type.starts_with("mixtral:8x7b-instruct-v0.1") => 16_000,
@@ -613,6 +645,7 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("dolphin-llama3") => 8_000,
             model_type if model_type.starts_with("command-r-plus") => 128_000,
             model_type if model_type.starts_with("codestral") => 32_000,
+            model_type if model_type.starts_with("devstral") => 128_000,
             model_type if model_type.starts_with("gemma2") => 8_000,
             model_type if model_type.starts_with("qwen2:0.5b") => 32_000,
             model_type if model_type.starts_with("qwen2:1.5b") => 32_000,
@@ -627,6 +660,7 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("qwen2.5:32b") => 128_000,
             model_type if model_type.starts_with("qwen2.5:72b") => 128_000,
             model_type if model_type.starts_with("qwen2.5-coder") => 128_000,
+            model_type if model_type.starts_with("qwen2.5vl") => 128_000,
             model_type if model_type.starts_with("aya") => 32_000,
             model_type if model_type.starts_with("wizardlm2") => 8_000,
             model_type if model_type.starts_with("phi2") => 4_000,
@@ -677,12 +711,14 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("command-r7b") => 128_000,
             model_type if model_type.starts_with("mistral-small") => 128_000,
             model_type if model_type.starts_with("qwq") => 32_000,
+            model_type if model_type.starts_with("gemma3n") => 32_000,
             model_type if model_type.starts_with("gemma3:1b") => 32_000,
             model_type if model_type.starts_with("gemma3:4b") => 128_000,
             model_type if model_type.starts_with("gemma3:12b") => 128_000,
             model_type if model_type.starts_with("gemma3:27b") => 128_000,
             model_type if model_type.starts_with("gemma3") => 128_000,
             model_type if model_type.starts_with("qwen3") => 32_000,
+            model_type if model_type.starts_with("magistral") => 39_000,
             _ => 4096, // Default token count if no specific model type matches
         }
     }
@@ -898,19 +934,23 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("llama-3.1")
                     || model.model_type.starts_with("llama-3.2")
                     || model.model_type.starts_with("mistral-nemo")
+                    || model.model_type.starts_with("mistral-small3.2")
+                    || model.model_type.starts_with("mistral-small3.1")
                     || model.model_type.starts_with("mistral-small")
                     || model.model_type.starts_with("mistral-large")
                     || model.model_type.starts_with("mistral-pixtral")
                     || model.model_type.starts_with("qwen2.5-coder")
+                    || model.model_type.starts_with("qwen2.5vl")
                     || model.model_type.starts_with("qwq")
-                    || model.model_type.starts_with("gemma3")
                     || model.model_type.starts_with("qwen3")
+                    || model.model_type.starts_with("devstral")
                     || model.model_type.starts_with("deepseek-r1:14b")
                     || model.model_type.starts_with("deepseek-r1:8b")
                     || model.model_type.starts_with("deepseek-r1:70b")
                     || model.model_type.starts_with("deepseek-v3")
                     || model.model_type.starts_with("command-r7b")
                     || model.model_type.starts_with("mistral-small")
+                    || model.model_type.starts_with("magistral")
             }
             LLMProviderInterface::Groq(model) => {
                 // Groq Production Models (that support tool calling)
@@ -925,6 +965,7 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("meta-llama/llama-4-maverick-17b-128e-instruct")
                     || model.model_type.starts_with("meta-llama/llama-4-scout-17b-16e-instruct")
                     || model.model_type.starts_with("qwen-qwq-32b")
+                    || model.model_type.starts_with("magistral")
                     // Legacy/backward compatibility models
                     || model.model_type.starts_with("llama-guard-3-8b")
                     || model.model_type.starts_with("mixtral-8x7b-32768")
@@ -947,9 +988,12 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("llama-3.1")
                     || model.model_type.starts_with("llama3.1")
                     || model.model_type.starts_with("mistral-nemo")
+                    || model.model_type.starts_with("mistral-small3.2")
+                    || model.model_type.starts_with("mistral-small3.1")
                     || model.model_type.starts_with("mistral-small")
                     || model.model_type.starts_with("mistral-large")
                     || model.model_type.starts_with("mistral-pixtral")
+                    || model.model_type.starts_with("magistral")
             }
             LLMProviderInterface::Claude(_) => true, // All Claude models support tool calling
             LLMProviderInterface::ShinkaiBackend(_) => true,
@@ -970,11 +1014,14 @@ impl ModelCapabilitiesManager {
                     || openai.model_type.starts_with("o5")
             }
             LLMProviderInterface::Ollama(ollama) => {
-                ollama.model_type.starts_with("deepseek-r1") || ollama.model_type.starts_with("qwq")
+                ollama.model_type.starts_with("deepseek-r1")
+                    || ollama.model_type.starts_with("qwq")
+                    || ollama.model_type.starts_with("magistral")
             }
             LLMProviderInterface::Groq(groq) => {
                 groq.model_type.starts_with("deepseek-r1-distill-llama-70b")
                     || groq.model_type.starts_with("qwen-qwq-32b")
+                    || groq.model_type.starts_with("magistral")
             }
             LLMProviderInterface::DeepSeek(deepseek) => deepseek.model_type.starts_with("deepseek-reasoner"),
             LLMProviderInterface::Claude(claude) => {

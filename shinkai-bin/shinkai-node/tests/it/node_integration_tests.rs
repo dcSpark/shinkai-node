@@ -1433,10 +1433,10 @@ fn test_send_message_to_localhost_node() {
         let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name));
         let node2_db_path = format!("db_tests/{}", hash_string(node2_identity_name));
 
-        assert!(port_is_available(12050), "Port 12050 is not available");
-        assert!(port_is_available(12051), "Port 12051 is not available");
-        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12050);
-        let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12051);
+        assert!(port_is_available(12052), "Port 12052 is not available");
+        assert!(port_is_available(12053), "Port 12053 is not available");
+        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12052);
+        let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12053);
         
         let node1 = Node::new(
             node1_identity_name.to_string(),

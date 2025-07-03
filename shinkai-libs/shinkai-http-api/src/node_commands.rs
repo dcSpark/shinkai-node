@@ -515,6 +515,12 @@ pub enum NodeCommand {
         tool_offering: ShinkaiToolOffering,
         res: Sender<Result<ShinkaiToolOffering, APIError>>,
     },
+    V2ApiGetAgentNetworkOffering {
+        bearer: String,
+        node_name: String,
+        auto_check: bool,
+        res: Sender<Result<Value, APIError>>,
+    },
     V2ApiRestoreLocalEthersWallet {
         bearer: String,
         network: Network,

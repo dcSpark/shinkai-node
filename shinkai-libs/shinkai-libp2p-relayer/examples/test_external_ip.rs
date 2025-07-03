@@ -29,6 +29,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         identity_secret_key,
         encryption_secret_key,
         registry,
+        None, // No status endpoint for this test
     ).await?;
     
     // Check if external IP was detected
