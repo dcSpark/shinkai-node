@@ -274,6 +274,13 @@ pub fn tool_routes(
         .and(warp::query::<HashMap<String, String>>())
         .and_then(remove_tool_handler);
 
+    let remove_network_tool_route = warp::path("remove_network_tool")
+        .and(warp::delete())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::query::<HashMap<String, String>>())
+        .and_then(remove_network_tool_handler);
+
     let tool_store_proxy_route = warp::path("tool_store_proxy")
         .and(warp::get())
         .and(with_sender(node_commands_sender.clone()))
@@ -362,6 +369,7 @@ pub fn tool_routes(
         .or(playground_file_route)
         .or(list_tool_asset_route)
         .or(delete_tool_asset_route)
+        .or(remove_network_tool_route)
         .or(remove_tool_route)
         .or(list_all_network_shinkai_tools_route)
         .or(enable_all_tools_route)
@@ -1823,6 +1831,54 @@ pub async fn remove_tool_handler(
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiRemoveTool {
+            bearer,
+            tool_key,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK)),
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
+#[utoipa::path(
+    delete,
+    path = "/v2/remove_network_tool",
+    params(
+        ("tool_key" = String, Query, description = "Key of the network tool to remove")
+    ),
+    responses(
+        (status = 200, description = "Successfully removed network tool", body = bool),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn remove_network_tool_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    query_params: HashMap<String, String>,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let tool_key = query_params
+        .get("tool_key")
+        .ok_or_else(|| {
+            warp::reject::custom(APIError {
+                code: 400,
+                error: "Invalid Query".to_string(),
+                message: "The request query string is invalid.".to_string(),
+            })
+        })?
+        .to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiRemoveNetworkTool {
             bearer,
             tool_key,
             res: res_sender,
