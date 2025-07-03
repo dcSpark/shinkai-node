@@ -48,9 +48,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let identify = identify::Behaviour::new(identify::Config::new(
         "/shinkai/1.0.0".to_string(),
         local_key.public(),
-    ));
+    ).with_agent_version("shinkai-node-debug@@debug".to_string())
+    .with_interval(Duration::from_secs(60))
+    .with_push_listen_addr_updates(true)
+    .with_cache_size(100));
 
-    let ping = ping::Behaviour::new(ping::Config::new());
+    let ping = ping::Behaviour::new(
+        ping::Config::new()
+            .with_interval(Duration::from_secs(10))
+            .with_timeout(Duration::from_secs(20))
+    );
 
     let behaviour = ProtocolDebugBehaviour {
         identify,

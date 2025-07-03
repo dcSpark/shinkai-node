@@ -133,7 +133,8 @@ impl LibP2PProxy {
         }
 
         // Initialize the relay manager
-        let relay_manager = RelayManager::new(listen_port, node_name.to_string(), identity_secret_key.clone(), encryption_secret_key.clone(), registry.clone()).await?;
+        let status_endpoint_url = env::var("STATUS_ENDPOINT_URL").ok();
+        let relay_manager = RelayManager::new(listen_port, node_name.to_string(), identity_secret_key.clone(), encryption_secret_key.clone(), registry.clone(), status_endpoint_url).await?;
         let relay_manager = Arc::new(Mutex::new(relay_manager));
 
         Ok(LibP2PProxy {
