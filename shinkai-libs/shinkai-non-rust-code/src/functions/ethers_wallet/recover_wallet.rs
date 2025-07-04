@@ -28,6 +28,7 @@ pub struct RecoveredWallet {
     pub private_key: String,
     pub public_key: Option<String>,
     pub address: String,
+    pub mnemonic: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

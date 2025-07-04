@@ -294,6 +294,7 @@ impl Node {
             WalletManager::recover_local_ethers_wallet_manager(network, db.clone(), source.clone(), role.clone()).await;
         match restored_wallet_manager {
             Ok(new_wallet_manager) => {
+                let wallet_details = new_wallet_manager.payment_wallet.to_wallet_enum();
                 Self::update_wallet_manager_by_role(&mut wallet_manager_lock, new_wallet_manager, role.clone());
                 if let Some(ref wallet_manager) = *wallet_manager_lock {
                     if Self::save_wallet_manager_to_db(&db, wallet_manager, &res)
@@ -304,7 +305,7 @@ impl Node {
                     }
                 }
                 let _ = res
-                    .send(Ok(serde_json::json!({"status": "success"})))
+                    .send(Ok(serde_json::json!({"status": "success", "wallet": wallet_details})))
                     .await
                     .map_err(|_| ());
                 Ok(())
