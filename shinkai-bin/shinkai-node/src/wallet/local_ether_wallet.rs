@@ -88,7 +88,7 @@ impl LocalEthersWallet {
             address,
             private_key: wallet.private_key,
             public_key: wallet.public_key.unwrap_or_default(),
-            mnemonic: None,
+            mnemonic: wallet.mnemonic,
         })
     }
 

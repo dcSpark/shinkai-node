@@ -17,6 +17,7 @@ type Output = {
     privateKey: string;
     publicKey?: string;
     address: string;
+    mnemonic?: string;
   };
 };
 
@@ -35,6 +36,7 @@ export async function run(
       privateKey: wallet.privateKey,
       publicKey: wallet instanceof HDNodeWallet ? wallet.publicKey : undefined,
       address: wallet.address,
+      mnemonic: wallet instanceof HDNodeWallet ? wallet.mnemonic?.phrase : undefined,
     },
   };
 }
