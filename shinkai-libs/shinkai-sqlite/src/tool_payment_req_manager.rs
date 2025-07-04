@@ -7,7 +7,7 @@ impl SqliteManager {
     pub fn set_tool_offering(&self, tool_offering: ShinkaiToolOffering) -> Result<(), SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
-            "INSERT INTO tool_micropayments_requirements (tool_key, usage_type, meta_description)
+            "INSERT OR REPLACE INTO tool_micropayments_requirements (tool_key, usage_type, meta_description)
                 VALUES (?1, ?2, ?3)",
         )?;
 
@@ -185,6 +185,77 @@ mod tests {
         // Verify that tool offering was removed
         let result = manager.get_tool_offering("tool_key");
         assert!(matches!(result, Err(SqliteManagerError::ToolOfferingNotFound(_))));
+    }
+
+    #[tokio::test]
+    async fn test_upsert_tool_offering() {
+        let manager = setup_test_db();
+        let tool_offering = ShinkaiToolOffering {
+            tool_key: "tool_key".to_string(),
+            usage_type: UsageType::PerUse(ToolPrice::Payment(vec![PaymentRequirements {
+                scheme: "exact".to_string(),
+                description: "Payment for service".to_string(),
+                network: Network::BaseSepolia,
+                max_amount_required: "1000".to_string(), // 0.001 USDC in atomic units (6 decimals)
+                resource: "https://shinkai.com".to_string(),
+                mime_type: "application/json".to_string(),
+                pay_to: "0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string(),
+                max_timeout_seconds: 300,
+                asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string(),
+                output_schema: Some(serde_json::json!({})),
+                extra: Some(serde_json::json!({
+                    "decimals": 6,
+                    "asset_id": "USDC"
+                })),
+            }])),
+            meta_description: Some("Original description".to_string()),
+        };
+
+        // Insert tool offering
+        let result = manager.set_tool_offering(tool_offering.clone());
+        assert!(result.is_ok());
+
+        // Verify insertion
+        let retrieved_offering = manager.get_tool_offering("tool_key").unwrap();
+        assert_eq!(retrieved_offering.meta_description, Some("Original description".to_string()));
+
+        // Update the tool offering with new values
+        let updated_tool_offering = ShinkaiToolOffering {
+            tool_key: "tool_key".to_string(),
+            usage_type: UsageType::PerUse(ToolPrice::Payment(vec![PaymentRequirements {
+                scheme: "exact".to_string(),
+                description: "Updated payment for service".to_string(),
+                network: Network::BaseSepolia,
+                max_amount_required: "2000".to_string(), // 0.002 USDC in atomic units (6 decimals)
+                resource: "https://shinkai.com".to_string(),
+                mime_type: "application/json".to_string(),
+                pay_to: "0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string(),
+                max_timeout_seconds: 600,
+                asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string(),
+                output_schema: Some(serde_json::json!({})),
+                extra: Some(serde_json::json!({
+                    "decimals": 6,
+                    "asset_id": "USDC"
+                })),
+            }])),
+            meta_description: Some("Updated description".to_string()),
+        };
+
+        // Update tool offering (should not fail)
+        let result = manager.set_tool_offering(updated_tool_offering.clone());
+        assert!(result.is_ok());
+
+        // Verify update
+        let retrieved_updated_offering = manager.get_tool_offering("tool_key").unwrap();
+        assert_eq!(retrieved_updated_offering.meta_description, Some("Updated description".to_string()));
+        
+        // Verify the usage_type was also updated
+        if let UsageType::PerUse(ToolPrice::Payment(ref reqs)) = retrieved_updated_offering.usage_type {
+            assert_eq!(reqs[0].max_amount_required, "2000");
+            assert_eq!(reqs[0].max_timeout_seconds, 600);
+        } else {
+            panic!("Expected PerUse usage type");
+        }
     }
 
     #[tokio::test]
