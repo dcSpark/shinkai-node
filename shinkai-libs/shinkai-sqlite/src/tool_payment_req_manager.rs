@@ -327,12 +327,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_remove_tool_offering_with_foreign_key_constraint() {
+    async fn test_remove_tool_offering_with_invoices() {
         use chrono::Utc;
         use shinkai_message_primitives::schemas::invoices::{Invoice, InvoiceStatusEnum};
         use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
         use shinkai_message_primitives::schemas::shinkai_tool_offering::UsageTypeInquiry;
         use shinkai_message_primitives::schemas::wallet_mixed::PublicAddress;
+        use rusqlite::params;
         
         let manager = setup_test_db();
         let tool_key = "test_tool_key_with_invoice";
@@ -389,30 +390,34 @@ mod tests {
         let invoice_result = manager.set_invoice(&invoice);
         assert!(invoice_result.is_ok());
 
-        // Now try to remove the tool offering - this should fail due to foreign key constraint
+        // Now try to remove the tool offering - this should succeed with the new implementation
         let remove_result = manager.remove_tool_offering(tool_key);
         println!("Remove tool offering result: {:?}", remove_result);
         
-        // The removal should fail due to foreign key constraint, but let's check if it actually does
-        match remove_result {
-            Err(err) => {
-                println!("Expected error due to foreign key constraint: {:?}", err);
-                // This is expected - the deletion should fail
+        // The removal should now succeed because we handle foreign key constraints properly
+        assert!(remove_result.is_ok(), "Tool offering removal should succeed");
+        
+        // Verify that the tool offering was actually removed
+        let get_result = manager.get_tool_offering(tool_key);
+        assert!(get_result.is_err(), "Tool offering should no longer exist");
+        
+        // Verify that the invoice still exists but with shinkai_offering_key set to NULL
+        // Since get_invoice might not handle NULL foreign keys properly, let's check at the database level
+        let conn = manager.get_connection().unwrap();
+        let mut stmt = conn.prepare("SELECT invoice_id, shinkai_offering_key FROM invoices WHERE invoice_id = ?1").unwrap();
+        let result: Result<(String, Option<String>), _> = stmt.query_row(params!["test_invoice_id"], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        });
+        
+        match result {
+            Ok((invoice_id, offering_key)) => {
+                println!("Invoice still exists: {}", invoice_id);
+                assert_eq!(invoice_id, "test_invoice_id");
+                assert!(offering_key.is_none(), "shinkai_offering_key should be NULL after tool offering removal");
+                println!("Verified: shinkai_offering_key is NULL as expected");
             },
-            Ok(_) => {
-                println!("Unexpectedly succeeded - checking if record actually exists...");
-                // If it claims to succeed, let's verify the tool offering still exists
-                let get_result = manager.get_tool_offering(tool_key);
-                match get_result {
-                    Ok(_) => {
-                        println!("Tool offering still exists - deletion was silently ignored");
-                        panic!("Tool offering deletion should have failed due to foreign key constraint, but it appears to have been silently ignored");
-                    },
-                    Err(_) => {
-                        println!("Tool offering was actually deleted despite foreign key constraint");
-                        panic!("Tool offering was deleted even though there's a foreign key constraint - this indicates a bug");
-                    }
-                }
+            Err(err) => {
+                panic!("Invoice should still exist after tool offering removal: {:?}", err);
             }
         }
     }
