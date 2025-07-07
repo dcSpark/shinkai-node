@@ -58,11 +58,16 @@ impl SqliteManager {
     }
 
     pub fn remove_tool_offering(&self, tool_key: &str) -> Result<(), SqliteManagerError> {
-        let conn = self.get_connection()?;
-        let mut stmt = conn.prepare("DELETE FROM tool_micropayments_requirements WHERE tool_key = ?1")?;
-
-        stmt.execute(params![tool_key])?;
-
+        let mut conn = self.get_connection()?;
+        let mut transaction = conn.transaction()?;
+        
+        // First, nullify references in invoices to prevent constraint violations
+        transaction.execute("UPDATE invoices SET shinkai_offering_key = NULL WHERE shinkai_offering_key = ?1", params![tool_key])?;
+        
+        // Then delete the tool offering
+        transaction.execute("DELETE FROM tool_micropayments_requirements WHERE tool_key = ?1", params![tool_key])?;
+        
+        transaction.commit()?;
         Ok(())
     }
 
@@ -319,5 +324,96 @@ mod tests {
         assert!(tool_offerings
             .iter()
             .any(|offering| offering.tool_key == tool_offering2.tool_key));
+    }
+
+    #[tokio::test]
+    async fn test_remove_tool_offering_with_foreign_key_constraint() {
+        use chrono::Utc;
+        use shinkai_message_primitives::schemas::invoices::{Invoice, InvoiceStatusEnum};
+        use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+        use shinkai_message_primitives::schemas::shinkai_tool_offering::UsageTypeInquiry;
+        use shinkai_message_primitives::schemas::wallet_mixed::PublicAddress;
+        
+        let manager = setup_test_db();
+        let tool_key = "test_tool_key_with_invoice";
+        
+        // First, create a tool offering
+        let tool_offering = ShinkaiToolOffering {
+            tool_key: tool_key.to_string(),
+            usage_type: UsageType::PerUse(ToolPrice::Payment(vec![PaymentRequirements {
+                scheme: "exact".to_string(),
+                description: "Payment for service".to_string(),
+                network: Network::BaseSepolia,
+                max_amount_required: "1000".to_string(),
+                resource: "https://shinkai.com".to_string(),
+                mime_type: "application/json".to_string(),
+                pay_to: "0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string(),
+                max_timeout_seconds: 300,
+                asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string(),
+                output_schema: Some(serde_json::json!({})),
+                extra: Some(serde_json::json!({
+                    "decimals": 6,
+                    "asset_id": "USDC"
+                })),
+            }])),
+            meta_description: Some("meta_description".to_string()),
+        };
+
+        // Insert the tool offering
+        let result = manager.set_tool_offering(tool_offering.clone());
+        assert!(result.is_ok());
+
+        // Create an invoice that references this tool offering
+        let invoice = Invoice {
+            invoice_id: "test_invoice_id".to_string(),
+            parent_message_id: Some("test_parent_id".to_string()),
+            provider_name: ShinkaiName::new("@@provider.shinkai".to_string()).unwrap(),
+            requester_name: ShinkaiName::new("@@requester.shinkai".to_string()).unwrap(),
+            shinkai_offering: tool_offering.clone(),
+            expiration_time: Utc::now() + chrono::Duration::hours(12),
+            status: InvoiceStatusEnum::Pending,
+            payment: None,
+            address: PublicAddress {
+                network_id: Network::BaseSepolia,
+                address_id: "0x1234567890123456789012345678901234567890".to_string(),
+            },
+            usage_type_inquiry: UsageTypeInquiry::PerUse,
+            request_date_time: Utc::now(),
+            invoice_date_time: Utc::now(),
+            tool_data: None,
+            result_str: None,
+            response_date_time: None,
+        };
+
+        // Insert the invoice (this creates the foreign key reference)
+        let invoice_result = manager.set_invoice(&invoice);
+        assert!(invoice_result.is_ok());
+
+        // Now try to remove the tool offering - this should fail due to foreign key constraint
+        let remove_result = manager.remove_tool_offering(tool_key);
+        println!("Remove tool offering result: {:?}", remove_result);
+        
+        // The removal should fail due to foreign key constraint, but let's check if it actually does
+        match remove_result {
+            Err(err) => {
+                println!("Expected error due to foreign key constraint: {:?}", err);
+                // This is expected - the deletion should fail
+            },
+            Ok(_) => {
+                println!("Unexpectedly succeeded - checking if record actually exists...");
+                // If it claims to succeed, let's verify the tool offering still exists
+                let get_result = manager.get_tool_offering(tool_key);
+                match get_result {
+                    Ok(_) => {
+                        println!("Tool offering still exists - deletion was silently ignored");
+                        panic!("Tool offering deletion should have failed due to foreign key constraint, but it appears to have been silently ignored");
+                    },
+                    Err(_) => {
+                        println!("Tool offering was actually deleted despite foreign key constraint");
+                        panic!("Tool offering was deleted even though there's a foreign key constraint - this indicates a bug");
+                    }
+                }
+            }
+        }
     }
 }
