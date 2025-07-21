@@ -48,6 +48,8 @@ mod tests {
             function_call: None,
             functions: None,
             images: None,
+            videos: None,
+            audios: None,
             tool_calls: None,
         }];
         let num_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&messages);
@@ -69,6 +71,8 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                videos: None,
+                audios: None,
                 tool_calls: None,
             },
             LlmMessage {
@@ -78,6 +82,8 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                videos: None,
+                audios: None,
                 tool_calls: None,
             },
         ];
@@ -99,6 +105,8 @@ mod tests {
             function_call: None,
             functions: None,
             images: None,
+            videos: None,
+            audios: None,
             tool_calls: None,
         }];
         let num_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&messages);
@@ -120,6 +128,8 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                videos: None,
+                audios: None,
                 tool_calls: None,
             },
             LlmMessage {
@@ -129,6 +139,8 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                videos: None,
+                audios: None,
                 tool_calls: None,
             },
             LlmMessage {
@@ -138,6 +150,8 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                videos: None,
+                audios: None,
                 tool_calls: None,
             },
             LlmMessage {
@@ -147,6 +161,8 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                videos: None,
+                audios: None,
                 tool_calls: None,
             },
             LlmMessage {
@@ -156,6 +172,8 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                videos: None,
+                audios: None,
                 tool_calls: None,
             },
         ];
@@ -203,6 +221,8 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                videos: None,
+                audios: None,
                 tool_calls: None,
             })
             .collect();
@@ -228,6 +248,8 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                videos: None,
+                audios: None,
                 tool_calls: None,
             },
             LlmMessage {
@@ -237,6 +259,8 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                videos: None,
+                audios: None,
                 tool_calls: None,
             },
             LlmMessage {
@@ -246,6 +270,8 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                videos: None,
+                audios: None,
                 tool_calls: None,
             },
         ];
@@ -558,6 +584,8 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                videos: None,
+                audios: None,
                 tool_calls: None,
             }];
 

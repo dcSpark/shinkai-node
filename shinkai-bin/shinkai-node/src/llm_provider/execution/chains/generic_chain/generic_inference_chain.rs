@@ -82,6 +82,8 @@ impl InferenceChain for GenericInferenceChain {
             self.context.job_filenames.clone(),
             self.context.message_hash_id.clone(),
             self.context.image_files.clone(),
+            self.context.video_files.clone(),
+            self.context.audio_files.clone(),
             self.context.llm_provider.clone(),
             self.context.generator.clone(),
             self.context.user_profile.clone(),
@@ -186,6 +188,195 @@ impl GenericInferenceChain {
         image_files
     }
 
+    /// Process video files from file paths, folder paths, and job scope
+    fn process_video_files(
+        paths: &[ShinkaiPath],
+        folder_paths: &[ShinkaiPath],
+        scope: &MinimalJobScope,
+    ) -> HashMap<String, String> {
+        let mut video_files = HashMap::new();
+
+        // Process individual files
+        for file_path in paths {
+            if let Some(file_name) = file_path.path.file_name() {
+                let filename_lower = file_name.to_string_lossy().to_lowercase();
+                if filename_lower.ends_with(".mp4")
+                    || filename_lower.ends_with(".mov")
+                    || filename_lower.ends_with(".avi")
+                    || filename_lower.ends_with(".webm")
+                    || filename_lower.ends_with(".mkv")
+                    || filename_lower.ends_with(".wmv")
+                    || filename_lower.ends_with(".flv")
+                {
+                    // Retrieve the file content
+                    match ShinkaiFileManager::get_file_content(file_path.clone()) {
+                        Ok(content) => {
+                            let base64_content = base64::engine::general_purpose::STANDARD.encode(&content);
+                            video_files.insert(file_path.relative_path().to_string(), base64_content);
+                        }
+                        Err(_) => continue,
+                    }
+                }
+            }
+        }
+
+        // Process scope files
+        for file_path in &scope.vector_fs_items {
+            if let Some(file_name) = file_path.path.file_name() {
+                let filename_lower = file_name.to_string_lossy().to_lowercase();
+                if filename_lower.ends_with(".mp4")
+                    || filename_lower.ends_with(".mov")
+                    || filename_lower.ends_with(".avi")
+                    || filename_lower.ends_with(".webm")
+                    || filename_lower.ends_with(".mkv")
+                    || filename_lower.ends_with(".wmv")
+                    || filename_lower.ends_with(".flv")
+                {
+                    match ShinkaiFileManager::get_file_content(file_path.clone()) {
+                        Ok(content) => {
+                            let base64_content = base64::engine::general_purpose::STANDARD.encode(&content);
+                            video_files.insert(file_path.relative_path().to_string(), base64_content);
+                        }
+                        Err(_) => continue,
+                    }
+                }
+            }
+        }
+
+        // Process all folders (including scope folders)
+        let mut all_folders = folder_paths.to_vec();
+        all_folders.extend(scope.vector_fs_folders.clone());
+
+        if let Ok(additional_files) =
+            ShinkaiFileManager::get_absolute_path_for_additional_files(Vec::new(), all_folders)
+        {
+            for file_path in additional_files {
+                let path = PathBuf::from(file_path);
+                if path.is_file() {
+                    if let Some(file_name) = path.file_name() {
+                        let filename_lower = file_name.to_string_lossy().to_lowercase();
+                        if filename_lower.ends_with(".mp4")
+                            || filename_lower.ends_with(".mov")
+                            || filename_lower.ends_with(".avi")
+                            || filename_lower.ends_with(".webm")
+                            || filename_lower.ends_with(".mkv")
+                            || filename_lower.ends_with(".wmv")
+                            || filename_lower.ends_with(".flv")
+                        {
+                            // Convert path to ShinkaiPath for consistent handling
+                            let shinkai_path = ShinkaiPath::from_string(path.to_string_lossy().to_string());
+                            match ShinkaiFileManager::get_file_content(shinkai_path.clone()) {
+                                Ok(content) => {
+                                    let base64_content = base64::engine::general_purpose::STANDARD.encode(&content);
+                                    video_files.insert(shinkai_path.relative_path().to_string(), base64_content);
+                                }
+                                Err(_) => continue,
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        video_files
+    }
+
+    /// Process audio files from file paths, folder paths, and job scope
+    fn process_audio_files(
+        paths: &[ShinkaiPath],
+        folder_paths: &[ShinkaiPath],
+        scope: &MinimalJobScope,
+    ) -> HashMap<String, String> {
+        let mut audio_files = HashMap::new();
+
+        // Process individual files
+        for file_path in paths {
+            if let Some(file_name) = file_path.path.file_name() {
+                let filename_lower = file_name.to_string_lossy().to_lowercase();
+                if filename_lower.ends_with(".mp3")
+                    || filename_lower.ends_with(".wav")
+                    || filename_lower.ends_with(".flac")
+                    || filename_lower.ends_with(".ogg")
+                    || filename_lower.ends_with(".m4a")
+                    || filename_lower.ends_with(".aiff")
+                    || filename_lower.ends_with(".wma")
+                    || filename_lower.ends_with(".aac")
+                {
+                    // Retrieve the file content
+                    match ShinkaiFileManager::get_file_content(file_path.clone()) {
+                        Ok(content) => {
+                            let base64_content = base64::engine::general_purpose::STANDARD.encode(&content);
+                            audio_files.insert(file_path.relative_path().to_string(), base64_content);
+                        }
+                        Err(_) => continue,
+                    }
+                }
+            }
+        }
+
+        // Process scope files
+        for file_path in &scope.vector_fs_items {
+            if let Some(file_name) = file_path.path.file_name() {
+                let filename_lower = file_name.to_string_lossy().to_lowercase();
+                if filename_lower.ends_with(".mp3")
+                    || filename_lower.ends_with(".wav")
+                    || filename_lower.ends_with(".flac")
+                    || filename_lower.ends_with(".ogg")
+                    || filename_lower.ends_with(".m4a")
+                    || filename_lower.ends_with(".aiff")
+                    || filename_lower.ends_with(".wma")
+                    || filename_lower.ends_with(".aac")
+                {
+                    match ShinkaiFileManager::get_file_content(file_path.clone()) {
+                        Ok(content) => {
+                            let base64_content = base64::engine::general_purpose::STANDARD.encode(&content);
+                            audio_files.insert(file_path.relative_path().to_string(), base64_content);
+                        }
+                        Err(_) => continue,
+                    }
+                }
+            }
+        }
+
+        // Process all folders (including scope folders)
+        let mut all_folders = folder_paths.to_vec();
+        all_folders.extend(scope.vector_fs_folders.clone());
+
+        if let Ok(additional_files) =
+            ShinkaiFileManager::get_absolute_path_for_additional_files(Vec::new(), all_folders)
+        {
+            for file_path in additional_files {
+                let path = PathBuf::from(file_path);
+                if path.is_file() {
+                    if let Some(file_name) = path.file_name() {
+                        let filename_lower = file_name.to_string_lossy().to_lowercase();
+                        if filename_lower.ends_with(".mp3")
+                            || filename_lower.ends_with(".wav")
+                            || filename_lower.ends_with(".flac")
+                            || filename_lower.ends_with(".ogg")
+                            || filename_lower.ends_with(".m4a")
+                            || filename_lower.ends_with(".aiff")
+                            || filename_lower.ends_with(".wma")
+                            || filename_lower.ends_with(".aac")
+                        {
+                            // Convert path to ShinkaiPath for consistent handling
+                            let shinkai_path = ShinkaiPath::from_string(path.to_string_lossy().to_string());
+                            match ShinkaiFileManager::get_file_content(shinkai_path.clone()) {
+                                Ok(content) => {
+                                    let base64_content = base64::engine::general_purpose::STANDARD.encode(&content);
+                                    audio_files.insert(shinkai_path.relative_path().to_string(), base64_content);
+                                }
+                                Err(_) => continue,
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        audio_files
+    }
+
     pub fn new(
         context: InferenceChainContext,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
@@ -207,6 +398,8 @@ impl GenericInferenceChain {
         job_filenames: Vec<String>,
         message_hash_id: Option<String>,
         mut image_files: HashMap<String, String>,
+        video_files: HashMap<String, String>,
+        audio_files: HashMap<String, String>,
         llm_provider: ProviderOrAgent,
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
@@ -274,6 +467,14 @@ impl GenericInferenceChain {
         let additional_image_files =
             Self::process_image_files(&merged_fs_files_paths, &merged_fs_folder_paths, full_job.scope());
 
+        // Process video files from merged paths, folders and scope
+        let additional_video_files =
+            Self::process_video_files(&merged_fs_files_paths, &merged_fs_folder_paths, full_job.scope());
+
+        // Process audio files from merged paths, folders and scope
+        let additional_audio_files =
+            Self::process_audio_files(&merged_fs_files_paths, &merged_fs_folder_paths, full_job.scope());
+
         // Deduplicate image files based on filename (case insensitive)
         let mut deduplicated_files = HashMap::new();
         for (path, content) in image_files.iter().chain(additional_image_files.iter()) {
@@ -289,10 +490,52 @@ impl GenericInferenceChain {
             .map(|(_, (path, content))| (path, content))
             .collect();
 
+        // Deduplicate video files based on filename (case insensitive)
+        let mut deduplicated_video_files = HashMap::new();
+        for (path, content) in video_files.iter().chain(additional_video_files.iter()) {
+            let filename = path.split('/').last().unwrap_or(path).to_lowercase();
+            if !deduplicated_video_files.contains_key(&filename) {
+                deduplicated_video_files.insert(filename, (path.clone(), content.clone()));
+            }
+        }
+
+        // Convert back to original format with full paths
+        let video_files: HashMap<String, String> = deduplicated_video_files
+            .into_iter()
+            .map(|(_, (path, content))| (path, content))
+            .collect();
+
+        // Deduplicate audio files based on filename (case insensitive)
+        let mut deduplicated_audio_files = HashMap::new();
+        for (path, content) in audio_files.iter().chain(additional_audio_files.iter()) {
+            let filename = path.split('/').last().unwrap_or(path).to_lowercase();
+            if !deduplicated_audio_files.contains_key(&filename) {
+                deduplicated_audio_files.insert(filename, (path.clone(), content.clone()));
+            }
+        }
+
+        // Convert back to original format with full paths
+        let audio_files: HashMap<String, String> = deduplicated_audio_files
+            .into_iter()
+            .map(|(_, (path, content))| (path, content))
+            .collect();
+
         shinkai_log(
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Info,
             &format!("start_generic_inference_chain> image files: {:?}", image_files.keys()),
+        );
+        
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Info,
+            &format!("start_generic_inference_chain> video files: {:?}", video_files.keys()),
+        );
+        
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Info,
+            &format!("start_generic_inference_chain> audio files: {:?}", audio_files.keys()),
         );
 
         if !scope_is_empty
@@ -604,9 +847,11 @@ impl GenericInferenceChain {
         )?;
 
         println!(
-            "Generating prompt with user message: {:?} containing {:?} image files and {:?} additional files",
+            "Generating prompt with user message: {:?} containing {:?} image files, {:?} video files, {:?} audio files and {:?} additional files",
             user_message,
             image_files.keys(),
+            video_files.keys(),
+            audio_files.keys(),
             additional_files
         );
 
@@ -622,11 +867,13 @@ impl GenericInferenceChain {
             custom_prompt.clone(),
             user_message.clone(),
             image_files.clone(),
+            video_files.clone(),
+            audio_files.clone(),
             ret_nodes.clone(),
             None,
             Some(full_job.step_history.clone()),
             tools.clone(),
-            None,
+            Some(all_function_responses.clone()),
             full_job.job_id.clone(),
             additional_files.clone(),
         )
@@ -725,6 +972,8 @@ impl GenericInferenceChain {
                         job_filenames.clone(),
                         message_hash_id.clone(),
                         image_files.clone(),
+                        video_files.clone(),
+                        audio_files.clone(),
                         llm_provider.clone(),
                         generator.clone(),
                         user_profile.clone(),
@@ -817,6 +1066,8 @@ impl GenericInferenceChain {
                                         custom_prompt.clone(),
                                         user_message.clone(),
                                         image_files.clone(),
+                                        video_files.clone(),
+                                        audio_files.clone(),
                                         ret_nodes.clone(),
                                         None,
                                         Some(full_job.step_history.clone()),
@@ -926,6 +1177,8 @@ impl GenericInferenceChain {
                     custom_prompt.clone(),
                     user_message.clone(),
                     image_files.clone(),
+                    video_files.clone(),
+                    audio_files.clone(),
                     ret_nodes.clone(),
                     None,
                     Some(full_job.step_history.clone()),

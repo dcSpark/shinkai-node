@@ -24,6 +24,8 @@ impl JobPromptGenerator {
         custom_user_prompt: Option<String>,
         user_message: String,
         image_files: HashMap<String, String>,
+        video_files: HashMap<String, String>,
+        audio_files: HashMap<String, String>,
         ret_nodes: ShinkaiFileChunkCollection,
         _summary_text: Option<String>,
         job_step_history: Option<Vec<ShinkaiMessage>>,
@@ -138,7 +140,13 @@ impl JobPromptGenerator {
                 content = template_content;
             }
 
-            prompt.add_omni(content, image_files, SubPromptType::UserLastMessage, 100);
+            // Combine all media files (images, videos, audio) into a single HashMap
+            let mut media_files = HashMap::new();
+            media_files.extend(image_files);
+            media_files.extend(video_files);
+            media_files.extend(audio_files);
+
+            prompt.add_omni(content, media_files, SubPromptType::UserLastMessage, 100);
         }
 
         // Process function calls and their responses if they exist

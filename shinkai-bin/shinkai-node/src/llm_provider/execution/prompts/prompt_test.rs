@@ -81,6 +81,8 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                videos: None,
+                audios: None,
                 tool_calls: None,
             },
             LlmMessage {
@@ -90,6 +92,8 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                videos: None,
+                audios: None,
                 tool_calls: None,
             },
             LlmMessage {
@@ -99,6 +103,8 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                videos: None,
+                audios: None,
                 tool_calls: None,
             },
             LlmMessage {
@@ -108,6 +114,8 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                videos: None,
+                audios: None,
                 tool_calls: None,
             },
             LlmMessage {
@@ -146,6 +154,8 @@ mod tests {
                     },
                 }]),
                 images: None,
+                videos: None,
+                audios: None,
                 tool_calls: None,
             },
             LlmMessage {
@@ -155,6 +165,8 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                videos: None,
+                audios: None,
                 tool_calls: None,
             },
         ];
@@ -250,6 +262,8 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                videos: None,
+                audios: None,
                 tool_calls: None,
             },
             LlmMessage {
@@ -285,6 +299,8 @@ mod tests {
                     },
                 }]),
                 images: None,
+                videos: None,
+                audios: None,
                 tool_calls: None,
             },
             LlmMessage {
@@ -296,6 +312,8 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                videos: None,
+                audios: None,
                 tool_calls: None,
             },
             LlmMessage {
@@ -309,6 +327,8 @@ mod tests {
                 }),
                 functions: None,
                 images: None,
+                videos: None,
+                audios: None,
                 tool_calls: None,
             },
             LlmMessage {
@@ -318,6 +338,8 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                videos: None,
+                audios: None,
                 tool_calls: None,
             },
         ];

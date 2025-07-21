@@ -94,11 +94,57 @@ impl Prompt {
         let capped_priority_value = std::cmp::min(priority_value, 100);
         let assets: Vec<(SubPromptAssetType, SubPromptAssetContent, SubPromptAssetDetail)> = files
             .into_iter()
-            // TODO: later on we will want to add more asset types. Do we really need the SubPromptAssetType?
-            .map(|(file_name, file_content)| (SubPromptAssetType::Image, file_content, file_name))
+            .map(|(file_name, file_content)| {
+                let asset_type = Self::detect_asset_type(&file_name);
+                (asset_type, file_content, file_name)
+            })
             .collect();
         let sub_prompt = SubPrompt::Omni(prompt_type, content, assets, capped_priority_value as u8);
         self.add_sub_prompt(sub_prompt);
+    }
+
+    /// Detects the asset type based on file extension
+    fn detect_asset_type(file_name: &str) -> SubPromptAssetType {
+        let file_name_lower = file_name.to_lowercase();
+        
+        // Check for image extensions
+        if file_name_lower.ends_with(".png")
+            || file_name_lower.ends_with(".jpg")
+            || file_name_lower.ends_with(".jpeg")
+            || file_name_lower.ends_with(".gif")
+            || file_name_lower.ends_with(".bmp")
+            || file_name_lower.ends_with(".webp")
+        {
+            return SubPromptAssetType::Image;
+        }
+        
+        // Check for video extensions
+        if file_name_lower.ends_with(".mp4")
+            || file_name_lower.ends_with(".mov")
+            || file_name_lower.ends_with(".avi")
+            || file_name_lower.ends_with(".webm")
+            || file_name_lower.ends_with(".mkv")
+            || file_name_lower.ends_with(".wmv")
+            || file_name_lower.ends_with(".flv")
+        {
+            return SubPromptAssetType::Video;
+        }
+        
+        // Check for audio extensions
+        if file_name_lower.ends_with(".mp3")
+            || file_name_lower.ends_with(".wav")
+            || file_name_lower.ends_with(".flac")
+            || file_name_lower.ends_with(".ogg")
+            || file_name_lower.ends_with(".m4a")
+            || file_name_lower.ends_with(".aiff")
+            || file_name_lower.ends_with(".wma")
+            || file_name_lower.ends_with(".aac")
+        {
+            return SubPromptAssetType::Audio;
+        }
+        
+        // Default to Image for unknown types (backward compatibility)
+        SubPromptAssetType::Image
     }
 
     /// Adds a sub-prompt that holds a Tool.
@@ -373,6 +419,7 @@ impl Prompt {
                 functions: None,
                 images: None,
                 videos: None,
+                audios: None,
                 tool_calls: None,
             };
 
@@ -407,6 +454,7 @@ impl Prompt {
                     functions: None,
                     images: None,
                     videos: None,
+                    audios: None,
                     tool_calls: None,
                 };
 
@@ -435,6 +483,7 @@ impl Prompt {
                         functions: None,
                         images: None,
                         videos: None,
+                        audios: None,
                         tool_calls: None,
                     });
                 }
@@ -481,6 +530,7 @@ impl Prompt {
                 functions: None,
                 images: last_user_message.as_ref().and_then(|msg| msg.images.clone()),
                 videos: last_user_message.as_ref().and_then(|msg| msg.videos.clone()),
+                audios: last_user_message.as_ref().and_then(|msg| msg.audios.clone()),
                 tool_calls: None,
             };
             current_length += token_counter(&[combined_message.clone()]);

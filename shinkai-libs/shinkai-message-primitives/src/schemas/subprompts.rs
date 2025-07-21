@@ -165,11 +165,12 @@ impl SubPrompt {
             SubPrompt::Omni(prompt_type, content, assets, _) => {
                 let mut images = Vec::new();
                 let mut videos = Vec::new();
+                let mut audios = Vec::new();
                 for (asset_type, asset_content, _) in assets.iter() {
                     match asset_type {
                         SubPromptAssetType::Image => images.push(asset_content.clone()),
                         SubPromptAssetType::Video => videos.push(asset_content.clone()),
-                        SubPromptAssetType::Audio => {}
+                        SubPromptAssetType::Audio => audios.push(asset_content.clone()),
                     }
                 }
                 LlmMessage {
@@ -180,6 +181,7 @@ impl SubPrompt {
                     functions: None,
                     images: if images.is_empty() { None } else { Some(images) },
                     videos: if videos.is_empty() { None } else { Some(videos) },
+                    audios: if audios.is_empty() { None } else { Some(audios) },
                     tool_calls: None,
                 }
             }
@@ -193,6 +195,7 @@ impl SubPrompt {
                     functions: None,
                     images: None,
                     videos: None,
+                    audios: None,
                     tool_calls: None,
                 }
             }

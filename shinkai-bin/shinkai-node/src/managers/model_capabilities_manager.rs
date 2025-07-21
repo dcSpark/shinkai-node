@@ -73,6 +73,8 @@ pub enum ModelCapability {
     TextInference,
     ImageGeneration,
     ImageAnalysis,
+    AudioAnalysis,
+    VideoAnalysis,
 }
 
 // Enum for cost
@@ -144,6 +146,7 @@ impl ModelCapabilitiesManager {
                 "4o-mini" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
                 "dall-e-3" => vec![ModelCapability::ImageGeneration],
                 "o3-mini" => vec![ModelCapability::TextInference],
+                "gpt-4o-audio-preview" => vec![ModelCapability::TextInference, ModelCapability::AudioAnalysis],
                 model_type if model_type.starts_with("o3") => {
                     vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference]
                 }
@@ -233,47 +236,43 @@ impl ModelCapabilitiesManager {
     fn get_gemini_capabilities(model_type: &str) -> Vec<ModelCapability> {
         match model_type {
             // Gemini 2.5 models
-            model_type if model_type.starts_with("gemini-2.5-flash-preview-05-20") => {
-                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
-            }
-            model_type if model_type.starts_with("gemini-2.5-flash-preview-native-audio") => {
-                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
-            }
-            model_type if model_type.starts_with("gemini-2.5-flash-exp-native-audio") => {
-                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
-            }
             model_type if model_type.starts_with("gemini-2.5-flash-preview-tts") => {
                 vec![ModelCapability::TextInference]
-            }
-            model_type if model_type.starts_with("gemini-2.5-pro-preview") => {
-                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
             }
             model_type if model_type.starts_with("gemini-2.5-pro-preview-tts") => {
                 vec![ModelCapability::TextInference]
             }
+            model_type if model_type.starts_with("gemini-2.5-flash-preview-native-audio") => {
+                vec![ModelCapability::TextInference, ModelCapability::AudioAnalysis, ModelCapability::VideoAnalysis]
+            }
+            model_type if model_type.starts_with("gemini-2.5-flash-exp-native-audio") => {
+                vec![ModelCapability::TextInference, ModelCapability::AudioAnalysis, ModelCapability::VideoAnalysis]
+            }                                    
+            model_type if model_type.starts_with("gemini-2.5-flash") => {
+                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis, ModelCapability::VideoAnalysis, ModelCapability::AudioAnalysis]
+            }
+            model_type if model_type.starts_with("gemini-2.5-pro") => {
+                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis, ModelCapability::VideoAnalysis, ModelCapability::AudioAnalysis]
+            }
             // Gemini 2.0 models
             model_type if model_type.starts_with("gemini-2.0-flash-preview-image-generation") => {
-                vec![
-                    ModelCapability::TextInference,
-                    ModelCapability::ImageAnalysis,
-                    ModelCapability::ImageGeneration,
-                ]
+                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis, ModelCapability::ImageGeneration, ModelCapability::VideoAnalysis, ModelCapability::AudioAnalysis]
             }
             model_type if model_type.starts_with("gemini-2.0-flash-lite") => {
-                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis, ModelCapability::VideoAnalysis, ModelCapability::AudioAnalysis]
             }
             model_type if model_type.starts_with("gemini-2.0-flash") => {
-                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis, ModelCapability::VideoAnalysis, ModelCapability::AudioAnalysis]
             }
             // Gemini 1.5 models
             model_type if model_type.starts_with("gemini-1.5-flash-8b") => {
-                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis, ModelCapability::VideoAnalysis, ModelCapability::AudioAnalysis]
             }
             model_type if model_type.starts_with("gemini-1.5-flash") => {
-                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis, ModelCapability::VideoAnalysis, ModelCapability::AudioAnalysis]
             }
             model_type if model_type.starts_with("gemini-1.5-pro") => {
-                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis, ModelCapability::VideoAnalysis, ModelCapability::AudioAnalysis]
             }
             // Legacy and other Gemini models
             model_type if model_type.starts_with("gemini-pro") => {

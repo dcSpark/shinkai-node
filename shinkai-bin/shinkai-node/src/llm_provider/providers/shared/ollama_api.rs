@@ -1,12 +1,13 @@
+use shinkai_message_primitives::schemas::{
+    llm_message::{LlmMessage, DetailedFunctionCall}, llm_providers::serialized_llm_provider::LLMProviderInterface, prompts::Prompt
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use shinkai_message_primitives::schemas::{
-    llm_message::LlmMessage, llm_providers::serialized_llm_provider::LLMProviderInterface, prompts::Prompt
-};
 
-use crate::{
-    llm_provider::error::LLMProviderError, managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResult, PromptResultEnum}
-};
+use crate::llm_provider::error::LLMProviderError;
+use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
+use crate::managers::model_capabilities_manager::PromptResult;
+use crate::managers::model_capabilities_manager::PromptResultEnum;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct OllamaAPIResponse {
@@ -287,18 +288,15 @@ mod tests {
         let expected_messages = json!([
             {
                 "role": "system",
-                "content": "You are Neko the cat respond like one",
-                "images": []
+                "content": "You are Neko the cat respond like one"
             },
             {
                 "role": "user",
-                "content": "Hello",
-                "images": []
+                "content": "Hello"
             },
             {
                 "role": "assistant",
-                "content": "Great to meet you. What would you like to know?",
-                "images": []
+                "content": "Great to meet you. What would you like to know?"
             },
             {
                 "role": "user",
@@ -317,29 +315,39 @@ mod tests {
         let llm_messages = vec![
             LlmMessage {
                 role: Some("system".to_string()),
-                content: Some("You are a very helpful assistant that's very good at completing a task.".to_string()),
+                content: Some("You are a very helpful assistant. You may be provided with documents or content to analyze and answer questions about them, in that case refer to the content provided in the user message for your responses.".to_string()),
                 name: None,
                 function_call: None,
                 functions: None,
                 images: None,
+                videos: None,
+                audios: None,
                 tool_calls: None,
             },
             LlmMessage {
                 role: Some("user".to_string()),
-                content: Some("The current main task at hand is: `describe this`".to_string()),
+                content: Some("tell me what's the response when using shinkai echo tool with: say hello".to_string()),
                 name: None,
                 function_call: None,
                 functions: None,
-                images: Some(vec!["iVBORw0KGgoAAAANSUhEUgAAAlgAAAJYCAYAAAC".to_string()]),
+                images: Some(vec![]),
+                videos: None,
+                audios: None,
                 tool_calls: None,
             },
             LlmMessage {
-                role: Some("system".to_string()),
-                content: Some("Make the answer very readable and easy to understand formatted using markdown bulletpoint lists and separated paragraphs.".to_string()),
+                role: Some("assistant".to_string()),
+                content: None,
                 name: None,
-                function_call: None,
+                function_call: Some(DetailedFunctionCall {
+                    name: "shinkai__echo".to_string(),
+                    arguments: "{\"message\":\"hello\"}".to_string(),
+                    id: None,
+                }),
                 functions: None,
                 images: None,
+                videos: None,
+                audios: None,
                 tool_calls: None,
             },
         ];
@@ -347,20 +355,14 @@ mod tests {
         let expected_messages = vec![
             OllamaMessage {
                 role: "system".to_string(),
-                content: "You are a very helpful assistant that's very good at completing a task.".to_string(),
+                content: "You are a very helpful assistant. You may be provided with documents or content to analyze and answer questions about them, in that case refer to the content provided in the user message for your responses.".to_string(),
                 images: None,
                 tool_calls: None,
             },
             OllamaMessage {
                 role: "user".to_string(),
-                content: "The current main task at hand is: `describe this`".to_string(),
-                images: Some(vec!["iVBORw0KGgoAAAANSUhEUgAAAlgAAAJYCAYAAAC".to_string()]),
-                tool_calls: None,
-            },
-            OllamaMessage {
-                role: "system".to_string(),
-                content: "Make the answer very readable and easy to understand formatted using markdown bulletpoint lists and separated paragraphs.".to_string(),
-                images: None,
+                content: "tell me what's the response when using shinkai echo tool with: say hello".to_string(),
+                images: Some(vec![]),
                 tool_calls: None,
             },
         ];
