@@ -40,3 +40,22 @@ pub fn get_image_type(base64_str: &str) -> Option<&'static str> {
         None
     }
 }
+
+pub fn get_video_type(base64_str: &str) -> Option<&'static str> {
+    let decoded = BASE64.decode(base64_str).ok()?;
+    if decoded.len() > 12 {
+        // MP4/MOV formats usually contain the string "ftyp" starting at byte 4
+        if &decoded[4..8] == b"ftyp" {
+            return Some("mp4");
+        }
+        // WebM files start with EBML header 0x1A45DFA3
+        if decoded.starts_with(&[0x1A, 0x45, 0xDF, 0xA3]) {
+            return Some("webm");
+        }
+        // AVI files start with "RIFF" followed by "AVI "
+        if decoded.starts_with(b"RIFF") && &decoded[8..12] == b"AVI " {
+            return Some("avi");
+        }
+    }
+    None
+}

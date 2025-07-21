@@ -1,4 +1,4 @@
-use super::shared_model_logic::get_image_type;
+use super::shared_model_logic::{get_image_type, get_video_type};
 use crate::llm_provider::error::LLMProviderError;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 use crate::managers::model_capabilities_manager::PromptResult;
@@ -13,7 +13,7 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
 
     let max_input_tokens = ModelCapabilitiesManager::get_max_input_tokens(model);
 
-    // Generate the messages and filter out images
+    // Generate the messages and filter out images/videos
     let chat_completion_messages = prompt.generate_llm_messages(
         Some(max_input_tokens),
         None,
@@ -48,18 +48,19 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
             .into_iter()
             .map(|mut message| {
                 let images = message.get("images").cloned();
+                let videos = message.get("videos").cloned();
                 let content = message.get("content").cloned();
 
-                // If this had images, turn them into inline_data
-                if let Some(serde_json::Value::Array(images_array)) = images {
-                    let mut parts = vec![];
-                    if let Some(text) = content {
-                        if let Some(text_str) = text.as_str() {
-                            if !text_str.is_empty() {
-                                parts.push(serde_json::json!({"type": "text", "text": text}));
-                            }
+                let mut parts = vec![];
+                if let Some(text) = content {
+                    if let Some(text_str) = text.as_str() {
+                        if !text_str.is_empty() {
+                            parts.push(serde_json::json!({"type": "text", "text": text}));
                         }
                     }
+                }
+
+                if let Some(serde_json::Value::Array(images_array)) = images {
                     for image in images_array {
                         if let serde_json::Value::String(image_str) = image {
                             if let Some(image_type) = get_image_type(&image_str) {
@@ -72,9 +73,28 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
                             }
                         }
                     }
-                    message["content"] = serde_json::json!(parts);
                     message.as_object_mut().unwrap().remove("images");
                 }
+
+                if let Some(serde_json::Value::Array(videos_array)) = videos {
+                    for video in videos_array {
+                        if let serde_json::Value::String(video_str) = video {
+                            let mime = get_video_type(&video_str).unwrap_or("mp4");
+                            parts.push(serde_json::json!({
+                                "inline_data": {
+                                    "mime_type": format!("video/{}", mime),
+                                    "data": video_str
+                                }
+                            }));
+                        }
+                    }
+                    message.as_object_mut().unwrap().remove("videos");
+                }
+
+                if !parts.is_empty() {
+                    message["content"] = serde_json::json!(parts);
+                }
+
                 message
             })
             .collect(),

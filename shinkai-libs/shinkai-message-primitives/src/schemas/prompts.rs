@@ -365,15 +365,16 @@ impl Prompt {
                     tiktoken_messages.push(tool_message);
                 }
                 SubPrompt::FunctionCall(_, content, _) => {
-                    let mut new_message = LlmMessage {
-                        role: Some("assistant".to_string()),
-                        content: None,
-                        name: None,
-                        function_call: None,
-                        functions: None,
-                        images: None,
-                        tool_calls: None,
-                    };
+            let mut new_message = LlmMessage {
+                role: Some("assistant".to_string()),
+                content: None,
+                name: None,
+                function_call: None,
+                functions: None,
+                images: None,
+                videos: None,
+                tool_calls: None,
+            };
 
                     if let Some(name) = content.get("name").and_then(|n| n.as_str()) {
                         let arguments = content
@@ -397,16 +398,17 @@ impl Prompt {
                     function_calls.push(new_message);
                 }
                 SubPrompt::FunctionCallResponse(_, content, _) => {
-                    let mut new_message = LlmMessage {
-                        // OpenAI works using "function" while ollama uses "tool"
-                        role: tool_response_field_name.clone().or(Some("function".to_string())),
-                        content: None,
-                        name: None,
-                        function_call: None,
-                        functions: None,
-                        images: None,
-                        tool_calls: None,
-                    };
+                let mut new_message = LlmMessage {
+                    // OpenAI works using "function" while ollama uses "tool"
+                    role: tool_response_field_name.clone().or(Some("function".to_string())),
+                    content: None,
+                    name: None,
+                    function_call: None,
+                    functions: None,
+                    images: None,
+                    videos: None,
+                    tool_calls: None,
+                };
 
                     if let Some(function_call) = content.get("function_call") {
                         if let Some(name) = function_call.get("name").and_then(|n| n.as_str()) {
@@ -432,6 +434,7 @@ impl Prompt {
                         function_call: None,
                         functions: None,
                         images: None,
+                        videos: None,
                         tool_calls: None,
                     });
                 }
@@ -476,7 +479,8 @@ impl Prompt {
                 name: None,
                 function_call: None,
                 functions: None,
-                images: last_user_message.and_then(|msg| msg.images),
+                images: last_user_message.as_ref().and_then(|msg| msg.images.clone()),
+                videos: last_user_message.as_ref().and_then(|msg| msg.videos.clone()),
                 tool_calls: None,
             };
             current_length += token_counter(&[combined_message.clone()]);

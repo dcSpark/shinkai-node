@@ -86,6 +86,9 @@ pub struct LlmMessage {
     /// The images associated with the message.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub images: Option<Vec<String>>,
+    /// The videos associated with the message.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub videos: Option<Vec<String>>,
     /// The tool calls associated with the message.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<ToolCall>>,
@@ -114,6 +117,21 @@ impl fmt::Debug for LlmMessage {
                         .collect::<Vec<String>>()
                 }),
             )
+            .field(
+                "videos",
+                &self.videos.as_ref().map(|videos| {
+                    videos
+                        .iter()
+                        .map(|vid| {
+                            if vid.len() > 20 {
+                                format!("{}...", &vid[..20])
+                            } else {
+                                vid.clone()
+                            }
+                        })
+                        .collect::<Vec<String>>()
+                }),
+            )
             .field("tool_calls", &self.tool_calls)
             .finish()
     }
@@ -133,6 +151,11 @@ impl LlmMessage {
         let name = None;
 
         let images = value.get("images").and_then(|v| {
+            v.as_array()
+                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        });
+
+        let videos = value.get("videos").and_then(|v| {
             v.as_array()
                 .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
         });
@@ -161,6 +184,7 @@ impl LlmMessage {
             function_call: None,
             functions: Some(functions),
             images,
+            videos,
             tool_calls: None,
         })
     }
