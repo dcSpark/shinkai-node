@@ -86,6 +86,12 @@ pub struct LlmMessage {
     /// The images associated with the message.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub images: Option<Vec<String>>,
+    /// The videos associated with the message.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub videos: Option<Vec<String>>,
+    /// The audios associated with the message.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub audios: Option<Vec<String>>,
     /// The tool calls associated with the message.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<ToolCall>>,
@@ -114,6 +120,36 @@ impl fmt::Debug for LlmMessage {
                         .collect::<Vec<String>>()
                 }),
             )
+            .field(
+                "videos",
+                &self.videos.as_ref().map(|videos| {
+                    videos
+                        .iter()
+                        .map(|vid| {
+                            if vid.len() > 20 {
+                                format!("{}...", &vid[..20])
+                            } else {
+                                vid.clone()
+                            }
+                        })
+                        .collect::<Vec<String>>()
+                }),
+            )
+            .field(
+                "audios",
+                &self.audios.as_ref().map(|audios| {
+                    audios
+                        .iter()
+                        .map(|aud| {
+                            if aud.len() > 20 {
+                                format!("{}...", &aud[..20])
+                            } else {
+                                aud.clone()
+                            }
+                        })
+                        .collect::<Vec<String>>()
+                }),
+            )
             .field("tool_calls", &self.tool_calls)
             .finish()
     }
@@ -135,6 +171,16 @@ impl LlmMessage {
         let images = value.get("images").and_then(|v| {
             v.as_array()
                 .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        });
+
+        let videos = value.get("videos").and_then(|v| {
+            v.as_array()
+                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        });
+
+        let audios = value.get("audios").and_then(|v| {
+            v.as_array()
+                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect::<Vec<String>>())
         });
 
         // Extract the functions from the "function" key
@@ -161,6 +207,8 @@ impl LlmMessage {
             function_call: None,
             functions: Some(functions),
             images,
+            videos,
+            audios,
             tool_calls: None,
         })
     }
@@ -249,6 +297,53 @@ mod tests {
     }
 
     #[test]
+    fn test_import_functions_from_value_with_audios() {
+        let json_value = json!({
+            "function": {
+                "name": "analyze_audio",
+                "description": "Analyzes audio content for speech recognition.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "audio_format": {
+                            "type": "string",
+                            "description": "The format of the audio file"
+                        },
+                        "language": {
+                            "type": "string",
+                            "description": "The language to recognize"
+                        }
+                    },
+                    "required": ["audio_format"]
+                }
+            },
+            "audios": ["base64_audio_data_1", "base64_audio_data_2"],
+            "type": "function"
+        });
+
+        let message =
+            LlmMessage::import_functions_from_value(json_value).expect("Failed to import functions from value");
+
+        assert!(message.role.is_none());
+        assert!(message.content.is_none());
+        assert!(message.name.is_none());
+        assert!(message.function_call.is_none());
+        assert!(message.functions.is_some());
+
+        let audios = message.audios.unwrap();
+        assert_eq!(audios.len(), 2);
+        assert_eq!(audios[0], "base64_audio_data_1");
+        assert_eq!(audios[1], "base64_audio_data_2");
+
+        let functions = message.functions.unwrap();
+        assert_eq!(functions.len(), 1);
+
+        let function = &functions[0];
+        assert_eq!(function.name, "analyze_audio");
+        assert_eq!(function.description, "Analyzes audio content for speech recognition.");
+    }
+
+    #[test]
     fn test_llm_message_from_json_value() {
         let json_value = json!({
             "role": "assistant",
@@ -306,6 +401,37 @@ mod tests {
         assert_eq!(images.len(), 2);
         assert_eq!(images[0], "image1");
         assert_eq!(images[1], "image2");
+    }
+
+    #[test]
+    fn test_llm_message_from_json_value_with_audios() {
+        let json_value = json!({
+            "role": "user",
+            "content": "This is a test message with audio",
+            "audios": ["audio1", "audio2", "audio3"],
+            "function_call": {
+                "name": "process_audio",
+                "arguments": "{\"action\":\"transcribe\"}"
+            }
+        });
+
+        let message: LlmMessage =
+            serde_json::from_value(json_value).expect("Failed to convert JSON value to LlmMessage");
+
+        assert_eq!(message.role, Some("user".to_string()));
+        assert_eq!(message.content, Some("This is a test message with audio".to_string()));
+        assert!(message.name.is_none());
+        assert!(message.functions.is_none());
+
+        let function_call = message.function_call.unwrap();
+        assert_eq!(function_call.name, "process_audio");
+        assert_eq!(function_call.arguments, "{\"action\":\"transcribe\"}");
+
+        let audios = message.audios.unwrap();
+        assert_eq!(audios.len(), 3);
+        assert_eq!(audios[0], "audio1");
+        assert_eq!(audios[1], "audio2");
+        assert_eq!(audios[2], "audio3");
     }
 
     #[test]

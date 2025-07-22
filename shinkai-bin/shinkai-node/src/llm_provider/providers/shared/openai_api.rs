@@ -390,21 +390,15 @@ mod tests {
         let expected_messages = json!([
             {
                 "role": "system",
-                "content": [
-                    { "type": "text", "text": "You are Neko the cat respond like one" }
-                ]
+                "content": "You are Neko the cat respond like one"
             },
             {
                 "role": "user",
-                "content": [
-                    { "type": "text", "text": "Hello" }
-                ]
+                "content": "Hello"
             },
             {
                 "role": "assistant",
-                "content": [
-                    { "type": "text", "text": "Great to meet you. What would you like to know?" }
-                ]
+                "content": "Great to meet you. What would you like to know?"
             },
             {
                 "role": "user",

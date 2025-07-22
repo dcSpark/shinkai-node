@@ -68,6 +68,8 @@ pub trait InferenceChainContextTrait: Send + Sync {
     fn force_tools_scope(&self) -> Option<Vec<String>>;
     fn message_hash_id(&self) -> Option<String>;
     fn image_files(&self) -> &HashMap<String, String>;
+    fn video_files(&self) -> &HashMap<String, String>;
+    fn audio_files(&self) -> &HashMap<String, String>;
     fn agent(&self) -> &ProviderOrAgent;
     fn generator(&self) -> &RemoteEmbeddingGenerator;
     fn user_profile(&self) -> &ShinkaiName;
@@ -137,6 +139,14 @@ impl InferenceChainContextTrait for InferenceChainContext {
 
     fn image_files(&self) -> &HashMap<String, String> {
         &self.image_files
+    }
+
+    fn video_files(&self) -> &HashMap<String, String> {
+        &self.video_files
+    }
+
+    fn audio_files(&self) -> &HashMap<String, String> {
+        &self.audio_files
     }
 
     fn agent(&self) -> &ProviderOrAgent {
@@ -226,6 +236,8 @@ pub struct InferenceChainContext {
     pub job_filenames: Vec<String>,
     pub message_hash_id: Option<String>,
     pub image_files: HashMap<String, String>,
+    pub video_files: HashMap<String, String>,
+    pub audio_files: HashMap<String, String>,
     pub llm_provider: ProviderOrAgent,
     /// Job's execution context, used to store potentially relevant data across
     /// job steps.
@@ -256,6 +268,8 @@ impl InferenceChainContext {
         job_filenames: Vec<String>,
         message_hash_id: Option<String>,
         image_files: HashMap<String, String>,
+        video_files: HashMap<String, String>,
+        audio_files: HashMap<String, String>,
         llm_provider: ProviderOrAgent,
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
@@ -278,6 +292,8 @@ impl InferenceChainContext {
             job_filenames,
             message_hash_id,
             image_files,
+            video_files,
+            audio_files,
             llm_provider,
             generator,
             user_profile,
@@ -318,6 +334,8 @@ impl fmt::Debug for InferenceChainContext {
             .field("job_filenames", &self.job_filenames)
             .field("message_hash_id", &self.message_hash_id)
             .field("image_files", &self.image_files.len())
+            .field("video_files", &self.video_files.len())
+            .field("audio_files", &self.audio_files.len())
             .field("llm_provider", &self.llm_provider)
             .field("generator", &self.generator)
             .field("user_profile", &self.user_profile)
@@ -467,6 +485,14 @@ impl InferenceChainContextTrait for Box<dyn InferenceChainContextTrait> {
         (**self).image_files()
     }
 
+    fn video_files(&self) -> &HashMap<String, String> {
+        (**self).video_files()
+    }
+
+    fn audio_files(&self) -> &HashMap<String, String> {
+        (**self).audio_files()
+    }
+
     fn agent(&self) -> &ProviderOrAgent {
         (**self).agent()
     }
@@ -545,6 +571,8 @@ impl InferenceChainContextTrait for Box<dyn InferenceChainContextTrait> {
 pub struct MockInferenceChainContext {
     pub user_message: ParsedUserMessage,
     pub image_files: HashMap<String, String>,
+    pub video_files: HashMap<String, String>,
+    pub audio_files: HashMap<String, String>,
     pub user_profile: ShinkaiName,
     pub max_iterations: u64,
     pub iteration_count: u64,
@@ -580,6 +608,8 @@ impl MockInferenceChainContext {
         Self {
             user_message,
             image_files: HashMap::new(),
+            video_files: HashMap::new(),
+            audio_files: HashMap::new(),
             user_profile,
             max_iterations,
             iteration_count,
@@ -606,6 +636,8 @@ impl Default for MockInferenceChainContext {
         Self {
             user_message,
             image_files: HashMap::new(),
+            video_files: HashMap::new(),
+            audio_files: HashMap::new(),
             user_profile,
             max_iterations: 20,
             iteration_count: 0,
@@ -665,6 +697,14 @@ impl InferenceChainContextTrait for MockInferenceChainContext {
 
     fn image_files(&self) -> &HashMap<String, String> {
         &self.image_files
+    }
+
+    fn video_files(&self) -> &HashMap<String, String> {
+        &self.video_files
+    }
+
+    fn audio_files(&self) -> &HashMap<String, String> {
+        &self.audio_files
     }
 
     fn agent(&self) -> &ProviderOrAgent {
@@ -745,6 +785,8 @@ impl Clone for MockInferenceChainContext {
         Self {
             user_message: self.user_message.clone(),
             image_files: self.image_files.clone(),
+            video_files: self.video_files.clone(),
+            audio_files: self.audio_files.clone(),
             user_profile: self.user_profile.clone(),
             max_iterations: self.max_iterations,
             iteration_count: self.iteration_count,

@@ -1,4 +1,4 @@
-use super::shared_model_logic::get_image_type;
+use super::shared_model_logic::{get_image_type, get_video_type, get_audio_type};
 use crate::llm_provider::error::LLMProviderError;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 use crate::managers::model_capabilities_manager::PromptResult;
@@ -13,7 +13,7 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
 
     let max_input_tokens = ModelCapabilitiesManager::get_max_input_tokens(model);
 
-    // Generate the messages and filter out images
+    // Generate the messages and filter out images/videos
     let chat_completion_messages = prompt.generate_llm_messages(
         Some(max_input_tokens),
         None,
@@ -48,18 +48,20 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
             .into_iter()
             .map(|mut message| {
                 let images = message.get("images").cloned();
+                let videos = message.get("videos").cloned();
+                let audios = message.get("audios").cloned();
                 let content = message.get("content").cloned();
 
-                // If this had images, turn them into inline_data
-                if let Some(serde_json::Value::Array(images_array)) = images {
-                    let mut parts = vec![];
-                    if let Some(text) = content {
-                        if let Some(text_str) = text.as_str() {
-                            if !text_str.is_empty() {
-                                parts.push(serde_json::json!({"type": "text", "text": text}));
-                            }
+                let mut parts = vec![];
+                if let Some(text) = content {
+                    if let Some(text_str) = text.as_str() {
+                        if !text_str.is_empty() {
+                            parts.push(serde_json::json!({"type": "text", "text": text}));
                         }
                     }
+                }
+
+                if let Some(serde_json::Value::Array(images_array)) = images {
                     for image in images_array {
                         if let serde_json::Value::String(image_str) = image {
                             if let Some(image_type) = get_image_type(&image_str) {
@@ -72,9 +74,44 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
                             }
                         }
                     }
-                    message["content"] = serde_json::json!(parts);
                     message.as_object_mut().unwrap().remove("images");
                 }
+
+                if let Some(serde_json::Value::Array(videos_array)) = videos {
+                    for video in videos_array {
+                        if let serde_json::Value::String(video_str) = video {
+                            let mime = get_video_type(&video_str).unwrap_or("mp4");
+                            parts.push(serde_json::json!({
+                                "inline_data": {
+                                    "mime_type": format!("video/{}", mime),
+                                    "data": video_str
+                                }
+                            }));
+                        }
+                    }
+                    message.as_object_mut().unwrap().remove("videos");
+                }
+
+                if let Some(serde_json::Value::Array(audios_array)) = audios {
+                    for audio in audios_array {
+                        if let serde_json::Value::String(audio_str) = audio {
+                            if let Some(audio_type) = get_audio_type(&audio_str) {
+                                parts.push(serde_json::json!({
+                                    "inline_data": {
+                                        "mime_type": format!("audio/{}", audio_type),
+                                        "data": audio_str
+                                    }
+                                }));
+                            }
+                        }
+                    }
+                    message.as_object_mut().unwrap().remove("audios");
+                }
+
+                if !parts.is_empty() {
+                    message["content"] = serde_json::json!(parts);
+                }
+
                 message
             })
             .collect(),
@@ -932,5 +969,71 @@ mod tests {
         // Generate and print the final payload
         let payload = generate_test_payload(prompt, &model).expect("Failed to generate payload");
         println!("Final Payload: {}", serde_json::to_string_pretty(&payload).unwrap());
+    }
+
+    #[test]
+    fn test_gemini_with_audio() {
+        let sub_prompts = vec![
+            SubPrompt::Omni(
+                SubPromptType::System,
+                "You are an audio analysis assistant".to_string(),
+                vec![],
+                98,
+            ),
+            SubPrompt::Omni(SubPromptType::User, "What do you hear?".to_string(), vec![], 97),
+            SubPrompt::Omni(
+                SubPromptType::User,
+                "Please analyze this audio file".to_string(),
+                vec![(
+                    SubPromptAssetType::Audio,
+                    // Mock base64 audio data representing a simple WAV file header
+                    "UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=".to_string(),
+                    "audio.wav".to_string(),
+                )],
+                100,
+            ),
+        ];
+
+        let mut prompt = Prompt::new();
+        prompt.add_sub_prompts(sub_prompts);
+
+        // Use the mock provider
+        let model = SerializedLLMProvider::mock_provider().model;
+
+        // Call the gemini_prepare_messages function
+        let result = gemini_prepare_messages(&model, prompt.clone()).expect("Failed to prepare messages");
+
+        // Define the expected messages
+        let expected_messages = json!({
+            "system_instruction": {
+                "parts": { "text": "You are an audio analysis assistant" }
+            },
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [{ "text": "What do you hear?" }]
+                },
+                {
+                    "role": "user",
+                    "parts": [
+                        { "text": "Please analyze this audio file" },
+                        {
+                            "inline_data": {
+                                "mime_type": "audio/wav",
+                                "data": "UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA="
+                            }
+                        }
+                    ]
+                }
+            ]
+        });
+
+        // Assert the results
+        assert_eq!(result.messages, PromptResultEnum::Value(expected_messages));
+        assert!(result.remaining_output_tokens > 0);
+
+        // Generate and print the final payload
+        let payload = generate_test_payload(prompt, &model).expect("Failed to generate payload");
+        println!("Audio Test Final Payload: {}", serde_json::to_string_pretty(&payload).unwrap());
     }
 }

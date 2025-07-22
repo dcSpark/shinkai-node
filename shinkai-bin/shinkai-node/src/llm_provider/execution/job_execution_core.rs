@@ -183,6 +183,14 @@ impl JobManager {
         // Note: this could be other type of files later on e.g. video, audio, etc.
         let image_files = JobManager::get_image_files_from_message(db.clone(), &job_message).await?;
         eprintln!("# of images: {:?}", image_files.len());
+        
+        // Retrieve video files from the message
+        let video_files = JobManager::get_video_files_from_message(db.clone(), &job_message).await?;
+        eprintln!("# of videos: {:?}", video_files.len());
+        
+        // Retrieve audio files from the message
+        let audio_files = JobManager::get_audio_files_from_message(db.clone(), &job_message).await?;
+        eprintln!("# of audios: {:?}", audio_files.len());
 
         if image_files.len() > 0 {
             // Check if the specific LLM provider being used has ImageAnalysis capability
@@ -225,6 +233,88 @@ impl JobManager {
             }
         }
 
+        if video_files.len() > 0 {
+            // Check if the specific LLM provider being used has VideoAnalysis capability
+            let has_video_analysis = if let Some(provider) = &llm_provider_found {
+                // Get the specific model for this provider
+                let model = match provider {
+                    ProviderOrAgent::LLMProvider(llm_provider) => llm_provider.model.clone(),
+                    ProviderOrAgent::Agent(agent) => {
+                        // For agents, get the underlying LLM provider
+                        let llm_id = &agent.llm_provider_id;
+                        if let Ok(Some(llm_provider)) = db.get_llm_provider(llm_id, &user_profile) {
+                            llm_provider.model.clone()
+                        } else {
+                            shinkai_log(
+                                ShinkaiLogOption::JobExecution,
+                                ShinkaiLogLevel::Error,
+                                "Could not retrieve LLM provider for agent",
+                            );
+                            return Err(LLMProviderError::LLMProviderNotFound);
+                        }
+                    }
+                };
+                
+                // Check if this specific model has VideoAnalysis capability
+                ModelCapabilitiesManager::get_llm_provider_capabilities(&model)
+                    .contains(&ModelCapability::VideoAnalysis)
+            } else {
+                false
+            };
+
+            if !has_video_analysis {
+                shinkai_log(
+                    ShinkaiLogOption::JobExecution,
+                    ShinkaiLogLevel::Error,
+                    "The specific LLM provider being used does not have VideoAnalysis capability",
+                );
+                return Err(LLMProviderError::LLMProviderMissingCapabilities(
+                    "The specific LLM provider being used does not have VideoAnalysis capability".to_string(),
+                ));
+            }
+        }
+
+        if audio_files.len() > 0 {
+            // Check if the specific LLM provider being used has AudioAnalysis capability
+            let has_audio_analysis = if let Some(provider) = &llm_provider_found {
+                // Get the specific model for this provider
+                let model = match provider {
+                    ProviderOrAgent::LLMProvider(llm_provider) => llm_provider.model.clone(),
+                    ProviderOrAgent::Agent(agent) => {
+                        // For agents, get the underlying LLM provider
+                        let llm_id = &agent.llm_provider_id;
+                        if let Ok(Some(llm_provider)) = db.get_llm_provider(llm_id, &user_profile) {
+                            llm_provider.model.clone()
+                        } else {
+                            shinkai_log(
+                                ShinkaiLogOption::JobExecution,
+                                ShinkaiLogLevel::Error,
+                                "Could not retrieve LLM provider for agent",
+                            );
+                            return Err(LLMProviderError::LLMProviderNotFound);
+                        }
+                    }
+                };
+                
+                // Check if this specific model has AudioAnalysis capability
+                ModelCapabilitiesManager::get_llm_provider_capabilities(&model)
+                    .contains(&ModelCapability::AudioAnalysis)
+            } else {
+                false
+            };
+
+            if !has_audio_analysis {
+                shinkai_log(
+                    ShinkaiLogOption::JobExecution,
+                    ShinkaiLogLevel::Error,
+                    "The specific LLM provider being used does not have AudioAnalysis capability",
+                );
+                return Err(LLMProviderError::LLMProviderMissingCapabilities(
+                    "The specific LLM provider being used does not have AudioAnalysis capability".to_string(),
+                ));
+            }
+        }
+
         shinkai_log(
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Debug,
@@ -241,6 +331,8 @@ impl JobManager {
             job_message.clone(),
             message_hash_id,
             image_files.clone(),
+            video_files.clone(),
+            audio_files.clone(),
             generator,
             user_profile.clone(),
             ws_manager.clone(),
@@ -388,5 +480,151 @@ impl JobManager {
         }
 
         Ok(image_files)
+    }
+
+    /// Retrieves video files associated with a job message and converts them to base64
+    pub async fn get_video_files_from_message(
+        db: Arc<SqliteManager>,
+        job_message: &JobMessage,
+    ) -> Result<HashMap<String, String>, LLMProviderError> {
+        if job_message.fs_files_paths.is_empty() && job_message.job_filenames.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Debug,
+            format!("Retrieving video files for job message: {}", job_message.job_id).as_str(),
+        );
+
+        let mut video_files = HashMap::new();
+
+        // Process fs_files_paths
+        for file_path in &job_message.fs_files_paths {
+            if let Some(file_name) = file_path.path.file_name() {
+                let filename_lower = file_name.to_string_lossy().to_lowercase();
+                if filename_lower.ends_with(".mp4")
+                    || filename_lower.ends_with(".mov")
+                    || filename_lower.ends_with(".avi")
+                    || filename_lower.ends_with(".webm")
+                    || filename_lower.ends_with(".mkv")
+                    || filename_lower.ends_with(".wmv")
+                    || filename_lower.ends_with(".flv")
+                {
+                    // Retrieve the file content
+                    match ShinkaiFileManager::get_file_content(file_path.clone()) {
+                        Ok(content) => {
+                            let base64_content = base64::engine::general_purpose::STANDARD.encode(&content);
+                            video_files.insert(file_path.relative_path().to_string(), base64_content);
+                        }
+                        Err(_) => continue,
+                    }
+                }
+            }
+        }
+
+        // Process job_filenames
+        for filename in &job_message.job_filenames {
+            let filename_lower = filename.to_lowercase();
+            if filename_lower.ends_with(".mp4")
+                || filename_lower.ends_with(".mov")
+                || filename_lower.ends_with(".avi")
+                || filename_lower.ends_with(".webm")
+                || filename_lower.ends_with(".mkv")
+                || filename_lower.ends_with(".wmv")
+                || filename_lower.ends_with(".flv")
+            {
+                // Construct the job file path
+                match ShinkaiFileManager::construct_job_file_path(&job_message.job_id, filename, &db) {
+                    Ok(file_path) => {
+                        // Retrieve the file content
+                        match ShinkaiFileManager::get_file_content(file_path.clone()) {
+                            Ok(content) => {
+                                let base64_content = base64::engine::general_purpose::STANDARD.encode(&content);
+                                video_files.insert(filename.clone(), base64_content);
+                            }
+                            Err(_) => continue,
+                        }
+                    }
+                    Err(_) => continue,
+                }
+            }
+        }
+
+        Ok(video_files)
+    }
+
+    /// Retrieves audio files associated with a job message and converts them to base64
+    pub async fn get_audio_files_from_message(
+        db: Arc<SqliteManager>,
+        job_message: &JobMessage,
+    ) -> Result<HashMap<String, String>, LLMProviderError> {
+        if job_message.fs_files_paths.is_empty() && job_message.job_filenames.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Debug,
+            format!("Retrieving audio files for job message: {}", job_message.job_id).as_str(),
+        );
+
+        let mut audio_files = HashMap::new();
+
+        // Process fs_files_paths
+        for file_path in &job_message.fs_files_paths {
+            if let Some(file_name) = file_path.path.file_name() {
+                let filename_lower = file_name.to_string_lossy().to_lowercase();
+                if filename_lower.ends_with(".mp3")
+                    || filename_lower.ends_with(".wav")
+                    || filename_lower.ends_with(".flac")
+                    || filename_lower.ends_with(".ogg")
+                    || filename_lower.ends_with(".m4a")
+                    || filename_lower.ends_with(".aiff")
+                    || filename_lower.ends_with(".wma")
+                    || filename_lower.ends_with(".aac")
+                {
+                    // Retrieve the file content
+                    match ShinkaiFileManager::get_file_content(file_path.clone()) {
+                        Ok(content) => {
+                            let base64_content = base64::engine::general_purpose::STANDARD.encode(&content);
+                            audio_files.insert(file_path.relative_path().to_string(), base64_content);
+                        }
+                        Err(_) => continue,
+                    }
+                }
+            }
+        }
+
+        // Process job_filenames
+        for filename in &job_message.job_filenames {
+            let filename_lower = filename.to_lowercase();
+            if filename_lower.ends_with(".mp3")
+                || filename_lower.ends_with(".wav")
+                || filename_lower.ends_with(".flac")
+                || filename_lower.ends_with(".ogg")
+                || filename_lower.ends_with(".m4a")
+                || filename_lower.ends_with(".aiff")
+                || filename_lower.ends_with(".wma")
+                || filename_lower.ends_with(".aac")
+            {
+                // Construct the job file path
+                match ShinkaiFileManager::construct_job_file_path(&job_message.job_id, filename, &db) {
+                    Ok(file_path) => {
+                        // Retrieve the file content
+                        match ShinkaiFileManager::get_file_content(file_path.clone()) {
+                            Ok(content) => {
+                                let base64_content = base64::engine::general_purpose::STANDARD.encode(&content);
+                                audio_files.insert(filename.clone(), base64_content);
+                            }
+                            Err(_) => continue,
+                        }
+                    }
+                    Err(_) => continue,
+                }
+            }
+        }
+
+        Ok(audio_files)
     }
 }

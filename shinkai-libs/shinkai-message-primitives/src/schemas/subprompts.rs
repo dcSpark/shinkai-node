@@ -110,8 +110,13 @@ impl SubPrompt {
     pub fn extract_generic_subprompt_data(&self) -> (SubPromptType, String, &'static str) {
         match self {
             SubPrompt::Content(prompt_type, _, _) => (prompt_type.clone(), self.generate_output_string(), "text"),
-            SubPrompt::Asset(prompt_type, _, asset_content, _, _) => {
-                (prompt_type.clone(), asset_content.clone(), "image")
+            SubPrompt::Asset(prompt_type, asset_type, asset_content, _, _) => {
+                let content_type = match asset_type {
+                    SubPromptAssetType::Image => "image",
+                    SubPromptAssetType::Video => "video",
+                    SubPromptAssetType::Audio => "audio",
+                };
+                (prompt_type.clone(), asset_content.clone(), content_type)
             }
             SubPrompt::ToolAvailable(prompt_type, _, _) => (prompt_type.clone(), self.generate_output_string(), "text"),
             SubPrompt::FunctionCall(prompt_type, _, _) => (prompt_type.clone(), self.generate_output_string(), "text"),
@@ -158,17 +163,25 @@ impl SubPrompt {
     pub fn into_chat_completion_request_message(&self) -> LlmMessage {
         match self {
             SubPrompt::Omni(prompt_type, content, assets, _) => {
-                let images = assets
-                    .iter()
-                    .map(|(_, asset_content, _)| asset_content.clone())
-                    .collect::<Vec<_>>();
+                let mut images = Vec::new();
+                let mut videos = Vec::new();
+                let mut audios = Vec::new();
+                for (asset_type, asset_content, _) in assets.iter() {
+                    match asset_type {
+                        SubPromptAssetType::Image => images.push(asset_content.clone()),
+                        SubPromptAssetType::Video => videos.push(asset_content.clone()),
+                        SubPromptAssetType::Audio => audios.push(asset_content.clone()),
+                    }
+                }
                 LlmMessage {
                     role: Some(prompt_type.to_string()),
                     content: Some(content.clone()),
                     name: None,
                     function_call: None,
                     functions: None,
-                    images: Some(images),
+                    images: if images.is_empty() { None } else { Some(images) },
+                    videos: if videos.is_empty() { None } else { Some(videos) },
+                    audios: if audios.is_empty() { None } else { Some(audios) },
                     tool_calls: None,
                 }
             }
@@ -181,6 +194,8 @@ impl SubPrompt {
                     function_call: None,
                     functions: None,
                     images: None,
+                    videos: None,
+                    audios: None,
                     tool_calls: None,
                 }
             }
@@ -209,9 +224,9 @@ impl SubPrompt {
     where
         F: Fn(&[LlmMessage]) -> usize,
     {
-        // Only count tokens for non-image content
+        // Only count tokens for non-image/video content
         let (_, _, type_) = self.extract_generic_subprompt_data();
-        if type_ == "image" {
+        if type_ == "image" || type_ == "video" {
             return 0;
         }
 
