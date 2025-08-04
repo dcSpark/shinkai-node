@@ -18,6 +18,7 @@ pub mod deepseek;
 pub mod exo;
 pub mod gemini;
 pub mod groq;
+pub mod grok;
 pub mod llm_cancellable_request;
 pub mod local_regex;
 pub mod ollama;
