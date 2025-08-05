@@ -61,7 +61,7 @@ impl LLMService for Grok {
 
                 // Extract tools_json from the result and keep original for matching
                 let tools_json = result.functions.clone().unwrap_or_else(Vec::new);
-                let original_tools = tools_json.clone(); // Keep original for matching
+                let original_tools = result.functions.clone();
 
                 let mut payload = json!({
                     "model": self.model_type,
@@ -72,16 +72,15 @@ impl LLMService for Grok {
                 // Add tools to payload if they exist, but remove tool_router_key
                 if !tools_json.is_empty() {
                     let tools: Vec<JsonValue> = tools_json
-                        .iter()
-                        .map(|tool| {
-                            let mut function = tool.clone();
-                            if let Some(obj) = function.as_object_mut() {
-                                obj.remove("tool_router_key");
+                        .into_iter()
+                        .map(|mut tool| {
+                            // Remove tool_router_key from the function object, not the root
+                            if let Some(function) = tool.get_mut("function") {
+                                if let Some(function_obj) = function.as_object_mut() {
+                                    function_obj.remove("tool_router_key");
+                                }
                             }
-                            json!({
-                                "type": "function",
-                                "function": function
-                            })
+                            tool
                         })
                         .collect();
                     payload["tools"] = serde_json::Value::Array(tools);
@@ -137,7 +136,7 @@ impl LLMService for Grok {
                         ws_manager_trait.clone(),
                         llm_stopper,
                         session_id,
-                        Some(original_tools), // Pass original tools with router keys
+                        original_tools,
                     )
                     .await
                 } else {
@@ -149,7 +148,7 @@ impl LLMService for Grok {
                         inbox_name,
                         llm_stopper,
                         ws_manager_trait.clone(),
-                        Some(original_tools), // Pass original tools with router keys
+                        original_tools,
                     )
                     .await
                 }
@@ -182,16 +181,25 @@ async fn handle_streaming_response(
         .await?;
 
     // Check if it's an error response
-    if !res.status().is_success() {
-        let error_json: serde_json::Value = res.json().await?;
-        if let Some(error) = error_json.get("error") {
-            let error_message = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
-            return Err(LLMProviderError::APIError(
-                "Grok API Error: ".to_string() + error_message,
-            ));
+    let status = res.status();
+    if !status.is_success() {
+        let response_text = res.text().await?;
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Error,
+            format!("Grok API Error Response (status {}): {}", status, response_text).as_str(),
+        );
+        
+        if let Ok(error_json) = serde_json::from_str::<serde_json::Value>(&response_text) {
+            if let Some(error) = error_json.get("error") {
+                let error_message = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
+                return Err(LLMProviderError::APIError(
+                    format!("Grok API Error: {}", error_message),
+                ));
+            }
         }
         return Err(LLMProviderError::APIError(
-            "Grok API Error: Unknown error occurred".to_string(),
+            format!("Grok API Error ({}): {}", status, response_text),
         ));
     }
 
@@ -207,15 +215,39 @@ async fn handle_streaming_response(
 
     if !is_stream {
         // Handle as regular JSON response
-        let response_json: serde_json::Value = res.json().await?;
-        if let Some(error) = response_json.get("error") {
-            let error_message = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
-            return Err(LLMProviderError::APIError(
-                "Grok API Error: ".to_string() + error_message,
-            ));
+        let response_text = res.text().await?;
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Debug,
+            format!("Grok API Non-streaming Response: {}", response_text).as_str(),
+        );
+        
+        if let Ok(response_json) = serde_json::from_str::<serde_json::Value>(&response_text) {
+            if let Some(error) = response_json.get("error") {
+                let error_message = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
+                return Err(LLMProviderError::APIError(
+                    format!("Grok API Error: {}", error_message),
+                ));
+            }
+            
+            // If we got valid JSON but expected streaming, return the response anyway
+            if let Ok(data) = serde_json::from_value::<super::shared::openai_api_deprecated::OpenAIResponse>(response_json.clone()) {
+                let response_string: String = data
+                    .choices
+                    .iter()
+                    .filter_map(|choice| match &choice.message.content {
+                        Some(super::shared::openai_api_deprecated::MessageContent::Text(text)) => Some(text.clone()),
+                        _ => None,
+                    })
+                    .collect::<Vec<String>>()
+                    .join(" ");
+
+                return Ok(LLMInferenceResponse::new(response_string, json!({}), Vec::new(), None));
+            }
         }
+        
         return Err(LLMProviderError::APIError(
-            "Grok API Error: Expected streaming response but received regular JSON".to_string(),
+            format!("Grok API Error: Invalid response format: {}", response_text),
         ));
     }
 
@@ -593,8 +625,9 @@ async fn handle_non_streaming_response(
 
                             // Handle tool_calls
                             if let Some(tool_calls) = &choice.message.tool_calls {
-                                for (index, tool_call) in tool_calls.iter().enumerate() {
+                                for (index, tool_call) in tool_calls.iter().enumerate() {                                    
                                     let arguments = serde_json::from_str::<serde_json::Value>(&tool_call.function.arguments)
+                                        .map(|args_value| args_value)
                                         .ok()
                                         .and_then(|args_value: serde_json::Value| args_value.as_object().cloned())
                                         .unwrap_or_else(|| serde_json::Map::new());
@@ -602,11 +635,15 @@ async fn handle_non_streaming_response(
                                     // Find matching tool and extract router key
                                     let tool_router_key = tools.as_ref().and_then(|tools_array| {
                                         tools_array.iter().find_map(|tool| {
-                                            if let Some(name) = tool.get("name").and_then(|n| n.as_str()) {
-                                                if name == tool_call.function.name {
-                                                    tool.get("tool_router_key")
-                                                        .and_then(|key| key.as_str())
-                                                        .map(|s| s.to_string())
+                                            if let Some(function) = tool.get("function") {
+                                                if let Some(name) = function.get("name").and_then(|n| n.as_str()) {
+                                                    if name == tool_call.function.name {
+                                                        function.get("tool_router_key")
+                                                            .and_then(|key| key.as_str())
+                                                            .map(|s| s.to_string())
+                                                    } else {
+                                                        None
+                                                    }
                                                 } else {
                                                     None
                                                 }
