@@ -25,6 +25,7 @@ impl SerializedLLMProvider {
             LLMProviderInterface::Ollama(_) => "ollama",
             LLMProviderInterface::ShinkaiBackend(_) => "shinkai-backend",
             LLMProviderInterface::Groq(_) => "groq",
+            LLMProviderInterface::Grok(_) => "grok",
             LLMProviderInterface::Gemini(_) => "gemini",
             LLMProviderInterface::Exo(_) => "exo",
             LLMProviderInterface::OpenRouter(_) => "openrouter",
@@ -42,6 +43,7 @@ impl SerializedLLMProvider {
             LLMProviderInterface::Ollama(_) => "ollama".to_string(),
             LLMProviderInterface::ShinkaiBackend(_) => "shinkai-backend".to_string(),
             LLMProviderInterface::Groq(_) => "openai-generic".to_string(),
+            LLMProviderInterface::Grok(_) => "openai-generic".to_string(),
             LLMProviderInterface::Gemini(_) => "google-ai".to_string(),
             LLMProviderInterface::Exo(_) => "openai-generic".to_string(),
             LLMProviderInterface::OpenRouter(_) => "openai-generic".to_string(),
@@ -58,6 +60,7 @@ impl SerializedLLMProvider {
             LLMProviderInterface::Ollama(ollama) => ollama.model_type.clone(),
             LLMProviderInterface::ShinkaiBackend(shinkaibackend) => shinkaibackend.model_type.clone(),
             LLMProviderInterface::Groq(groq) => groq.model_type.clone(),
+            LLMProviderInterface::Grok(grok) => grok.model_type.clone(),
             LLMProviderInterface::Gemini(gemini) => gemini.model_type.clone(),
             LLMProviderInterface::Exo(exo) => exo.model_type.clone(),
             LLMProviderInterface::OpenRouter(openrouter) => openrouter.model_type.clone(),
@@ -119,6 +122,7 @@ pub enum LLMProviderInterface {
     Ollama(Ollama),
     ShinkaiBackend(ShinkaiBackend),
     Groq(Groq),
+    Grok(Grok),
     Gemini(Gemini),
     Exo(Exo),
     OpenRouter(OpenRouter),
@@ -144,6 +148,17 @@ pub struct Groq {
 }
 
 impl Groq {
+    pub fn model_type(&self) -> String {
+        self.model_type.to_string()
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
+pub struct Grok {
+    pub model_type: String,
+}
+
+impl Grok {
     pub fn model_type(&self) -> String {
         self.model_type.to_string()
     }
@@ -254,6 +269,9 @@ impl FromStr for LLMProviderInterface {
         } else if s.starts_with("groq:") {
             let model_type = s.strip_prefix("groq:").unwrap_or("").to_string();
             Ok(LLMProviderInterface::Groq(Groq { model_type }))
+        } else if s.starts_with("grok:") {
+            let model_type = s.strip_prefix("grok:").unwrap_or("").to_string();
+            Ok(LLMProviderInterface::Grok(Grok { model_type }))
         } else if s.starts_with("gemini:") {
             let model_type = s.strip_prefix("gemini:").unwrap_or("").to_string();
             Ok(LLMProviderInterface::Gemini(Gemini { model_type }))
@@ -302,6 +320,10 @@ impl Serialize for LLMProviderInterface {
             }
             LLMProviderInterface::Groq(groq) => {
                 let model_type = format!("groq:{}", groq.model_type);
+                serializer.serialize_str(&model_type)
+            }
+            LLMProviderInterface::Grok(grok) => {
+                let model_type = format!("grok:{}", grok.model_type);
                 serializer.serialize_str(&model_type)
             }
             LLMProviderInterface::Gemini(gemini) => {
@@ -362,6 +384,9 @@ impl<'de> Visitor<'de> for LLMProviderInterfaceVisitor {
             "groq" => Ok(LLMProviderInterface::Groq(Groq {
                 model_type: parts.get(1).unwrap_or(&"").to_string(),
             })),
+            "grok" => Ok(LLMProviderInterface::Grok(Grok {
+                model_type: parts.get(1).unwrap_or(&"").to_string(),
+            })),
             "gemini" => Ok(LLMProviderInterface::Gemini(Gemini {
                 model_type: parts.get(1).unwrap_or(&"").to_string(),
             })),
@@ -389,6 +414,7 @@ impl<'de> Visitor<'de> for LLMProviderInterfaceVisitor {
                     "shinkai-backend",
                     "local-llm",
                     "groq",
+                    "grok",
                     "exo",
                     "gemini",
                     "openrouter",

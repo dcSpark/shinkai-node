@@ -180,6 +180,15 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Groq(model) => Self::get_shared_capabilities(model.model_type().as_str()),
             LLMProviderInterface::Gemini(gemini) => Self::get_gemini_capabilities(gemini.model_type.as_str()),
             LLMProviderInterface::OpenRouter(model) => Self::get_shared_capabilities(model.model_type().as_str()),
+            LLMProviderInterface::Grok(grok) => {
+                if grok.model_type.starts_with("grok-2-vision") {
+                    vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+                } else if grok.model_type.starts_with("grok-4") {
+                    vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+                } else {
+                    vec![ModelCapability::TextInference]
+                }
+            },
             LLMProviderInterface::Claude(_) => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
             LLMProviderInterface::DeepSeek(_) => vec![ModelCapability::TextInference],
             LLMProviderInterface::LocalRegex(_) => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
@@ -409,6 +418,21 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Gemini(gemini) => Self::get_gemini_cost(gemini.model_type.as_str()),
             LLMProviderInterface::Exo(_) => ModelCost::Cheap,
             LLMProviderInterface::OpenRouter(_) => ModelCost::Free,
+            LLMProviderInterface::Grok(grok) => {
+                if grok.model_type.starts_with("grok-4") {
+                    ModelCost::GoodValue
+                } else if grok.model_type.starts_with("grok-3-mini") {
+                    ModelCost::VeryCheap
+                } else if grok.model_type.starts_with("grok-3-fast") {
+                    ModelCost::Expensive
+                } else if grok.model_type.starts_with("grok-3") {
+                    ModelCost::GoodValue
+                } else if grok.model_type.starts_with("grok-2-vision") {
+                    ModelCost::Cheap
+                } else {
+                    ModelCost::Unknown
+                }
+            },
             LLMProviderInterface::Claude(claude) => match claude.model_type.as_str() {
                 "claude-opus-4-20250514" | "claude-opus-4-latest" => ModelCost::Expensive,
                 "claude-sonnet-4-20250514" | "claude-sonnet-4-latest" => ModelCost::Cheap,
@@ -447,6 +471,7 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Gemini(_) => ModelPrivacy::RemoteGreedy,
             LLMProviderInterface::Exo(_) => ModelPrivacy::Local,
             LLMProviderInterface::OpenRouter(_) => ModelPrivacy::Local,
+            LLMProviderInterface::Grok(_) => ModelPrivacy::RemoteGreedy,
             LLMProviderInterface::Claude(_) => ModelPrivacy::RemoteGreedy,
             LLMProviderInterface::DeepSeek(_) => ModelPrivacy::RemoteGreedy,
             LLMProviderInterface::LocalRegex(_) => ModelPrivacy::Local,
@@ -547,6 +572,11 @@ impl ModelCapabilitiesManager {
                 let messages_string = llama_prepare_messages(model, exo.clone().model_type, prompt, total_tokens)?;
                 Ok(messages_string)
             }
+            LLMProviderInterface::Grok(grok) => {
+                let total_tokens = Self::get_max_tokens(model);
+                let messages_string = llama_prepare_messages(model, grok.clone().model_type, prompt, total_tokens)?;
+                Ok(messages_string)
+            }
             LLMProviderInterface::Claude(claude) => {
                 let total_tokens = Self::get_max_tokens(model);
                 let messages_string = llama_prepare_messages(model, claude.clone().model_type, prompt, total_tokens)?;
@@ -617,6 +647,17 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Groq(groq) => {
                 std::cmp::min(Self::get_max_tokens_for_model_type(&groq.model_type), 7000)
             }
+            LLMProviderInterface::Grok(grok) => {
+                if grok.model_type.starts_with("grok-4") {
+                    256_000
+                } else if grok.model_type.starts_with("grok-3") {
+                    131_072
+                } else if grok.model_type.starts_with("grok-2") {
+                    32_768
+                } else {
+                    131_072 // Default to grok-3 context window for unknown models
+                }
+            },
             LLMProviderInterface::OpenRouter(openrouter) => Self::get_max_tokens_for_model_type(&openrouter.model_type),
             LLMProviderInterface::Claude(_) => 200_000, // All Claude models now have 200K context window
             LLMProviderInterface::DeepSeek(_) => 64_000,
@@ -793,6 +834,17 @@ impl ModelCapabilitiesManager {
                     4096 // Default for other Groq models
                 }
             }
+            LLMProviderInterface::Grok(grok) => {
+                if grok.model_type.starts_with("grok-4") {
+                    128_000
+                } else if grok.model_type.starts_with("grok-3") {
+                    65_536
+                } else if grok.model_type.starts_with("grok-2") {
+                    16_384
+                } else {
+                    4096
+                }
+            },
             LLMProviderInterface::Exo(_) => 4096,
             LLMProviderInterface::Gemini(gemini) => Self::get_gemini_max_output_tokens(gemini.model_type.as_str()),
             LLMProviderInterface::OpenRouter(_) => {
