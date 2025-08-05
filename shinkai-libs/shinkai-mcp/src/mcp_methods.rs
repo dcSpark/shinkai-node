@@ -338,16 +338,19 @@ pub mod tests_mcp_manager {
         let result = list_tools_via_command("npx -y @modelcontextprotocol/server-everything", None).await;
         assert!(result.is_ok());
         let unwrapped = result.unwrap();
-        assert!(unwrapped.len() == 8);
+        assert!(unwrapped.len() == 11);
         let tools = [
             "echo",
             "add",
             "longRunningOperation",
+            "printEnv",
             "sampleLLM",
             "getTinyImage",
-            "printEnv",
             "annotatedMessage",
             "getResourceReference",
+            "startElicitation",
+            "getResourceLinks",
+            "structuredContent",
         ];
         for tool in tools {
             assert!(unwrapped.iter().any(|t| t.name == tool));
@@ -387,16 +390,19 @@ pub mod tests_mcp_manager {
             });
         assert!(result.is_ok());
         let unwrapped = result.unwrap();
-        assert!(unwrapped.len() == 8);
+        assert!(unwrapped.len() == 11);
         let tools = [
             "echo",
             "add",
             "longRunningOperation",
+            "printEnv",
             "sampleLLM",
             "getTinyImage",
-            "printEnv",
             "annotatedMessage",
             "getResourceReference",
+            "startElicitation",
+            "getResourceLinks",
+            "structuredContent",
         ];
         for tool in tools {
             assert!(unwrapped.iter().any(|t| t.name == tool));
@@ -429,7 +435,7 @@ pub mod tests_mcp_manager {
         let result = list_tools_via_http("http://localhost:8002/mcp", None).await;
         assert!(result.is_ok());
         let unwrapped = result.unwrap();
-        assert!(unwrapped.len() == 8);
+        assert!(unwrapped.len() == 11);
     }
 
     #[tokio::test]
