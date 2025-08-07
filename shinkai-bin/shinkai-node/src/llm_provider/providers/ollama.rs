@@ -681,6 +681,10 @@ fn add_options_to_payload(
     let streaming = get_value("LLM_STREAMING", config.and_then(|c| c.stream.as_ref())).unwrap_or(true); // Default to true if not specified
     payload["stream"] = serde_json::json!(streaming);
 
+    // Handle thinking option
+    let thinking = get_value("LLM_THINKING", config.and_then(|c| c.thinking.as_ref())).unwrap_or(true);
+    payload["thinking"] = serde_json::json!(thinking);
+
     // Handle num_ctx setting
     let num_ctx_from_config = config
         .and_then(|c| c.other_model_params.as_ref())

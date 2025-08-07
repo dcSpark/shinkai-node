@@ -809,6 +809,7 @@ impl Node {
                     max_tokens: None,
                     other_model_params: None,
                     use_tools: None,
+                    thinking: None,
                 });
                 let _ = res.send(Ok(config)).await;
                 Ok(())

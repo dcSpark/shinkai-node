@@ -667,6 +667,7 @@ impl ModelCapabilitiesManager {
 
     fn get_max_tokens_for_model_type(model_type: &str) -> usize {
         match model_type {
+            model_type if model_type.starts_with("gpt-oss") => 128_000,
             model_type if model_type.starts_with("mistral:7b-instruct-v0.2") => 32_000,
             model_type if model_type.starts_with("mistral-nemo") => 128_000,
             model_type if model_type.starts_with("mistral-small3.2") || model_type.starts_with("mistral-small3.1") => {
@@ -809,9 +810,19 @@ impl ModelCapabilitiesManager {
                 }
             }
             LLMProviderInterface::Ollama(_) => {
-                // Fill in the appropriate logic for Ollama
-                if Self::get_max_tokens(model) <= 8000 {
-                    2800
+                let max_tokens = Self::get_max_tokens(model);
+                if max_tokens <= 8000 {
+                    2048
+                } else if max_tokens <= 16000 {
+                    4096
+                } else if max_tokens <= 32000 {
+                    8192
+                } else if max_tokens <= 64000 {
+                    16384
+                } else if max_tokens <= 128000 {
+                    32768
+                } else if max_tokens <= 256000 {
+                    65536
                 } else {
                     4096
                 }
@@ -1002,6 +1013,7 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("command-r7b")
                     || model.model_type.starts_with("mistral-small")
                     || model.model_type.starts_with("magistral")
+                    || model.model_type.starts_with("gpt-oss")
             }
             LLMProviderInterface::Groq(model) => {
                 // Groq Production Models (that support tool calling)
@@ -1032,6 +1044,7 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("qwen-2.5-coder-32b")
                     || model.model_type.starts_with("qwen-2.5-32b")
                     || model.model_type.starts_with("deepseek-r1-distill-qwen-32b")
+                    || model.model_type.starts_with("gpt-oss")
             }
             LLMProviderInterface::OpenRouter(model) => {
                 model.model_type.starts_with("llama-3.2")
@@ -1045,6 +1058,7 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("mistral-large")
                     || model.model_type.starts_with("mistral-pixtral")
                     || model.model_type.starts_with("magistral")
+                    || model.model_type.starts_with("gpt-oss")
             }
             LLMProviderInterface::Claude(_) => true, // All Claude models support tool calling
             LLMProviderInterface::ShinkaiBackend(_) => true,
@@ -1068,6 +1082,7 @@ impl ModelCapabilitiesManager {
                 ollama.model_type.starts_with("deepseek-r1")
                     || ollama.model_type.starts_with("qwq")
                     || ollama.model_type.starts_with("magistral")
+                    || ollama.model_type.starts_with("gpt-oss")
             }
             LLMProviderInterface::Groq(groq) => {
                 groq.model_type.starts_with("deepseek-r1-distill-llama-70b")

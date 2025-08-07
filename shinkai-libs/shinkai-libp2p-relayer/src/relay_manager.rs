@@ -424,11 +424,18 @@ impl RelayManager {
     /// Post node status to the configured HTTP endpoint (non-blocking)
     fn post_node_status(&self, peer_id: PeerId, online: bool, connection_health: Option<ConnectionHealth>) {
         if let Some(ref endpoint_url) = self.config.status_endpoint_url {
-            let identity = self.find_identity_by_peer(&peer_id);
+            let identity = match self.find_identity_by_peer(&peer_id) {
+                Some(identity) => identity,
+                None => {
+                    println!("⚠️ No identity found for peer {}, using peer ID as identity", peer_id);
+                    peer_id.to_string()
+                }
+            };
+
             let payload = NodeStatusPayload {
                 online,
                 connection_health,
-                identity,
+                identity: Some(identity),
             };
 
             let url = format!("{}/dapps/nodes/{}", endpoint_url, peer_id);
