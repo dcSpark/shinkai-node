@@ -243,6 +243,9 @@ async fn process_stream(
     tools: Option<Vec<JsonValue>>,
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
     let mut response_text = String::new();
+    let mut thinking_content = String::new();
+    let mut thinking_started = false;
+    let mut thinking_ended = false;
     let mut previous_json_chunk: String = String::new();
     let mut final_eval_count = None;
     let mut final_eval_duration = None;
@@ -315,7 +318,106 @@ async fn process_stream(
                 match data_resp {
                     Ok(data) => {
                         previous_json_chunk = "".to_string();
-                        response_text.push_str(&data.message.content);
+                        
+                        // Handle thinking tokens
+                        if let Some(thinking) = &data.message.thinking {
+                            if !thinking.is_empty() {
+                                if !thinking_started {
+                                    thinking_started = true;
+                                    // Send opening <think> tag immediately via WebSocket
+                                    if let Some(ref manager) = ws_manager_trait {
+                                        if let Some(ref inbox_name) = inbox_name {
+                                            let m = manager.lock().await;
+                                            let inbox_name_string = inbox_name.to_string();
+                                            let metadata = WSMetadata {
+                                                id: Some(session_id.clone()),
+                                                is_done: false,
+                                                done_reason: None,
+                                                total_duration: None,
+                                                eval_count: None,
+                                            };
+                                            let ws_message_type = WSMessageType::Metadata(metadata);
+                                            let _ = m
+                                                .queue_message(
+                                                    WSTopic::Inbox,
+                                                    inbox_name_string,
+                                                    "<think>".to_string(),
+                                                    ws_message_type,
+                                                    true,
+                                                )
+                                                .await;
+                                        }
+                                    }
+                                    // Add to response text for final accumulation
+                                    response_text.push_str("<think>");
+                                }
+                                
+                                // Stream thinking content immediately via WebSocket
+                                if let Some(ref manager) = ws_manager_trait {
+                                    if let Some(ref inbox_name) = inbox_name {
+                                        let m = manager.lock().await;
+                                        let inbox_name_string = inbox_name.to_string();
+                                        let metadata = WSMetadata {
+                                            id: Some(session_id.clone()),
+                                            is_done: false,
+                                            done_reason: None,
+                                            total_duration: None,
+                                            eval_count: None,
+                                        };
+                                        let ws_message_type = WSMessageType::Metadata(metadata);
+                                        let _ = m
+                                            .queue_message(
+                                                WSTopic::Inbox,
+                                                inbox_name_string,
+                                                thinking.clone(),
+                                                ws_message_type,
+                                                true,
+                                            )
+                                            .await;
+                                    }
+                                }
+                                
+                                // Also accumulate for final response
+                                thinking_content.push_str(thinking);
+                                response_text.push_str(thinking);
+                            }
+                        }
+                        
+                        // Handle regular content tokens
+                        if !data.message.content.is_empty() {
+                            // If we were processing thinking and now we have content, 
+                            // close the thinking tags
+                            if thinking_started && !thinking_ended {
+                                thinking_ended = true;
+                                // Send closing </think> tag via WebSocket
+                                if let Some(ref manager) = ws_manager_trait {
+                                    if let Some(ref inbox_name) = inbox_name {
+                                        let m = manager.lock().await;
+                                        let inbox_name_string = inbox_name.to_string();
+                                        let metadata = WSMetadata {
+                                            id: Some(session_id.clone()),
+                                            is_done: false,
+                                            done_reason: None,
+                                            total_duration: None,
+                                            eval_count: None,
+                                        };
+                                        let ws_message_type = WSMessageType::Metadata(metadata);
+                                        let _ = m
+                                            .queue_message(
+                                                WSTopic::Inbox,
+                                                inbox_name_string,
+                                                "</think>".to_string(),
+                                                ws_message_type,
+                                                true,
+                                            )
+                                            .await;
+                                    }
+                                }
+                                // Add to response text for final accumulation
+                                response_text.push_str("</think>");
+                            }
+                            response_text.push_str(&data.message.content);
+                        }
 
                         if let Some(tool_calls) = data.message.tool_calls {
                             for tool_call in tool_calls {
@@ -461,6 +563,36 @@ async fn process_stream(
         }
     }
 
+    // If we ended with thinking content but no regular content, send closing tag
+    if thinking_started && !thinking_ended && !thinking_content.is_empty() {
+        // Send closing </think> tag via WebSocket
+        if let Some(ref manager) = ws_manager_trait {
+            if let Some(ref inbox_name) = inbox_name {
+                let m = manager.lock().await;
+                let inbox_name_string = inbox_name.to_string();
+                let metadata = WSMetadata {
+                    id: Some(session_id.clone()),
+                    is_done: true,
+                    done_reason: None,
+                    total_duration: None,
+                    eval_count: None,
+                };
+                let ws_message_type = WSMessageType::Metadata(metadata);
+                let _ = m
+                    .queue_message(
+                        WSTopic::Inbox,
+                        inbox_name_string,
+                        "</think>".to_string(),
+                        ws_message_type,
+                        true,
+                    )
+                    .await;
+            }
+        }
+        // Add to response text for final accumulation
+        response_text.push_str("</think>");
+    }
+
     let tps = if let (Some(eval_count), Some(eval_duration)) = (final_eval_count, final_eval_duration) {
         if eval_duration > 0 {
             Some(eval_count as f64 / eval_duration as f64 * 1e9)
@@ -530,6 +662,21 @@ async fn handle_non_streaming_response(
                 if let Some(message) = response_json.get("message") {
                     if let Some(content) = message.get("content") {
                         if let Some(content_str) = content.as_str() {
+                            // Handle thinking content in non-streaming response
+                            let mut final_content = String::new();
+                            
+                            // Check for thinking content and prepend it with tags
+                            if let Some(thinking) = message.get("thinking").and_then(|t| t.as_str()) {
+                                if !thinking.is_empty() {
+                                    final_content.push_str("<think>");
+                                    final_content.push_str(thinking);
+                                    final_content.push_str("</think>");
+                                }
+                            }
+                            
+                            // Add regular content
+                            final_content.push_str(content_str);
+                            
                             let mut function_calls = Vec::new();
 
                             if let Some(tool_calls) = message.get("tool_calls").and_then(|tc| tc.as_array()) {
@@ -606,6 +753,31 @@ async fn handle_non_streaming_response(
                                 format!("Function Calls: {:?}", function_calls).as_str(),
                             );
 
+                            // Send the final content (including thinking) via WebSocket in non-streaming mode
+                            if let Some(ref manager) = ws_manager_trait {
+                                if let Some(ref inbox_name) = inbox_name {
+                                    let m = manager.lock().await;
+                                    let inbox_name_string = inbox_name.to_string();
+                                    let metadata = WSMetadata {
+                                        id: None,
+                                        is_done: true,
+                                        done_reason: None,
+                                        total_duration: None,
+                                        eval_count: None,
+                                    };
+                                    let ws_message_type = WSMessageType::Metadata(metadata);
+                                    let _ = m
+                                        .queue_message(
+                                            WSTopic::Inbox,
+                                            inbox_name_string,
+                                            final_content.clone(),
+                                            ws_message_type,
+                                            true,
+                                        )
+                                        .await;
+                                }
+                            }
+
                             let eval_count = response_json.get("eval_count").and_then(|v| v.as_u64()).unwrap_or(0);
                             let eval_duration = response_json.get("eval_duration").and_then(|v| v.as_u64()).unwrap_or(1);
                             let tps = if eval_duration > 0 {
@@ -615,7 +787,7 @@ async fn handle_non_streaming_response(
                             };
 
                             break Ok(LLMInferenceResponse::new(
-                                content_str.to_string(),
+                                final_content,
                                 json!({}),
                                 function_calls,
                                 tps,
@@ -680,6 +852,15 @@ fn add_options_to_payload(
     // Handle streaming option
     let streaming = get_value("LLM_STREAMING", config.and_then(|c| c.stream.as_ref())).unwrap_or(true); // Default to true if not specified
     payload["stream"] = serde_json::json!(streaming);
+
+    // Handle thinking option (there are open issues with this feature)
+    // https://github.com/ollama/ollama/issues/11712
+    // https://github.com/ollama/ollama/issues/11751
+    // https://github.com/ollama/ollama/issues/10976
+    if ModelCapabilitiesManager::has_reasoning_capabilities(model) {
+        let thinking = get_value("LLM_THINKING", config.and_then(|c| c.thinking.as_ref())).unwrap_or(true);
+        payload["think"] = serde_json::json!(thinking);
+    }
 
     // Handle num_ctx setting
     let num_ctx_from_config = config

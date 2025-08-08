@@ -46,6 +46,8 @@ pub struct OllamaMessage {
     pub images: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<ToolCall>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thinking: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
@@ -131,6 +133,7 @@ fn from_chat_completion_messages(
                 content,
                 images,
                 tool_calls: None,
+                thinking: None,
             });
         }
     }
@@ -358,12 +361,14 @@ mod tests {
                 content: "You are a very helpful assistant. You may be provided with documents or content to analyze and answer questions about them, in that case refer to the content provided in the user message for your responses.".to_string(),
                 images: None,
                 tool_calls: None,
+                thinking: None,
             },
             OllamaMessage {
                 role: "user".to_string(),
                 content: "tell me what's the response when using shinkai echo tool with: say hello".to_string(),
                 images: Some(vec![]),
                 tool_calls: None,
+                thinking: None,
             },
         ];
 

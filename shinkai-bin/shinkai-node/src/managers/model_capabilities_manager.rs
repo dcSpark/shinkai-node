@@ -133,6 +133,7 @@ impl ModelCapabilitiesManager {
     pub fn get_llm_provider_capabilities(model: &LLMProviderInterface) -> Vec<ModelCapability> {
         match model {
             LLMProviderInterface::OpenAI(openai) => match openai.model_type.as_str() {
+                "gpt-5" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
                 "gpt-4o" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
                 "gpt-4o-mini" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
                 "gpt-4.1-nano" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
@@ -386,6 +387,7 @@ impl ModelCapabilitiesManager {
     pub fn get_llm_provider_cost(model: &LLMProviderInterface) -> ModelCost {
         match model {
             LLMProviderInterface::OpenAI(openai) => match openai.model_type.as_str() {
+                "gpt-5" => ModelCost::Expensive,
                 "gpt-4o" => ModelCost::GoodValue,
                 "gpt-3.5-turbo-1106" => ModelCost::VeryCheap,
                 "gpt-4o-mini" => ModelCost::VeryCheap,
@@ -612,6 +614,8 @@ impl ModelCapabilitiesManager {
                     1_047_576
                 } else if openai.model_type.starts_with("o3") || openai.model_type.starts_with("o4-mini") {
                     200_000
+                } else if openai.model_type.starts_with("gpt-5") {
+                    400_000
                 } else if openai.model_type.starts_with("gpt-3.5") {
                     16384
                 } else {
@@ -667,6 +671,7 @@ impl ModelCapabilitiesManager {
 
     fn get_max_tokens_for_model_type(model_type: &str) -> usize {
         match model_type {
+            model_type if model_type.starts_with("gpt-oss") => 128_000,
             model_type if model_type.starts_with("mistral:7b-instruct-v0.2") => 32_000,
             model_type if model_type.starts_with("mistral-nemo") => 128_000,
             model_type if model_type.starts_with("mistral-small3.2") || model_type.starts_with("mistral-small3.1") => {
@@ -786,6 +791,8 @@ impl ModelCapabilitiesManager {
                     65_536
                 } else if openai.model_type.starts_with("o3") || openai.model_type.starts_with("o4-mini") {
                     100_000
+                } else if openai.model_type.starts_with("gpt-5") {
+                    128_000
                 } else if openai.model_type.starts_with("gpt-3.5") {
                     4096
                 } else {
@@ -1002,6 +1009,7 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("command-r7b")
                     || model.model_type.starts_with("mistral-small")
                     || model.model_type.starts_with("magistral")
+                    || model.model_type.starts_with("gpt-oss")
             }
             LLMProviderInterface::Groq(model) => {
                 // Groq Production Models (that support tool calling)
@@ -1032,6 +1040,7 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("qwen-2.5-coder-32b")
                     || model.model_type.starts_with("qwen-2.5-32b")
                     || model.model_type.starts_with("deepseek-r1-distill-qwen-32b")
+                    || model.model_type.starts_with("gpt-oss")
             }
             LLMProviderInterface::OpenRouter(model) => {
                 model.model_type.starts_with("llama-3.2")
@@ -1045,6 +1054,7 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("mistral-large")
                     || model.model_type.starts_with("mistral-pixtral")
                     || model.model_type.starts_with("magistral")
+                    || model.model_type.starts_with("gpt-oss")
             }
             LLMProviderInterface::Claude(_) => true, // All Claude models support tool calling
             LLMProviderInterface::ShinkaiBackend(_) => true,
@@ -1063,11 +1073,13 @@ impl ModelCapabilitiesManager {
                     || openai.model_type.starts_with("o3")
                     || openai.model_type.starts_with("o4")
                     || openai.model_type.starts_with("o5")
+                    || openai.model_type.starts_with("gpt-5")
             }
             LLMProviderInterface::Ollama(ollama) => {
                 ollama.model_type.starts_with("deepseek-r1")
-                    || ollama.model_type.starts_with("qwq")
                     || ollama.model_type.starts_with("magistral")
+                    || ollama.model_type.starts_with("gpt-oss")
+                    || ollama.model_type.starts_with("qwen3")
             }
             LLMProviderInterface::Groq(groq) => {
                 groq.model_type.starts_with("deepseek-r1-distill-llama-70b")
@@ -1077,7 +1089,7 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::DeepSeek(deepseek) => deepseek.model_type.starts_with("deepseek-reasoner"),
             LLMProviderInterface::Claude(claude) => {
                 claude.model_type.starts_with("claude-opus-4")
-                    || claude.model_type.starts_with("claude-sonnet-4")
+                    || claude.model_type.starts_with("claude-4-sonnet")
                     || claude.model_type.starts_with("claude-3-7-sonnet")
             }
             LLMProviderInterface::Gemini(gemini) => {

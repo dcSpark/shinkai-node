@@ -97,7 +97,8 @@ impl LLMService for OpenAI {
                 let tools_json = result.functions.unwrap_or_else(Vec::new);
 
                 // Set up initial payload with appropriate token limit field based on model capabilities
-                let mut payload = if ModelCapabilitiesManager::has_reasoning_capabilities(&model) {
+                let mut payload = if ModelCapabilitiesManager::has_reasoning_capabilities(&model) 
+                {
                     json!({
                         "model": self.model_type,
                         "messages": messages_json,
@@ -118,8 +119,19 @@ impl LLMService for OpenAI {
                     payload["tools"] = serde_json::Value::Array(tools_json.clone());
                 }
 
-                // Only add options to payload for non-reasoning models
-                if !ModelCapabilitiesManager::has_reasoning_capabilities(&model) {
+                // Only add options to payload for non-reasoning models, add reasoning_effort if thinking is enabled and the model has reasoning capabilities
+                if ModelCapabilitiesManager::has_reasoning_capabilities(&model) {
+                    let thinking_enabled = config.as_ref().and_then(|c| c.thinking).unwrap_or(false);
+                    if thinking_enabled {
+                        let effort = config
+                            .as_ref()
+                            .and_then(|c| c.reasoning_effort.clone())
+                            .unwrap_or("medium".to_string());
+                        payload["reasoning_effort"] = serde_json::json!(effort);
+                    } else if let Some(obj) = payload.as_object_mut() {
+                        obj.remove("reasoning_effort");
+                    }
+                } else {
                     add_options_to_payload(&mut payload, config.as_ref());
                 }
 
