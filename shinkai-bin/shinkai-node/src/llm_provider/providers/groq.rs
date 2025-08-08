@@ -75,14 +75,14 @@ impl LLMService for Groq {
                     let tools: Vec<JsonValue> = tools_json
                         .iter()
                         .map(|tool| {
-                            let mut function = tool.clone();
-                            if let Some(obj) = function.as_object_mut() {
-                                obj.remove("tool_router_key");
+                            let mut tool_copy = tool.clone();
+                            // Remove tool_router_key from the function object
+                            if let Some(function_obj) = tool_copy.get_mut("function") {
+                                if let Some(obj) = function_obj.as_object_mut() {
+                                    obj.remove("tool_router_key");
+                                }
                             }
-                            json!({
-                                "type": "function",
-                                "function": function
-                            })
+                            tool_copy
                         })
                         .collect();
                     payload["tools"] = serde_json::Value::Array(tools);

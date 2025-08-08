@@ -56,6 +56,7 @@ pub struct PartialFunctionCall {
     pub is_accumulating: bool, // Track if we're currently accumulating a function call
     pub id: Option<String>,
     pub call_type: Option<String>,
+    pub reasoning_started: bool, // Track if we've started reasoning content
 }
 
 #[async_trait]
@@ -514,6 +515,59 @@ pub async fn parse_openai_stream_chunk(
                             .unwrap_or_default();
 
                         if let Some(delta) = choice.get("delta") {
+                            // Handle reasoning_content with proper <think> tags
+                            if let Some(reasoning) =
+                                delta.get("reasoning_content").and_then(|c| c.as_str())
+                            {
+                                let mut content_to_send = String::new();
+                                
+                                // Add opening <think> tag if this is the first reasoning content
+                                if !partial_fc.reasoning_started {
+                                    content_to_send.push_str("<think>");
+                                    partial_fc.reasoning_started = true;
+                                }
+                                
+                                content_to_send.push_str(reasoning);
+                                response_text.push_str(&content_to_send);
+
+                                if let Some(inbox_name) = inbox_name.as_ref() {
+                                    send_ws_update(
+                                        ws_manager_trait,
+                                        Some(inbox_name.clone()),
+                                        session_id,
+                                        content_to_send,
+                                        false,
+                                        None,
+                                    )
+                                    .await?;
+                                }
+                            }
+                            
+                            // If we have reasoning started and see regular content, close the think tag
+                            if partial_fc.reasoning_started {
+                                if let Some(content) = delta.get("content").and_then(|c| c.as_str()) {
+                                    if !content.is_empty() {
+                                        // Close the thinking tag before regular content
+                                        let close_tag = "</think>";
+                                        response_text.push_str(close_tag);
+                                        
+                                        if let Some(inbox_name) = inbox_name.as_ref() {
+                                            send_ws_update(
+                                                ws_manager_trait,
+                                                Some(inbox_name.clone()),
+                                                session_id,
+                                                close_tag.to_string(),
+                                                false,
+                                                None,
+                                            )
+                                            .await?;
+                                        }
+                                        
+                                        partial_fc.reasoning_started = false;
+                                    }
+                                }
+                            }
+
                             // If there's text content, append it and send WS update
                             if let Some(content) = delta.get("content").and_then(|c| c.as_str()) {
                                 response_text.push_str(content);
@@ -627,6 +681,26 @@ pub async fn parse_openai_stream_chunk(
                             // any function call that wasn't yet finished.
                             if partial_fc.name.is_some() {
                                 finalize_function_call_sync(partial_fc, function_calls, tools);
+                            }
+                            
+                            // Close reasoning tag if it was started but not closed
+                            if partial_fc.reasoning_started {
+                                let close_tag = "</think>";
+                                response_text.push_str(close_tag);
+                                
+                                if let Some(inbox_name) = inbox_name.as_ref() {
+                                    let _ = send_ws_update(
+                                        ws_manager_trait,
+                                        Some(inbox_name.clone()),
+                                        session_id,
+                                        close_tag.to_string(),
+                                        false,
+                                        None,
+                                    )
+                                    .await;
+                                }
+                                
+                                partial_fc.reasoning_started = false;
                             }
                         }
                     }
@@ -809,6 +883,7 @@ pub async fn handle_streaming_response(
         is_accumulating: false,
         id: None,
         call_type: None,
+        reasoning_started: false,
     };
 
     while let Some(item) = stream.next().await {
@@ -1046,6 +1121,23 @@ pub async fn handle_non_streaming_response(
 
                 match data_resp {
                     Ok(value) => {
+                        // Extract reasoning_content (if any) to prepend to final response as <think>...</think>
+                        let reasoning_concat = value
+                            .get("choices")
+                            .and_then(|c| c.as_array())
+                            .map(|arr| {
+                                arr.iter()
+                                    .filter_map(|choice| {
+                                        choice
+                                            .get("message")
+                                            .and_then(|m| m.get("reasoning_content"))
+                                            .and_then(|rc| rc.as_str())
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .join("")
+                            })
+                            .unwrap_or_default();
+
                         if let Some(error) = value.get("error") {
                             let code = error.get("code").and_then(|c| c.as_str());
                             let formatted_error =
@@ -1080,6 +1172,13 @@ pub async fn handle_non_streaming_response(
                             })
                             .collect::<Vec<String>>()
                             .join(" ");
+
+                        // Prepend reasoning content if present
+                        let final_response_string = if !reasoning_concat.is_empty() {
+                            format!("<think>{}</think>{}", reasoning_concat, response_string.clone())
+                        } else {
+                            response_string.clone()
+                        };
 
                         let function_call: Option<FunctionCall> = data.choices.iter().find_map(|choice| {
                             choice.message.tool_calls.as_ref().and_then(|tool_calls| {
@@ -1159,7 +1258,7 @@ pub async fn handle_non_streaming_response(
                         }
 
                         return Ok(LLMInferenceResponse::new(
-                            response_string,
+                            final_response_string,
                             json!({}),
                             function_call.map_or_else(Vec::new, |fc| vec![fc]),
                             None,
@@ -1384,6 +1483,7 @@ mod tests {
             is_accumulating: false,
             id: None,
             call_type: None,
+            reasoning_started: false,
         };
         let tools = None;
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
@@ -1431,6 +1531,7 @@ mod tests {
             is_accumulating: false,
             id: None,
             call_type: None,
+            reasoning_started: false,
         };
         let tools = Some(vec![serde_json::json!({
             "name": "test_function",
@@ -1496,6 +1597,7 @@ mod tests {
             is_accumulating: false,
             id: None,
             call_type: None,
+            reasoning_started: false,
         };
         let tools = None;
 
@@ -1581,6 +1683,7 @@ mod tests {
             is_accumulating: false,
             id: None,
             call_type: None,
+            reasoning_started: false,
         };
         let tools = None;
 
@@ -1673,6 +1776,7 @@ mod tests {
             is_accumulating: false,
             id: None,
             call_type: None,
+            reasoning_started: false,
         };
         let tools = Some(vec![serde_json::json!({
             "name": "shinkai_tool_config_updater",
@@ -1811,6 +1915,7 @@ mod tests {
             is_accumulating: false,
             id: None,
             call_type: None,
+            reasoning_started: false,
         };
         let tools = Some(vec![serde_json::json!({
             "name": "duckduckgo_search",
@@ -1989,6 +2094,7 @@ mod tests {
             is_accumulating: false,
             id: None,
             call_type: None,
+            reasoning_started: false,
         };
         let tools = None;
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
@@ -2038,6 +2144,7 @@ mod tests {
             is_accumulating: false,
             id: None,
             call_type: None,
+            reasoning_started: false,
         };
         let tools = Some(vec![serde_json::json!({
             "name": "stagehand_runner",

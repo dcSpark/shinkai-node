@@ -19,6 +19,7 @@ mod tests {
             is_accumulating: false,
             id: None,
             call_type: None,
+            reasoning_started: false,
         };
         let tools = Some(vec![serde_json::json!({
             "name": "youtube_search_api",
@@ -88,6 +89,7 @@ data: [DONE]"#,
             is_accumulating: false,
             id: None,
             call_type: None,
+            reasoning_started: false,
         };
         let tools = None;
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
@@ -184,6 +186,7 @@ data: {"id":"chatcmpl-BLGOkzXc864uH3CZxRW9stxqzlpOl","object":"chat.completion.c
             is_accumulating: false,
             id: None,
             call_type: None,
+            reasoning_started: false,
         };
         let tools = Some(vec![
             serde_json::json!({
@@ -279,6 +282,7 @@ data: {"id":"chatcmpl-BLGOkzXc864uH3CZxRW9stxqzlpOl","object":"chat.completion.c
             is_accumulating: false,
             id: None,
             call_type: None,
+            reasoning_started: false,
         };
         let tools = Some(vec![serde_json::json!({
             "name": "youtube_transcript_fetcher",
@@ -400,6 +404,7 @@ data: [DONE]"#,
             is_accumulating: false,
             id: None,
             call_type: None,
+            reasoning_started: false,
         };
 
         // Register the CSV categorization tool the same way as other tools
@@ -549,6 +554,7 @@ data: [DONE]"#,
             is_accumulating: false,
             id: None,
             call_type: None,
+            reasoning_started: false,
         };
         let tools = None;
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;

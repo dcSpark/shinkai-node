@@ -78,18 +78,13 @@ impl LLMService for DeepSeek {
                     })
                 };
 
-                // Conditionally add functions to the payload if tools_json is not empty
+                // Conditionally add tools to the payload if present. The tools list
+                // provided by message preparation is already in the correct format
+                // expected by OpenAI-compatible APIs (each entry typically has
+                // {"type":"function", "function": { name, parameters, ... }}),
+                // so we add it directly without additional wrapping.
                 if !tools_json.is_empty() {
-                    let formatted_tools = tools_json
-                        .iter()
-                        .map(|tool| {
-                            serde_json::json!({
-                                "type": "function",
-                                "function": tool
-                            })
-                        })
-                        .collect::<Vec<serde_json::Value>>();
-                    payload["tools"] = serde_json::Value::Array(formatted_tools);
+                    payload["tools"] = serde_json::Value::Array(tools_json.clone());
                 }
 
                 // Only add options to payload for non-reasoning models
