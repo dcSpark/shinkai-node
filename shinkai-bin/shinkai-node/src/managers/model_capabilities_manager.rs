@@ -1077,9 +1077,9 @@ impl ModelCapabilitiesManager {
             }
             LLMProviderInterface::Ollama(ollama) => {
                 ollama.model_type.starts_with("deepseek-r1")
-                    || ollama.model_type.starts_with("qwq")
                     || ollama.model_type.starts_with("magistral")
                     || ollama.model_type.starts_with("gpt-oss")
+                    || ollama.model_type.starts_with("qwen3")
             }
             LLMProviderInterface::Groq(groq) => {
                 groq.model_type.starts_with("deepseek-r1-distill-llama-70b")

@@ -857,8 +857,10 @@ fn add_options_to_payload(
     // https://github.com/ollama/ollama/issues/11712
     // https://github.com/ollama/ollama/issues/11751
     // https://github.com/ollama/ollama/issues/10976
-    let thinking = get_value("LLM_THINKING", config.and_then(|c| c.thinking.as_ref())).unwrap_or(true);
-    payload["think"] = serde_json::json!(thinking);
+    if ModelCapabilitiesManager::has_reasoning_capabilities(model) {
+        let thinking = get_value("LLM_THINKING", config.and_then(|c| c.thinking.as_ref())).unwrap_or(true);
+        payload["think"] = serde_json::json!(thinking);
+    }
 
     // Handle num_ctx setting
     let num_ctx_from_config = config
