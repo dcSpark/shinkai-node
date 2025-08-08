@@ -90,9 +90,19 @@ impl LLMService for OpenRouter {
                     "max_tokens": result.remaining_output_tokens,
                 });
 
-                // Conditionally add functions to the payload if tools_json is not empty
+                // Conditionally add tools to the payload if tools_json is not empty
                 if !tools_json.is_empty() {
-                    payload["functions"] = serde_json::Value::Array(tools_json.clone());
+                    // Remove tool_router_key from each tool before sending to OpenRouter
+                    let tools_payload = tools_json
+                        .clone()
+                        .into_iter()
+                        .map(|mut tool| {
+                            tool.as_object_mut().unwrap().remove("tool_router_key");
+                            tool
+                        })
+                        .collect::<Vec<JsonValue>>();
+                    
+                    payload["tools"] = serde_json::Value::Array(tools_payload);
                 }
 
                 // Add options to payload
@@ -252,38 +262,44 @@ async fn handle_streaming_response(
                                     if let Some(content) = message.get("content") {
                                         response_text.push_str(content.as_str().unwrap_or(""));
                                     }
-                                    if let Some(fc) = message.get("function_call") {
-                                        if let Some(name) = fc.get("name") {
-                                            let fc_arguments = fc
-                                                .get("arguments")
-                                                .and_then(|args| args.as_str())
-                                                .and_then(|args_str| serde_json::from_str(args_str).ok())
-                                                .and_then(|args_value: serde_json::Value| {
-                                                    args_value.as_object().cloned()
-                                                })
-                                                .unwrap_or_else(|| serde_json::Map::new());
+                                    if let Some(tool_calls) = message.get("tool_calls") {
+                                        if let Some(tool_calls_array) = tool_calls.as_array() {
+                                            for tool_call in tool_calls_array {
+                                                if let Some(function) = tool_call.get("function") {
+                                                    if let Some(name) = function.get("name") {
+                                                        let fc_arguments = function
+                                                            .get("arguments")
+                                                            .and_then(|args| args.as_str())
+                                                            .and_then(|args_str| serde_json::from_str(args_str).ok())
+                                                            .and_then(|args_value: serde_json::Value| {
+                                                                args_value.as_object().cloned()
+                                                            })
+                                                            .unwrap_or_else(|| serde_json::Map::new());
 
-                                            // Extract tool_router_key
-                                            let tool_router_key = tools.as_ref().and_then(|tools_array| {
-                                                tools_array.iter().find_map(|tool| {
-                                                    if tool.get("name")?.as_str()? == name.as_str().unwrap_or("") {
-                                                        tool.get("tool_router_key")
-                                                            .and_then(|key| key.as_str().map(|s| s.to_string()))
-                                                    } else {
-                                                        None
+                                                        // Extract tool_router_key
+                                                        let tool_router_key = tools.as_ref().and_then(|tools_array| {
+                                                            tools_array.iter().find_map(|tool| {
+                                                                if tool.get("name")?.as_str()? == name.as_str().unwrap_or("") {
+                                                                    tool.get("tool_router_key")
+                                                                        .and_then(|key| key.as_str().map(|s| s.to_string()))
+                                                                } else {
+                                                                    None
+                                                                }
+                                                            })
+                                                        });
+
+                                                        function_calls.push(FunctionCall {
+                                                            name: name.as_str().unwrap_or("").to_string(),
+                                                            arguments: fc_arguments.clone(),
+                                                            tool_router_key,
+                                                            response: None,
+                                                            index: function_calls.len() as u64,
+                                                            id: tool_call.get("id").and_then(|id| id.as_str()).map(|s| s.to_string()),
+                                                            call_type: tool_call.get("type").and_then(|t| t.as_str()).map(|s| s.to_string()).or(Some("function".to_string())),
+                                                        });
                                                     }
-                                                })
-                                            });
-
-                                            function_calls.push(FunctionCall {
-                                                name: name.as_str().unwrap_or("").to_string(),
-                                                arguments: fc_arguments.clone(),
-                                                tool_router_key,
-                                                response: None,
-                                                index: function_calls.len() as u64,
-                                                id: None,
-                                                call_type: Some("function".to_string()),
-                                            });
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -462,9 +478,9 @@ async fn handle_non_streaming_response(
                             .collect::<Vec<String>>()
                             .join(" ");
 
-                        let function_call: Option<FunctionCall> = data.choices.iter().find_map(|choice| {
-                            choice.message.function_call.clone().map(|fc| {
-                                let arguments = serde_json::from_str::<serde_json::Value>(&fc.arguments)
+                        let function_calls: Vec<FunctionCall> = data.choices.iter().flat_map(|choice| {
+                            choice.message.tool_calls.as_ref().unwrap_or(&vec![]).iter().map(|tool_call| {
+                                let arguments = serde_json::from_str::<serde_json::Value>(&tool_call.function.arguments)
                                     .ok()
                                     .and_then(|args_value: serde_json::Value| args_value.as_object().cloned())
                                     .unwrap_or_else(|| serde_json::Map::new());
@@ -472,7 +488,7 @@ async fn handle_non_streaming_response(
                                 // Extract tool_router_key
                                 let tool_router_key = tools.as_ref().and_then(|tools_array| {
                                     tools_array.iter().find_map(|tool| {
-                                        if tool.get("name")?.as_str()? == fc.name {
+                                        if tool.get("name")?.as_str()? == tool_call.function.name {
                                             tool.get("tool_router_key").and_then(|key| key.as_str().map(|s| s.to_string()))
                                         } else {
                                             None
@@ -481,22 +497,22 @@ async fn handle_non_streaming_response(
                                 });
 
                                 FunctionCall {
-                                    name: fc.name,
+                                    name: tool_call.function.name.clone(),
                                     arguments,
                                     tool_router_key,
                                     response: None,
                                     index: 0,
-                                    id: None,
-                                    call_type: Some("function".to_string()),
+                                    id: Some(tool_call.id.clone()),
+                                    call_type: Some(tool_call.call_type.clone()),
                                 }
-                            })
-                        });
-                        eprintln!("Function Call: {:?}", function_call);
+                            }).collect::<Vec<_>>()
+                        }).collect();
+                        eprintln!("Function Calls: {:?}", function_calls);
                         eprintln!("Response String: {:?}", response_string);
                         return Ok(LLMInferenceResponse::new(
                             response_string,
                             json!({}),
-                            function_call.map_or_else(Vec::new, |fc| vec![fc]),
+                            function_calls,
                             None,
                         ));
                     }
