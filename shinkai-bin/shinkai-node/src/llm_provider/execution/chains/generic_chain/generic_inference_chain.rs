@@ -758,6 +758,31 @@ impl GenericInferenceChain {
                                         }
                                     }
                                 }
+
+                                // Include default tools if available
+                                let default_tool_keys = vec![
+                                    "local:::__official_shinkai:::google_search",
+                                    "local:::__official_shinkai:::download_pages",
+                                    "local:::__official_shinkai:::youtube_transcript_extractor_2_0",
+                                ];
+
+                                for key in default_tool_keys {
+                                    match tool_router.get_tool_by_name(key).await {
+                                        Ok(Some(tool)) => {
+                                            let key_no_version = tool.tool_router_key().to_string_without_version();
+                                            if !tools.iter().any(|t| t.tool_router_key().to_string_without_version() == key_no_version) {
+                                                tools.push(tool);
+                                            }
+                                        }
+                                        Ok(None) => {}
+                                        Err(e) => {
+                                            return Err(LLMProviderError::ToolRetrievalError(format!(
+                                                "Error retrieving tool: {:?}",
+                                                e
+                                            )));
+                                        }
+                                    }
+                                }
                             }
                             Err(e) => {
                                 return Err(LLMProviderError::ToolSearchError(format!(
