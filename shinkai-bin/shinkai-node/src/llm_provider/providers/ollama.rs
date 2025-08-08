@@ -683,7 +683,7 @@ fn add_options_to_payload(
 
     // Handle thinking option
     let thinking = get_value("LLM_THINKING", config.and_then(|c| c.thinking.as_ref())).unwrap_or(true);
-    payload["thinking"] = serde_json::json!(thinking);
+    payload["think"] = serde_json::json!(thinking);
 
     // Handle num_ctx setting
     let num_ctx_from_config = config

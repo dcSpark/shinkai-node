@@ -97,11 +97,13 @@ impl LLMService for OpenAI {
                 let tools_json = result.functions.unwrap_or_else(Vec::new);
 
                 // Set up initial payload with appropriate token limit field based on model capabilities
-                let mut payload = if ModelCapabilitiesManager::has_reasoning_capabilities(&model) {
+                let mut payload = if ModelCapabilitiesManager::has_reasoning_capabilities(&model) 
+                && config.as_ref().and_then(|c| c.thinking).unwrap_or(false) {
                     json!({
                         "model": self.model_type,
                         "messages": messages_json,
                         "max_completion_tokens": result.remaining_output_tokens,
+                        "reasoning_effort": config.as_ref().and_then(|c| c.reasoning_effort.clone()).unwrap_or("medium".to_string()),
                         "stream": is_stream,
                     })
                 } else {

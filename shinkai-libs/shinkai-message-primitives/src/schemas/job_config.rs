@@ -15,6 +15,7 @@ pub struct JobConfig {
     pub other_model_params: Option<Value>,
     pub use_tools: Option<bool>,
     pub thinking: Option<bool>,
+    pub reasoning_effort: Option<String>,
     // TODO: add ctx_...
 }
 
@@ -33,6 +34,7 @@ impl JobConfig {
             stream: self.stream.or(other.stream),
             use_tools: self.use_tools.or(other.use_tools),
             thinking: self.thinking.or(other.thinking),
+            reasoning_effort: self.reasoning_effort.clone().or_else(|| other.reasoning_effort.clone()),
             other_model_params: self
                 .other_model_params
                 .clone()
@@ -54,6 +56,7 @@ impl JobConfig {
             other_model_params: None,
             use_tools: None,
             thinking: None,
+            reasoning_effort: None,
         }
     }
 }
@@ -76,7 +79,8 @@ mod tests {
             "stream": true,
             "other_model_params": null,
             "use_tools": false,
-            "thinking": true
+            "thinking": true,
+            "reasoning_effort": "medium"
         }"#;
 
         let job_config: JobConfig = serde_json::from_str(json_data).expect("Failed to deserialize JSON");
@@ -92,5 +96,6 @@ mod tests {
         assert_eq!(job_config.other_model_params, None);
         assert_eq!(job_config.use_tools, Some(false));
         assert_eq!(job_config.thinking, Some(true));
+        assert_eq!(job_config.reasoning_effort, Some("medium".to_string()));
     }
 }

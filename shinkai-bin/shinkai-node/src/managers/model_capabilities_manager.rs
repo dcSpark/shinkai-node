@@ -133,6 +133,7 @@ impl ModelCapabilitiesManager {
     pub fn get_llm_provider_capabilities(model: &LLMProviderInterface) -> Vec<ModelCapability> {
         match model {
             LLMProviderInterface::OpenAI(openai) => match openai.model_type.as_str() {
+                "gpt-5" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
                 "gpt-4o" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
                 "gpt-4o-mini" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
                 "gpt-4.1-nano" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
@@ -386,6 +387,7 @@ impl ModelCapabilitiesManager {
     pub fn get_llm_provider_cost(model: &LLMProviderInterface) -> ModelCost {
         match model {
             LLMProviderInterface::OpenAI(openai) => match openai.model_type.as_str() {
+                "gpt-5" => ModelCost::Expensive,
                 "gpt-4o" => ModelCost::GoodValue,
                 "gpt-3.5-turbo-1106" => ModelCost::VeryCheap,
                 "gpt-4o-mini" => ModelCost::VeryCheap,
@@ -612,6 +614,8 @@ impl ModelCapabilitiesManager {
                     1_047_576
                 } else if openai.model_type.starts_with("o3") || openai.model_type.starts_with("o4-mini") {
                     200_000
+                } else if openai.model_type.starts_with("gpt-5") {
+                    400_000
                 } else if openai.model_type.starts_with("gpt-3.5") {
                     16384
                 } else {
@@ -787,6 +791,8 @@ impl ModelCapabilitiesManager {
                     65_536
                 } else if openai.model_type.starts_with("o3") || openai.model_type.starts_with("o4-mini") {
                     100_000
+                } else if openai.model_type.starts_with("gpt-5") {
+                    128_000
                 } else if openai.model_type.starts_with("gpt-3.5") {
                     4096
                 } else {
@@ -1067,6 +1073,7 @@ impl ModelCapabilitiesManager {
                     || openai.model_type.starts_with("o3")
                     || openai.model_type.starts_with("o4")
                     || openai.model_type.starts_with("o5")
+                    || openai.model_type.starts_with("gpt-5")
             }
             LLMProviderInterface::Ollama(ollama) => {
                 ollama.model_type.starts_with("deepseek-r1")
@@ -1082,7 +1089,7 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::DeepSeek(deepseek) => deepseek.model_type.starts_with("deepseek-reasoner"),
             LLMProviderInterface::Claude(claude) => {
                 claude.model_type.starts_with("claude-opus-4")
-                    || claude.model_type.starts_with("claude-sonnet-4")
+                    || claude.model_type.starts_with("claude-4-sonnet")
                     || claude.model_type.starts_with("claude-3-7-sonnet")
             }
             LLMProviderInterface::Gemini(gemini) => {
