@@ -134,6 +134,9 @@ impl ModelCapabilitiesManager {
         match model {
             LLMProviderInterface::OpenAI(openai) => match openai.model_type.as_str() {
                 "gpt-5" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
+                "gpt-5-mini" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
+                "gpt-5-nano" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
+                "gpt-5-chat-latest" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
                 "gpt-4o" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
                 "gpt-4o-mini" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
                 "gpt-4.1-nano" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
@@ -387,7 +390,10 @@ impl ModelCapabilitiesManager {
     pub fn get_llm_provider_cost(model: &LLMProviderInterface) -> ModelCost {
         match model {
             LLMProviderInterface::OpenAI(openai) => match openai.model_type.as_str() {
-                "gpt-5" => ModelCost::Expensive,
+                "gpt-5" => ModelCost::GoodValue,
+                "gpt-5-mini" => ModelCost::Cheap,
+                "gpt-5-nano" => ModelCost::VeryCheap,
+                "gpt-5-chat-latest" => ModelCost::GoodValue,
                 "gpt-4o" => ModelCost::GoodValue,
                 "gpt-3.5-turbo-1106" => ModelCost::VeryCheap,
                 "gpt-4o-mini" => ModelCost::VeryCheap,
@@ -617,7 +623,7 @@ impl ModelCapabilitiesManager {
                 } else if openai.model_type.starts_with("gpt-5") {
                     400_000
                 } else if openai.model_type.starts_with("gpt-3.5") {
-                    16384
+                    16_384
                 } else {
                     200_000 // New default for OpenAI models
                 }
@@ -791,6 +797,12 @@ impl ModelCapabilitiesManager {
                     65_536
                 } else if openai.model_type.starts_with("o3") || openai.model_type.starts_with("o4-mini") {
                     100_000
+                } else if openai.model_type.starts_with("gpt-5-chat-latest") {
+                    16_384 
+                } else if openai.model_type.starts_with("gpt-5-mini") {
+                    128_000
+                } else if openai.model_type.starts_with("gpt-5-nano") {
+                    128_000                                       
                 } else if openai.model_type.starts_with("gpt-5") {
                     128_000
                 } else if openai.model_type.starts_with("gpt-3.5") {
@@ -982,8 +994,14 @@ impl ModelCapabilitiesManager {
         eprintln!("has tool capabilities model: {:?}", model);
         match model {
             LLMProviderInterface::OpenAI(openai) => {
-                // o1-mini specifically does not support function calling
-                !openai.model_type.starts_with("o1-mini")
+                // o1-mini and gpt-5-chat specifically does not support function calling
+                if openai.model_type.starts_with("o1-mini") {
+                    false
+                } else if openai.model_type.starts_with("gpt-5-chat-latest") {
+                    false
+                } else {
+                    true
+                }
             }
             LLMProviderInterface::Ollama(model) => {
                 // For Ollama, check model type and respect the passed stream parameter
@@ -1073,7 +1091,7 @@ impl ModelCapabilitiesManager {
                     || openai.model_type.starts_with("o3")
                     || openai.model_type.starts_with("o4")
                     || openai.model_type.starts_with("o5")
-                    || openai.model_type.starts_with("gpt-5")
+                    || (openai.model_type.starts_with("gpt-5") && openai.model_type != "gpt-5-chat-latest")
             }
             LLMProviderInterface::Ollama(ollama) => {
                 ollama.model_type.starts_with("deepseek-r1")
