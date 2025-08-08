@@ -810,19 +810,9 @@ impl ModelCapabilitiesManager {
                 }
             }
             LLMProviderInterface::Ollama(_) => {
-                let max_tokens = Self::get_max_tokens(model);
-                if max_tokens <= 8000 {
-                    2048
-                } else if max_tokens <= 16000 {
-                    4096
-                } else if max_tokens <= 32000 {
-                    8192
-                } else if max_tokens <= 64000 {
-                    16384
-                } else if max_tokens <= 128000 {
-                    32768
-                } else if max_tokens <= 256000 {
-                    65536
+                // Fill in the appropriate logic for Ollama
+                if Self::get_max_tokens(model) <= 8000 {
+                    2800
                 } else {
                     4096
                 }
