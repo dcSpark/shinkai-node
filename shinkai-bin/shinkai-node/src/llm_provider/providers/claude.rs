@@ -380,6 +380,10 @@ async fn handle_streaming_response(
 
                                 eprintln!("Function Call: {:?}", function_call);
 
+                                // Reset processed_tool to prevent duplicate function calls
+                                // since is_done can be set true multiple times (message_delta + message_stop)
+                                processed_tool = None;
+
                                 if let Some(ref manager) = ws_manager_trait {
                                     if let Some(ref inbox_name) = inbox_name {
                                         let m = manager.lock().await;
@@ -479,7 +483,7 @@ async fn handle_streaming_response(
     }
 
     let final_response = if !thinking_text.is_empty() {
-        format!("<think>{}</think>\n{}", thinking_text, response_text)
+        format!("<think>{}</think>{}", thinking_text, response_text)
     } else {
         response_text
     };
@@ -639,7 +643,7 @@ async fn handle_non_streaming_response(
                     }
 
                     let final_response = if !thinking_text.is_empty() {
-                        format!("<think>{}</think>\n{}", thinking_text, response_text)
+                        format!("<think>{}</think>{}", thinking_text, response_text)
                     } else {
                         response_text
                     };
@@ -658,6 +662,26 @@ async fn handle_non_streaming_response(
             }
         }
     }
+}
+
+fn has_tool_calls_in_messages(messages: &serde_json::Value) -> bool {
+    if let Some(messages_array) = messages.as_array() {
+        for message in messages_array {
+            if let Some(content) = message.get("content") {
+                // Check if content is an array of content blocks
+                if let Some(content_array) = content.as_array() {
+                    for content_block in content_array {
+                        if let Some(content_type) = content_block.get("type").and_then(|t| t.as_str()) {
+                            if content_type == "tool_use" || content_type == "tool_result" {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    false
 }
 
 fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobConfig>) {
@@ -688,7 +712,14 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
         payload["max_completion_tokens"] = serde_json::json!(max_tokens);
     }
     if let Some(thinking) = get_value("LLM_THINKING", config.and_then(|c| c.thinking.as_ref())) {
-        if thinking {
+        // Check if there are actual tool calls in the messages - if so, disable thinking to avoid API errors
+        // Claude's extended thinking feature requires specific message formatting when tools are used,
+        // which can cause "Expected thinking or redacted_thinking, but found tool_use" errors
+        let has_tool_calls = payload.get("messages")
+            .map(|messages| has_tool_calls_in_messages(messages))
+            .unwrap_or(false);
+
+        if thinking && !has_tool_calls {
             let reasoning_effort = get_value("LLM_REASONING_EFFORT", config.and_then(|c| c.reasoning_effort.as_ref()));
             let budget_tokens = match reasoning_effort {
                 Some(effort) => match effort.to_string().as_str() {
@@ -712,6 +743,7 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
                 obj.remove("temperature");
             }
         } else {
+            // Disable thinking if tool calls are present in messages or if thinking is explicitly disabled
             payload["thinking"] = serde_json::json!({
                 "type": "disabled",
             });
@@ -755,7 +787,6 @@ struct ProcessedChunk {
 struct ProcessedTool {
     tool_name: String,
     partial_tool_arguments: String,
-    is_accumulating: bool, // Track if we're currently accumulating arguments
 }
 
 /// Try to parse exactly one SSE event from the start of `buf`.
@@ -830,7 +861,6 @@ fn parse_entire_sse_block(block: &str) -> Result<ProcessedChunk, LLMProviderErro
                         current_tool = Some(ProcessedTool {
                             tool_name,
                             partial_tool_arguments: String::new(),
-                            is_accumulating: true,
                         });
                     }
                 }
@@ -857,7 +887,6 @@ fn parse_entire_sse_block(block: &str) -> Result<ProcessedChunk, LLMProviderErro
                                     current_tool = Some(ProcessedTool {
                                         tool_name: String::new(),
                                         partial_tool_arguments: String::new(),
-                                        is_accumulating: true,
                                     });
                                 }
 
@@ -1227,6 +1256,35 @@ data: {"type":"message_stop"}
         // Verify completion status
         assert!(result.is_done);
         assert_eq!(result.done_reason.unwrap(), "end_turn");
+    }
+
+    #[tokio::test]
+    async fn test_no_duplicate_function_calls_with_message_delta_and_stop() {
+        let chunk = r#"event: content_block_start
+data: {"content_block":{"type":"tool_use","name":"test_tool"}}
+
+event: content_block_delta
+data: {"delta":{"type":"input_json_delta","partial_json":"{\"message\":\"hello\"}"}}
+
+event: content_block_stop
+data: {"index":0}
+
+event: message_delta
+data: {"delta":{"stop_reason":"tool_use"}}
+
+event: message_stop
+data: {}"#
+            .as_bytes();
+
+        let result = process_chunk(chunk).unwrap();
+        assert_eq!(result.partial_text, "");
+        assert_eq!(result.thinking_text, "");
+        assert!(result.tool_use.is_some());
+        let tool = result.tool_use.unwrap();
+        assert_eq!(tool.tool_name, "test_tool");
+        assert_eq!(tool.partial_tool_arguments, "{\"message\":\"hello\"}");
+        assert!(result.is_done);
+        assert_eq!(result.done_reason.unwrap(), "tool_use");
     }
 
     #[tokio::test]
