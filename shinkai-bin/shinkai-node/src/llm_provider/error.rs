@@ -86,6 +86,7 @@ pub enum LLMProviderError {
     SomeError(String),
     APIError(String),
     DatabaseError(String),
+    ImageProcessingError(String),
 }
 
 impl fmt::Display for LLMProviderError {
@@ -180,6 +181,7 @@ impl fmt::Display for LLMProviderError {
             LLMProviderError::SomeError(s) => write!(f, "{}", s),
             LLMProviderError::APIError(s) => write!(f, "{}", s),
             LLMProviderError::DatabaseError(s) => write!(f, "{}", s),
+            LLMProviderError::ImageProcessingError(s) => write!(f, "Image processing error: {}", s),
         }
     }
 }
@@ -262,6 +264,7 @@ impl LLMProviderError {
             LLMProviderError::SomeError(_) => "SomeError",
             LLMProviderError::APIError(_) => "APIError",
             LLMProviderError::DatabaseError(_) => "DatabaseError",
+            LLMProviderError::ImageProcessingError(_) => "ImageProcessingError",
         };
 
         format!("Error {} with message: {}", error_name, self)

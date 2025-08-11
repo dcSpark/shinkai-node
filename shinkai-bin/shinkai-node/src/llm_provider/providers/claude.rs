@@ -29,9 +29,35 @@ use crate::llm_provider::{
 };
 use crate::managers::model_capabilities_manager::PromptResultEnum;
 
-use super::openai::truncate_image_url_in_payload;
 use super::shared::claude_api::claude_prepare_messages;
 use super::LLMService;
+
+pub fn truncate_image_content_in_claude_payload(payload: &mut JsonValue) {
+    if let Some(messages) = payload.get_mut("messages") {
+        if let Some(array) = messages.as_array_mut() {
+            for message in array {
+                if let Some(content) = message.get_mut("content") {
+                    if let Some(content_array) = content.as_array_mut() {
+                        for content_item in content_array {
+                            if let Some(content_type) = content_item.get("type") {
+                                if content_type == "image" {
+                                    if let Some(source) = content_item.get_mut("source") {
+                                        if let Some(data) = source.get_mut("data") {
+                                            if let Some(data_str) = data.as_str() {
+                                                let truncated_data = format!("{}...", &data_str[0..100.min(data_str.len())]);
+                                                *data = JsonValue::String(truncated_data);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 #[async_trait]
 impl LLMService for Claude {
@@ -61,8 +87,6 @@ impl LLMService for Claude {
                 let url = format!("{}{}", base_url, "v1/messages");
 
                 let is_stream = config.as_ref().and_then(|c| c.stream).unwrap_or(true);
-
-                eprintln!("call_api prompt: {:?}", prompt);
 
                 let (messages_result, system_messages) = claude_prepare_messages(&model, prompt)?;
                 let messages_json = match messages_result.messages {
@@ -113,14 +137,12 @@ impl LLMService for Claude {
                 add_options_to_payload(&mut payload, config.as_ref());
 
                 // Print payload as a pretty JSON string
-                match serde_json::to_string_pretty(&payload) {
+                let mut payload_log = payload.clone();
+                truncate_image_content_in_claude_payload(&mut payload_log);
+                match serde_json::to_string_pretty(&payload_log) {
                     Ok(pretty_json) => eprintln!("cURL Payload: {}", pretty_json),
                     Err(e) => eprintln!("Failed to serialize payload: {:?}", e),
                 };
-
-                let mut payload_log = payload.clone();
-                truncate_image_url_in_payload(&mut payload_log);
-                eprintln!("Call API Body: {:?}", payload_log);
 
                 if let Some(ref msg_id) = tracing_message_id {
                     if let Err(e) = db.add_tracing(
@@ -228,6 +250,7 @@ async fn handle_streaming_response(
 
     let mut stream = res.bytes_stream();
     let mut response_text = String::new();
+    let mut thinking_text = String::new();
     let mut processed_tool: Option<ProcessedTool> = None;
     let mut function_calls = Vec::new();
     let mut buffer = String::new();
@@ -278,13 +301,14 @@ async fn handle_streaming_response(
                 // - see incomplete JSON ("EOF while parsing"), or
                 // - run out of parseable data in buffer
                 loop {
-                    match process_chunk(buffer.as_bytes()) {
-                        Ok(processed_chunk) => {
-                            // Remove the processed part from the buffer
-                            buffer.clear();
+                    match parse_one_event(&buffer) {
+                        Ok((processed_chunk, consumed_bytes)) => {
+                            // Remove only the processed part from the buffer
+                            buffer.drain(..consumed_bytes);
 
                             // Update response text
                             response_text.push_str(&processed_chunk.partial_text);
+                            thinking_text.push_str(&processed_chunk.thinking_text);
 
                             // Handle tool use
                             if let Some(tool_use) = processed_chunk.tool_use {
@@ -415,23 +439,21 @@ async fn handle_streaming_response(
                                 break;
                             }
                         }
+                        Err(LLMProviderError::ContentParseFailed) => {
+                            // Incomplete event - wait for more data
+                            shinkai_log(
+                                ShinkaiLogOption::Node,
+                                ShinkaiLogLevel::Info,
+                                &format!("Incomplete event detected, keeping buffer: {}", buffer.len()),
+                            );
+                            break;
+                        }
                         Err(e) => {
-                            // If it's a JSON parsing error due to incomplete data, wait for more
-                            if let LLMProviderError::SerdeError(ref serde_err) = e {
-                                if serde_err.to_string().contains("EOF while parsing") {
-                                    shinkai_log(
-                                        ShinkaiLogOption::Node,
-                                        ShinkaiLogLevel::Info,
-                                        &format!("Incomplete JSON detected, keeping buffer: {}", buffer),
-                                    );
-                                    break;
-                                }
-                            }
                             // Any other error should be propagated
                             shinkai_log(
                                 ShinkaiLogOption::Node,
                                 ShinkaiLogLevel::Error,
-                                &format!("Error processing chunk: {}", e),
+                                &format!("Error processing event: {}", e),
                             );
                             return Err(e);
                         }
@@ -445,8 +467,14 @@ async fn handle_streaming_response(
         }
     }
 
+    let final_response = if !thinking_text.is_empty() {
+        format!("<think>{}</think>\n{}", thinking_text, response_text)
+    } else {
+        response_text
+    };
+
     Ok(LLMInferenceResponse::new(
-        response_text,
+        final_response,
         json!({}),
         function_calls,
         None,
@@ -505,12 +533,18 @@ async fn handle_non_streaming_response(
                 let response_json: serde_json::Value = serde_json::from_str(&response_body)?;
 
                 if let Some(content) = response_json.get("content") {
+                    let mut thinking_text = String::new();
                     let mut response_text = String::new();
                     let mut function_calls = Vec::new();
 
                     for content_block in content.as_array().unwrap_or(&vec![]) {
                         if let Some(content_type) = content_block.get("type") {
                             match content_type.as_str().unwrap_or("") {
+                                "thinking" => {
+                                    if let Some(thinking) = content_block.get("thinking") {
+                                        thinking_text.push_str(thinking.as_str().unwrap_or(""));
+                                    }
+                                }
                                 "text" => {
                                     if let Some(text) = content_block.get("text") {
                                         response_text.push_str(text.as_str().unwrap_or(""));
@@ -593,8 +627,14 @@ async fn handle_non_streaming_response(
                         }
                     }
 
+                    let final_response = if !thinking_text.is_empty() {
+                        format!("<think>{}</think>\n{}", thinking_text, response_text)
+                    } else {
+                        response_text
+                    };
+
                     break Ok(LLMInferenceResponse::new(
-                        response_text,
+                        final_response,
                         json!({}),
                         function_calls,
                         None,
@@ -636,6 +676,29 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
     if let Some(max_tokens) = get_value("LLM_MAX_TOKENS", config.and_then(|c| c.max_tokens.as_ref())) {
         payload["max_completion_tokens"] = serde_json::json!(max_tokens);
     }
+    if let Some(thinking) = get_value("LLM_THINKING", config.and_then(|c| c.thinking.as_ref())) {
+        if thinking {
+            let reasoning_effort = get_value("LLM_REASONING_EFFORT", config.and_then(|c| c.reasoning_effort.as_ref()));
+            let budget_tokens = match reasoning_effort {
+                Some(effort) => match effort.to_string().as_str() {
+                    "low" => 1024,
+                    "medium" => 2048,
+                    "high" => 4096,
+                    _ => 1024,
+                },
+                _ => 1024,
+            };
+
+            payload["thinking"] = serde_json::json!({
+                "type": "enabled",
+                "budget_tokens": budget_tokens,
+            });
+        } else {
+            payload["thinking"] = serde_json::json!({
+                "type": "disabled",
+            });
+        }
+    }
 
     // Handle other model params
     if let Some(other_params) = config.and_then(|c| c.other_model_params.as_ref()) {
@@ -659,11 +722,21 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
             }
         }
     }
+
+    // Claude is very restrictive with temperature, top_p, and top_k when using extended thinking.
+    if payload["model"].as_str().unwrap_or("").starts_with("claude-opus-4-1") {
+        if let Some(obj) = payload.as_object_mut() {
+            obj.remove("top_p");
+            obj.remove("top_k");
+            obj.remove("temperature");
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
 struct ProcessedChunk {
     partial_text: String,
+    thinking_text: String,
     tool_use: Option<ProcessedTool>,
     is_done: bool,
     done_reason: Option<String>,
@@ -702,8 +775,10 @@ fn parse_entire_sse_block(block: &str) -> Result<ProcessedChunk, LLMProviderErro
     let mut is_done = false;
     let mut done_reason = None;
     let mut content_block_type = String::new();
+    let mut _content_block_index: Option<u64> = None;
     let mut current_tool: Option<ProcessedTool> = None;
     let mut current_text = String::new();
+    let mut thinking_text = String::new();
     let mut accumulated_text = String::new();
 
     let event_rows: Vec<&str> = block.lines().collect();
@@ -711,6 +786,7 @@ fn parse_entire_sse_block(block: &str) -> Result<ProcessedChunk, LLMProviderErro
     if event_rows.len() < 2 {
         return Ok(ProcessedChunk {
             partial_text: String::new(),
+            thinking_text: String::new(),
             tool_use: None,
             is_done: false,
             done_reason: None,
@@ -723,6 +799,9 @@ fn parse_entire_sse_block(block: &str) -> Result<ProcessedChunk, LLMProviderErro
     match event_type {
         "content_block_start" => {
             if let Ok(data_json) = serde_json::from_str::<serde_json::Value>(event_data) {
+                // Extract index from the event data
+                _content_block_index = data_json.get("index").and_then(|i| i.as_u64());
+                
                 if let Some(content_block) = data_json.get("content_block") {
                     content_block_type = content_block
                         .get("type")
@@ -756,6 +835,11 @@ fn parse_entire_sse_block(block: &str) -> Result<ProcessedChunk, LLMProviderErro
                             if let Some(text) = delta.get("text").and_then(|t| t.as_str()) {
                                 current_text.push_str(text);
                                 accumulated_text.push_str(text);
+                            }
+                        }
+                        Some("thinking_delta") => {
+                            if let Some(thinking) = delta.get("thinking").and_then(|t| t.as_str()) {
+                                thinking_text.push_str(thinking);
                             }
                         }
                         Some("input_json_delta") => {
@@ -801,6 +885,7 @@ fn parse_entire_sse_block(block: &str) -> Result<ProcessedChunk, LLMProviderErro
             // Handle error events by returning empty chunk
             return Ok(ProcessedChunk {
                 partial_text: String::new(),
+                thinking_text: String::new(),
                 tool_use: None,
                 is_done: false,
                 done_reason: None,
@@ -811,16 +896,19 @@ fn parse_entire_sse_block(block: &str) -> Result<ProcessedChunk, LLMProviderErro
 
     Ok(ProcessedChunk {
         partial_text: accumulated_text,
+        thinking_text,
         tool_use: current_tool,
         is_done,
         done_reason,
     })
 }
 
+#[allow(dead_code)]
 fn process_chunk(chunk: &[u8]) -> Result<ProcessedChunk, LLMProviderError> {
     let chunk_str = String::from_utf8_lossy(chunk).to_string();
     let mut buffer = chunk_str.clone();
     let mut final_partial_text = String::new();
+    let mut final_thinking_text = String::new();
     let mut final_tool_use: Option<ProcessedTool> = None;
     let mut final_is_done = false;
     let mut final_done_reason = None;
@@ -833,6 +921,7 @@ fn process_chunk(chunk: &[u8]) -> Result<ProcessedChunk, LLMProviderError> {
 
                 // Accumulate text
                 final_partial_text.push_str(&parsed_block.partial_text);
+                final_thinking_text.push_str(&parsed_block.thinking_text);
 
                 // Handle tool use
                 if let Some(tu) = parsed_block.tool_use {
@@ -876,6 +965,7 @@ fn process_chunk(chunk: &[u8]) -> Result<ProcessedChunk, LLMProviderError> {
 
     Ok(ProcessedChunk {
         partial_text: final_partial_text,
+        thinking_text: final_thinking_text,
         tool_use: final_tool_use,
         is_done: final_is_done,
         done_reason: final_done_reason,
@@ -906,6 +996,7 @@ data: {}"#
 
         let result = process_chunk(chunk).unwrap();
         assert_eq!(result.partial_text, "Hello world!");
+        assert_eq!(result.thinking_text, "");
         assert!(result.tool_use.is_none());
         assert!(result.is_done);
     }
@@ -930,6 +1021,7 @@ data: {}"#
 
         let result = process_chunk(chunk).unwrap();
         assert_eq!(result.partial_text, "");
+        assert_eq!(result.thinking_text, "");
         assert!(result.tool_use.is_some());
         let tool = result.tool_use.unwrap();
         assert_eq!(tool.tool_name, "test_tool");
@@ -963,6 +1055,7 @@ data: {}"#
 
         let result = process_chunk(chunk).unwrap();
         assert_eq!(result.partial_text, "Let me help you with that.");
+        assert_eq!(result.thinking_text, "");
         assert!(result.tool_use.is_some());
         let tool = result.tool_use.unwrap();
         assert_eq!(tool.tool_name, "search_tool");
@@ -978,6 +1071,7 @@ data: {"error":{"type":"invalid_request_error","message":"Invalid request"}}"#
 
         let result = process_chunk(chunk).unwrap();
         assert_eq!(result.partial_text, "");
+        assert_eq!(result.thinking_text, "");
         assert!(result.tool_use.is_none());
         assert!(!result.is_done);
     }
@@ -1002,6 +1096,7 @@ data: {}"#
 
         let result = process_chunk(chunk).unwrap();
         assert_eq!(result.partial_text, "Complete response");
+        assert_eq!(result.thinking_text, "");
         assert!(result.tool_use.is_none());
         assert!(result.is_done);
         assert_eq!(result.done_reason.unwrap(), "stop_sequence");
@@ -1030,6 +1125,7 @@ data: {}"#
 
         let result = process_chunk(chunk).unwrap();
         assert_eq!(result.partial_text, "");
+        assert_eq!(result.thinking_text, "");
         assert!(result.tool_use.is_some());
         let tool = result.tool_use.unwrap();
         assert_eq!(tool.tool_name, "complex_tool");
@@ -1102,10 +1198,10 @@ data: {"type":"message_stop"}
 
             // 2) Parse as many complete SSE blocks as possible
             loop {
-                match process_chunk(buffer.as_bytes()) {
-                    Ok(parsed) => {
+                match parse_one_event(&buffer) {
+                    Ok((parsed, consumed_bytes)) => {
                         // Remove the processed part from the buffer
-                        buffer.clear();
+                        buffer.drain(..consumed_bytes);
 
                         // Update our accumulated state
                         if let Some(tool) = parsed.tool_use {
