@@ -102,12 +102,14 @@ pub fn process_llm_messages(
                             
                             if let serde_json::Value::String(image_str) = image {
                                 // Check image size - skip if larger than 5MB
-                                // Base64 encoding increases size by ~33%, so we calculate original size
-                                let original_size_bytes = (image_str.len() * 3) / 4;
                                 const MAX_IMAGE_SIZE: usize = 5 * 1024 * 1024; // 5MB
                                 
-                                if original_size_bytes > MAX_IMAGE_SIZE {
-                                    eprintln!("Skipping image larger than 5MB (size: {} bytes)", original_size_bytes);
+                                if image_str.len() > MAX_IMAGE_SIZE {
+                                    eprintln!("Skipping image larger than 5MB (size: {} bytes)", image_str.len());
+                                    content_blocks.push(serde_json::json!({
+                                        "type": "text",
+                                        "text": "The user provided an image that is too large to process. Have this in consideration if the user asks why the image is not found. You have a limit of 5MB for images."
+                                    }));
                                     continue;
                                 }
                                 

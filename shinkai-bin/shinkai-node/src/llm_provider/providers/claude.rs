@@ -136,6 +136,27 @@ impl LLMService for Claude {
                 // Add options to payload
                 add_options_to_payload(&mut payload, config.as_ref());
 
+                // If thinking is enabled, subtract the thinking budget from the max_tokens
+                if let Some(thinking) = payload.get("thinking") {
+                    if let Some(thinking_type) = thinking.get("type") {
+                        if thinking_type.as_str() == Some("enabled") {
+                            if let (Some(max_tokens), Some(budget_tokens)) = (
+                                payload["max_tokens"].as_u64(),
+                                thinking["budget_tokens"].as_u64()
+                            ) {
+                                // Ensure we don't underflow and maintain a minimum of 1 token for actual output
+                                let adjusted_max_tokens = if budget_tokens >= max_tokens {
+                                    1 // Minimum token count for output
+                                } else {
+                                    max_tokens - budget_tokens
+                                };
+                                
+                                payload["max_tokens"] = serde_json::json!(adjusted_max_tokens);
+                            }
+                        }
+                    }
+                }
+
                 // Print payload as a pretty JSON string
                 let mut payload_log = payload.clone();
                 truncate_image_content_in_claude_payload(&mut payload_log);
@@ -431,21 +452,11 @@ async fn handle_streaming_response(
 
                             // If buffer is empty, break to get next chunk
                             if buffer.is_empty() {
-                                shinkai_log(
-                                    ShinkaiLogOption::Node,
-                                    ShinkaiLogLevel::Info,
-                                    "Buffer is empty, breaking loop to get next chunk",
-                                );
                                 break;
                             }
                         }
                         Err(LLMProviderError::ContentParseFailed) => {
                             // Incomplete event - wait for more data
-                            shinkai_log(
-                                ShinkaiLogOption::Node,
-                                ShinkaiLogLevel::Info,
-                                &format!("Incomplete event detected, keeping buffer: {}", buffer.len()),
-                            );
                             break;
                         }
                         Err(e) => {
@@ -1131,6 +1142,93 @@ data: {}"#
         assert_eq!(tool.tool_name, "complex_tool");
         assert_eq!(tool.partial_tool_arguments, "{\"key1\":\"value1\",\"key2\":42}");
         assert!(result.is_done);
+    }
+
+    #[tokio::test]
+    async fn test_process_chunk_thinking_streaming() {
+        let chunk = r#"event: message_start
+data: {"type":"message_start","message":{"id":"msg_015onJzKgRMJHn28uVzuUtt7","type":"message","role":"assistant","model":"claude-opus-4-20250514","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":93,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":4,"service_tier":"standard"}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}}
+
+event: ping
+data: {"type": "ping"}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"The user is"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" asking me to repeat"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" back only"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" the word \"dog"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"cat\" with"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" no other words."}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" This is straight"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"forward - I"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" should just respon"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"d with \"dogcat"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"\" an"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"d nothing else."}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"EsoCCkYIBhgCKkA/mylU2TQ1s4HkOwnSA+bYpG9u+xF5p71sqMzfvDMy1YI9ouFQ0AO/mxPsRRSfLkCHKziTRI1IY4Hi4K0oM7qOEgxwnNPTothmQ4wKxfkaDE0Yz5zRcx6vhTL1QiIwOIvrXpateCp7JdfpS39d2Deb6rJGBMUBQB690T9uLcKuaR2bMbv2jPyZsx49qo6vKrEBTRNSrSwNBKmPCdyRc2S+kN7UlAuIyR79WAj7KGbt+4VHxHKuThMbvFzAX5U2+anvDMwoJYi2Y/RiSg4EeikWgyys4SGpGuXNxm+vHtvjsej2MYCkF2E3dFSGhnb02AJ5Uj9mFD1GoRh+QUtBlvkDnQlsKn1L2vOWkjYY5JKc7k1byyw5eaUWBMi7bybRhpaRBZLHp+1o+GqKZNRaHUrG4sLPp3k1GKYR1S+BGRDBXS2wGAE="}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: content_block_start
+data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"dogcat"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":1}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":52}}
+
+event: message_stop
+data: {"type":"message_stop"}
+
+"#
+            .as_bytes();
+
+        let result = process_chunk(chunk).unwrap();
+        
+        // Verify thinking text is captured correctly
+        assert_eq!(result.thinking_text, "The user is asking me to repeat back only the word \"dogcat\" with no other words. This is straightforward - I should just respond with \"dogcat\" and nothing else.");
+        
+        // Verify regular text response is captured
+        assert_eq!(result.partial_text, "dogcat");
+        
+        // Verify no tool use
+        assert!(result.tool_use.is_none());
+        
+        // Verify completion status
+        assert!(result.is_done);
+        assert_eq!(result.done_reason.unwrap(), "end_turn");
     }
 
     #[tokio::test]
