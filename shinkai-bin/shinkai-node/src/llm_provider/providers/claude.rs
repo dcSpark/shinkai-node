@@ -704,6 +704,13 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
                 "type": "enabled",
                 "budget_tokens": budget_tokens,
             });
+
+            // Claude is very restrictive with temperature, top_p, and top_k when using extended thinking.
+            if let Some(obj) = payload.as_object_mut() {
+                obj.remove("top_p");
+                obj.remove("top_k");
+                obj.remove("temperature");
+            }
         } else {
             payload["thinking"] = serde_json::json!({
                 "type": "disabled",
@@ -731,15 +738,6 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
                     _ => (),
                 };
             }
-        }
-    }
-
-    // Claude is very restrictive with temperature, top_p, and top_k when using extended thinking.
-    if payload["model"].as_str().unwrap_or("").starts_with("claude-opus-4-1") {
-        if let Some(obj) = payload.as_object_mut() {
-            obj.remove("top_p");
-            obj.remove("top_k");
-            obj.remove("temperature");
         }
     }
 }
