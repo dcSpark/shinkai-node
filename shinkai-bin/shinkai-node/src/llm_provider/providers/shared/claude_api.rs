@@ -6,6 +6,7 @@ use serde_json::{self};
 use shinkai_message_primitives::schemas::llm_message::LlmMessage;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::LLMProviderInterface;
 use shinkai_message_primitives::schemas::prompts::Prompt;
+use super::shared_model_logic::get_image_type;
 
 fn sanitize_tool_name(name: &str) -> String {
     let sanitized: String = name
@@ -78,9 +79,67 @@ pub fn process_llm_messages(
             .into_iter()
             .map(|mut message| {
                 if message.get("role") == Some(&serde_json::Value::String("user".to_string())) {
-                    if let Some(content) = message.get("content").and_then(|v| v.as_str()) {
-                        message["content"] = serde_json::Value::String(content.to_string());
+                    let images = message.get("images").cloned();
+                    let content = message.get("content").cloned();
+                    
+                    let mut content_blocks = vec![];
+                    
+                    // Add text content if present
+                    if let Some(text) = content {
+                        if let Some(text_str) = text.as_str() {
+                            if !text_str.is_empty() {
+                                content_blocks.push(serde_json::json!({
+                                    "type": "text",
+                                    "text": text_str
+                                }));
+                            }
+                        }
                     }
+                    
+                    // Add image content if present
+                    if let Some(serde_json::Value::Array(images_array)) = images {
+                        for image in images_array {
+                            
+                            if let serde_json::Value::String(image_str) = image {
+                                // Check image size - skip if larger than 5MB
+                                const MAX_IMAGE_SIZE: usize = 5 * 1024 * 1024; // 5MB
+                                
+                                if image_str.len() > MAX_IMAGE_SIZE {
+                                    eprintln!("Skipping image larger than 5MB (size: {} bytes)", image_str.len());
+                                    content_blocks.push(serde_json::json!({
+                                        "type": "text",
+                                        "text": "The user provided an image that is too large to process. Have this in consideration if the user asks why the image is not found. You have a limit of 5MB for images."
+                                    }));
+                                    continue;
+                                }
+                                
+                                if let Some(image_type) = get_image_type(&image_str) {
+                                    let final_image_type = get_image_type(&image_str).unwrap_or(image_type);
+                                    content_blocks.push(serde_json::json!({
+                                        "type": "image",
+                                        "source": {
+                                            "type": "base64",
+                                            "media_type": format!("image/{}", final_image_type),
+                                            "data": image_str
+                                        }
+                                    }));
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Set content as array if we have multiple blocks, otherwise as string
+                    if content_blocks.len() > 1 {
+                        message["content"] = serde_json::Value::Array(content_blocks);
+                    } else if content_blocks.len() == 1 {
+                        // If only text, keep as string for consistency
+                        if content_blocks[0].get("type") == Some(&serde_json::Value::String("text".to_string())) {
+                            message["content"] = content_blocks[0]["text"].clone();
+                        } else {
+                            message["content"] = serde_json::Value::Array(content_blocks);
+                        }
+                    }
+                    
                     message.as_object_mut().unwrap().remove("images");
                 }
 
@@ -180,6 +239,74 @@ mod tests {
     use shinkai_message_primitives::schemas::{
         llm_message::DetailedFunctionCall, llm_providers::serialized_llm_provider::{Claude, SerializedLLMProvider}, subprompts::{SubPrompt, SubPromptType}
     };
+
+    #[test]
+    fn test_claude_prepare_messages_with_images() {
+        let claude_model = Claude {
+            model_type: "claude-3-5-sonnet-20241022".to_string(),
+        };
+
+        let model = LLMProviderInterface::Claude(claude_model);
+
+        let llm_messages = vec![
+            LlmMessage {
+                role: Some("system".to_string()),
+                content: Some("You are a very helpful assistant.".to_string()),
+                name: None,
+                function_call: None,
+                functions: None,
+                images: None,
+                videos: None,
+                audios: None,
+                tool_calls: None,
+            },
+            LlmMessage {
+                role: Some("user".to_string()),
+                content: Some("What's in this image?".to_string()),
+                name: None,
+                function_call: None,
+                functions: None,
+                // Small PNG that won't trigger optimization: 1x1 pixel
+                images: Some(vec!["iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==".to_string()]),
+                videos: None,
+                audios: None,
+                tool_calls: None,
+            },
+        ];
+
+        let (messages_result, _system_messages) = process_llm_messages(llm_messages, &model).unwrap();
+        let messages_json = match messages_result.messages {
+            PromptResultEnum::Value(v) => v,
+            _ => {
+                panic!("Expected Value variant in PromptResultEnum");
+            }
+        };
+
+        // Verify the user message has both text and image content
+        let user_message = messages_json.as_array().unwrap().iter()
+            .find(|msg| msg.get("role") == Some(&serde_json::Value::String("user".to_string())))
+            .expect("Should have a user message");
+
+        let content = user_message.get("content").expect("Should have content");
+        assert!(content.is_array(), "Content should be an array when images are present");
+        
+        let content_array = content.as_array().unwrap();
+        assert_eq!(content_array.len(), 2, "Should have text and image content");
+
+        // Check text content
+        let text_block = &content_array[0];
+        assert_eq!(text_block.get("type").unwrap().as_str().unwrap(), "text");
+        assert_eq!(text_block.get("text").unwrap().as_str().unwrap(), "What's in this image?");
+
+        // Check image content
+        let image_block = &content_array[1];
+        assert_eq!(image_block.get("type").unwrap().as_str().unwrap(), "image");
+        
+        let source = image_block.get("source").expect("Image should have source");
+        assert_eq!(source.get("type").unwrap().as_str().unwrap(), "base64");
+        assert_eq!(source.get("media_type").unwrap().as_str().unwrap(), "image/png");
+        assert_eq!(source.get("data").unwrap().as_str().unwrap(), "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==");
+    }
 
     #[test]
     fn test_claude_prepare_messages() {

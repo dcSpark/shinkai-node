@@ -29,9 +29,35 @@ use crate::llm_provider::{
 };
 use crate::managers::model_capabilities_manager::PromptResultEnum;
 
-use super::openai::truncate_image_url_in_payload;
 use super::shared::claude_api::claude_prepare_messages;
 use super::LLMService;
+
+pub fn truncate_image_content_in_claude_payload(payload: &mut JsonValue) {
+    if let Some(messages) = payload.get_mut("messages") {
+        if let Some(array) = messages.as_array_mut() {
+            for message in array {
+                if let Some(content) = message.get_mut("content") {
+                    if let Some(content_array) = content.as_array_mut() {
+                        for content_item in content_array {
+                            if let Some(content_type) = content_item.get("type") {
+                                if content_type == "image" {
+                                    if let Some(source) = content_item.get_mut("source") {
+                                        if let Some(data) = source.get_mut("data") {
+                                            if let Some(data_str) = data.as_str() {
+                                                let truncated_data = format!("{}...", &data_str[0..100.min(data_str.len())]);
+                                                *data = JsonValue::String(truncated_data);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 #[async_trait]
 impl LLMService for Claude {
@@ -61,8 +87,6 @@ impl LLMService for Claude {
                 let url = format!("{}{}", base_url, "v1/messages");
 
                 let is_stream = config.as_ref().and_then(|c| c.stream).unwrap_or(true);
-
-                eprintln!("call_api prompt: {:?}", prompt);
 
                 let (messages_result, system_messages) = claude_prepare_messages(&model, prompt)?;
                 let messages_json = match messages_result.messages {
@@ -112,15 +136,34 @@ impl LLMService for Claude {
                 // Add options to payload
                 add_options_to_payload(&mut payload, config.as_ref());
 
+                // If thinking is enabled, subtract the thinking budget from the max_tokens
+                if let Some(thinking) = payload.get("thinking") {
+                    if let Some(thinking_type) = thinking.get("type") {
+                        if thinking_type.as_str() == Some("enabled") {
+                            if let (Some(max_tokens), Some(budget_tokens)) = (
+                                payload["max_tokens"].as_u64(),
+                                thinking["budget_tokens"].as_u64()
+                            ) {
+                                // Ensure we don't underflow and maintain a minimum of 1 token for actual output
+                                let adjusted_max_tokens = if budget_tokens >= max_tokens {
+                                    1 // Minimum token count for output
+                                } else {
+                                    max_tokens - budget_tokens
+                                };
+                                
+                                payload["max_tokens"] = serde_json::json!(adjusted_max_tokens);
+                            }
+                        }
+                    }
+                }
+
                 // Print payload as a pretty JSON string
-                match serde_json::to_string_pretty(&payload) {
+                let mut payload_log = payload.clone();
+                truncate_image_content_in_claude_payload(&mut payload_log);
+                match serde_json::to_string_pretty(&payload_log) {
                     Ok(pretty_json) => eprintln!("cURL Payload: {}", pretty_json),
                     Err(e) => eprintln!("Failed to serialize payload: {:?}", e),
                 };
-
-                let mut payload_log = payload.clone();
-                truncate_image_url_in_payload(&mut payload_log);
-                eprintln!("Call API Body: {:?}", payload_log);
 
                 if let Some(ref msg_id) = tracing_message_id {
                     if let Err(e) = db.add_tracing(
@@ -228,6 +271,7 @@ async fn handle_streaming_response(
 
     let mut stream = res.bytes_stream();
     let mut response_text = String::new();
+    let mut thinking_text = String::new();
     let mut processed_tool: Option<ProcessedTool> = None;
     let mut function_calls = Vec::new();
     let mut buffer = String::new();
@@ -278,13 +322,14 @@ async fn handle_streaming_response(
                 // - see incomplete JSON ("EOF while parsing"), or
                 // - run out of parseable data in buffer
                 loop {
-                    match process_chunk(buffer.as_bytes()) {
-                        Ok(processed_chunk) => {
-                            // Remove the processed part from the buffer
-                            buffer.clear();
+                    match parse_one_event(&buffer) {
+                        Ok((processed_chunk, consumed_bytes)) => {
+                            // Remove only the processed part from the buffer
+                            buffer.drain(..consumed_bytes);
 
                             // Update response text
                             response_text.push_str(&processed_chunk.partial_text);
+                            thinking_text.push_str(&processed_chunk.thinking_text);
 
                             // Handle tool use
                             if let Some(tool_use) = processed_chunk.tool_use {
@@ -334,6 +379,10 @@ async fn handle_streaming_response(
                                 function_calls.push(function_call.clone());
 
                                 eprintln!("Function Call: {:?}", function_call);
+
+                                // Reset processed_tool to prevent duplicate function calls
+                                // since is_done can be set true multiple times (message_delta + message_stop)
+                                processed_tool = None;
 
                                 if let Some(ref manager) = ws_manager_trait {
                                     if let Some(ref inbox_name) = inbox_name {
@@ -407,31 +456,19 @@ async fn handle_streaming_response(
 
                             // If buffer is empty, break to get next chunk
                             if buffer.is_empty() {
-                                shinkai_log(
-                                    ShinkaiLogOption::Node,
-                                    ShinkaiLogLevel::Info,
-                                    "Buffer is empty, breaking loop to get next chunk",
-                                );
                                 break;
                             }
                         }
+                        Err(LLMProviderError::ContentParseFailed) => {
+                            // Incomplete event - wait for more data
+                            break;
+                        }
                         Err(e) => {
-                            // If it's a JSON parsing error due to incomplete data, wait for more
-                            if let LLMProviderError::SerdeError(ref serde_err) = e {
-                                if serde_err.to_string().contains("EOF while parsing") {
-                                    shinkai_log(
-                                        ShinkaiLogOption::Node,
-                                        ShinkaiLogLevel::Info,
-                                        &format!("Incomplete JSON detected, keeping buffer: {}", buffer),
-                                    );
-                                    break;
-                                }
-                            }
                             // Any other error should be propagated
                             shinkai_log(
                                 ShinkaiLogOption::Node,
                                 ShinkaiLogLevel::Error,
-                                &format!("Error processing chunk: {}", e),
+                                &format!("Error processing event: {}", e),
                             );
                             return Err(e);
                         }
@@ -445,8 +482,14 @@ async fn handle_streaming_response(
         }
     }
 
+    let final_response = if !thinking_text.is_empty() {
+        format!("<think>{}</think>{}", thinking_text, response_text)
+    } else {
+        response_text
+    };
+
     Ok(LLMInferenceResponse::new(
-        response_text,
+        final_response,
         json!({}),
         function_calls,
         None,
@@ -505,12 +548,18 @@ async fn handle_non_streaming_response(
                 let response_json: serde_json::Value = serde_json::from_str(&response_body)?;
 
                 if let Some(content) = response_json.get("content") {
+                    let mut thinking_text = String::new();
                     let mut response_text = String::new();
                     let mut function_calls = Vec::new();
 
                     for content_block in content.as_array().unwrap_or(&vec![]) {
                         if let Some(content_type) = content_block.get("type") {
                             match content_type.as_str().unwrap_or("") {
+                                "thinking" => {
+                                    if let Some(thinking) = content_block.get("thinking") {
+                                        thinking_text.push_str(thinking.as_str().unwrap_or(""));
+                                    }
+                                }
                                 "text" => {
                                     if let Some(text) = content_block.get("text") {
                                         response_text.push_str(text.as_str().unwrap_or(""));
@@ -593,8 +642,14 @@ async fn handle_non_streaming_response(
                         }
                     }
 
+                    let final_response = if !thinking_text.is_empty() {
+                        format!("<think>{}</think>{}", thinking_text, response_text)
+                    } else {
+                        response_text
+                    };
+
                     break Ok(LLMInferenceResponse::new(
-                        response_text,
+                        final_response,
                         json!({}),
                         function_calls,
                         None,
@@ -607,6 +662,26 @@ async fn handle_non_streaming_response(
             }
         }
     }
+}
+
+fn has_tool_calls_in_messages(messages: &serde_json::Value) -> bool {
+    if let Some(messages_array) = messages.as_array() {
+        for message in messages_array {
+            if let Some(content) = message.get("content") {
+                // Check if content is an array of content blocks
+                if let Some(content_array) = content.as_array() {
+                    for content_block in content_array {
+                        if let Some(content_type) = content_block.get("type").and_then(|t| t.as_str()) {
+                            if content_type == "tool_use" || content_type == "tool_result" {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    false
 }
 
 fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobConfig>) {
@@ -636,6 +711,44 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
     if let Some(max_tokens) = get_value("LLM_MAX_TOKENS", config.and_then(|c| c.max_tokens.as_ref())) {
         payload["max_completion_tokens"] = serde_json::json!(max_tokens);
     }
+    if let Some(thinking) = get_value("LLM_THINKING", config.and_then(|c| c.thinking.as_ref())) {
+        // Check if there are actual tool calls in the messages - if so, disable thinking to avoid API errors
+        // Claude's extended thinking feature requires specific message formatting when tools are used,
+        // which can cause "Expected thinking or redacted_thinking, but found tool_use" errors
+        let has_tool_calls = payload.get("messages")
+            .map(|messages| has_tool_calls_in_messages(messages))
+            .unwrap_or(false);
+
+        if thinking && !has_tool_calls {
+            let reasoning_effort = get_value("LLM_REASONING_EFFORT", config.and_then(|c| c.reasoning_effort.as_ref()));
+            let budget_tokens = match reasoning_effort {
+                Some(effort) => match effort.to_string().as_str() {
+                    "low" => 1024,
+                    "medium" => 2048,
+                    "high" => 4096,
+                    _ => 1024,
+                },
+                _ => 1024,
+            };
+
+            payload["thinking"] = serde_json::json!({
+                "type": "enabled",
+                "budget_tokens": budget_tokens,
+            });
+
+            // Claude is very restrictive with temperature, top_p, and top_k when using extended thinking.
+            if let Some(obj) = payload.as_object_mut() {
+                obj.remove("top_p");
+                obj.remove("top_k");
+                obj.remove("temperature");
+            }
+        } else {
+            // Disable thinking if tool calls are present in messages or if thinking is explicitly disabled
+            payload["thinking"] = serde_json::json!({
+                "type": "disabled",
+            });
+        }
+    }
 
     // Handle other model params
     if let Some(other_params) = config.and_then(|c| c.other_model_params.as_ref()) {
@@ -664,6 +777,7 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
 #[derive(Debug, Clone)]
 struct ProcessedChunk {
     partial_text: String,
+    thinking_text: String,
     tool_use: Option<ProcessedTool>,
     is_done: bool,
     done_reason: Option<String>,
@@ -673,7 +787,6 @@ struct ProcessedChunk {
 struct ProcessedTool {
     tool_name: String,
     partial_tool_arguments: String,
-    is_accumulating: bool, // Track if we're currently accumulating arguments
 }
 
 /// Try to parse exactly one SSE event from the start of `buf`.
@@ -702,8 +815,10 @@ fn parse_entire_sse_block(block: &str) -> Result<ProcessedChunk, LLMProviderErro
     let mut is_done = false;
     let mut done_reason = None;
     let mut content_block_type = String::new();
+    let mut _content_block_index: Option<u64> = None;
     let mut current_tool: Option<ProcessedTool> = None;
     let mut current_text = String::new();
+    let mut thinking_text = String::new();
     let mut accumulated_text = String::new();
 
     let event_rows: Vec<&str> = block.lines().collect();
@@ -711,6 +826,7 @@ fn parse_entire_sse_block(block: &str) -> Result<ProcessedChunk, LLMProviderErro
     if event_rows.len() < 2 {
         return Ok(ProcessedChunk {
             partial_text: String::new(),
+            thinking_text: String::new(),
             tool_use: None,
             is_done: false,
             done_reason: None,
@@ -723,6 +839,9 @@ fn parse_entire_sse_block(block: &str) -> Result<ProcessedChunk, LLMProviderErro
     match event_type {
         "content_block_start" => {
             if let Ok(data_json) = serde_json::from_str::<serde_json::Value>(event_data) {
+                // Extract index from the event data
+                _content_block_index = data_json.get("index").and_then(|i| i.as_u64());
+                
                 if let Some(content_block) = data_json.get("content_block") {
                     content_block_type = content_block
                         .get("type")
@@ -742,7 +861,6 @@ fn parse_entire_sse_block(block: &str) -> Result<ProcessedChunk, LLMProviderErro
                         current_tool = Some(ProcessedTool {
                             tool_name,
                             partial_tool_arguments: String::new(),
-                            is_accumulating: true,
                         });
                     }
                 }
@@ -758,13 +876,17 @@ fn parse_entire_sse_block(block: &str) -> Result<ProcessedChunk, LLMProviderErro
                                 accumulated_text.push_str(text);
                             }
                         }
+                        Some("thinking_delta") => {
+                            if let Some(thinking) = delta.get("thinking").and_then(|t| t.as_str()) {
+                                thinking_text.push_str(thinking);
+                            }
+                        }
                         Some("input_json_delta") => {
                             if let Some(input_json) = delta.get("partial_json").and_then(|t| t.as_str()) {
                                 if current_tool.is_none() {
                                     current_tool = Some(ProcessedTool {
                                         tool_name: String::new(),
                                         partial_tool_arguments: String::new(),
-                                        is_accumulating: true,
                                     });
                                 }
 
@@ -801,6 +923,7 @@ fn parse_entire_sse_block(block: &str) -> Result<ProcessedChunk, LLMProviderErro
             // Handle error events by returning empty chunk
             return Ok(ProcessedChunk {
                 partial_text: String::new(),
+                thinking_text: String::new(),
                 tool_use: None,
                 is_done: false,
                 done_reason: None,
@@ -811,16 +934,19 @@ fn parse_entire_sse_block(block: &str) -> Result<ProcessedChunk, LLMProviderErro
 
     Ok(ProcessedChunk {
         partial_text: accumulated_text,
+        thinking_text,
         tool_use: current_tool,
         is_done,
         done_reason,
     })
 }
 
+#[allow(dead_code)]
 fn process_chunk(chunk: &[u8]) -> Result<ProcessedChunk, LLMProviderError> {
     let chunk_str = String::from_utf8_lossy(chunk).to_string();
     let mut buffer = chunk_str.clone();
     let mut final_partial_text = String::new();
+    let mut final_thinking_text = String::new();
     let mut final_tool_use: Option<ProcessedTool> = None;
     let mut final_is_done = false;
     let mut final_done_reason = None;
@@ -833,6 +959,7 @@ fn process_chunk(chunk: &[u8]) -> Result<ProcessedChunk, LLMProviderError> {
 
                 // Accumulate text
                 final_partial_text.push_str(&parsed_block.partial_text);
+                final_thinking_text.push_str(&parsed_block.thinking_text);
 
                 // Handle tool use
                 if let Some(tu) = parsed_block.tool_use {
@@ -876,6 +1003,7 @@ fn process_chunk(chunk: &[u8]) -> Result<ProcessedChunk, LLMProviderError> {
 
     Ok(ProcessedChunk {
         partial_text: final_partial_text,
+        thinking_text: final_thinking_text,
         tool_use: final_tool_use,
         is_done: final_is_done,
         done_reason: final_done_reason,
@@ -906,6 +1034,7 @@ data: {}"#
 
         let result = process_chunk(chunk).unwrap();
         assert_eq!(result.partial_text, "Hello world!");
+        assert_eq!(result.thinking_text, "");
         assert!(result.tool_use.is_none());
         assert!(result.is_done);
     }
@@ -930,6 +1059,7 @@ data: {}"#
 
         let result = process_chunk(chunk).unwrap();
         assert_eq!(result.partial_text, "");
+        assert_eq!(result.thinking_text, "");
         assert!(result.tool_use.is_some());
         let tool = result.tool_use.unwrap();
         assert_eq!(tool.tool_name, "test_tool");
@@ -963,6 +1093,7 @@ data: {}"#
 
         let result = process_chunk(chunk).unwrap();
         assert_eq!(result.partial_text, "Let me help you with that.");
+        assert_eq!(result.thinking_text, "");
         assert!(result.tool_use.is_some());
         let tool = result.tool_use.unwrap();
         assert_eq!(tool.tool_name, "search_tool");
@@ -978,6 +1109,7 @@ data: {"error":{"type":"invalid_request_error","message":"Invalid request"}}"#
 
         let result = process_chunk(chunk).unwrap();
         assert_eq!(result.partial_text, "");
+        assert_eq!(result.thinking_text, "");
         assert!(result.tool_use.is_none());
         assert!(!result.is_done);
     }
@@ -1002,6 +1134,7 @@ data: {}"#
 
         let result = process_chunk(chunk).unwrap();
         assert_eq!(result.partial_text, "Complete response");
+        assert_eq!(result.thinking_text, "");
         assert!(result.tool_use.is_none());
         assert!(result.is_done);
         assert_eq!(result.done_reason.unwrap(), "stop_sequence");
@@ -1030,11 +1163,128 @@ data: {}"#
 
         let result = process_chunk(chunk).unwrap();
         assert_eq!(result.partial_text, "");
+        assert_eq!(result.thinking_text, "");
         assert!(result.tool_use.is_some());
         let tool = result.tool_use.unwrap();
         assert_eq!(tool.tool_name, "complex_tool");
         assert_eq!(tool.partial_tool_arguments, "{\"key1\":\"value1\",\"key2\":42}");
         assert!(result.is_done);
+    }
+
+    #[tokio::test]
+    async fn test_process_chunk_thinking_streaming() {
+        let chunk = r#"event: message_start
+data: {"type":"message_start","message":{"id":"msg_015onJzKgRMJHn28uVzuUtt7","type":"message","role":"assistant","model":"claude-opus-4-20250514","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":93,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":4,"service_tier":"standard"}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}}
+
+event: ping
+data: {"type": "ping"}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"The user is"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" asking me to repeat"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" back only"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" the word \"dog"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"cat\" with"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" no other words."}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" This is straight"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"forward - I"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" should just respon"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"d with \"dogcat"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"\" an"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"d nothing else."}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"EsoCCkYIBhgCKkA/mylU2TQ1s4HkOwnSA+bYpG9u+xF5p71sqMzfvDMy1YI9ouFQ0AO/mxPsRRSfLkCHKziTRI1IY4Hi4K0oM7qOEgxwnNPTothmQ4wKxfkaDE0Yz5zRcx6vhTL1QiIwOIvrXpateCp7JdfpS39d2Deb6rJGBMUBQB690T9uLcKuaR2bMbv2jPyZsx49qo6vKrEBTRNSrSwNBKmPCdyRc2S+kN7UlAuIyR79WAj7KGbt+4VHxHKuThMbvFzAX5U2+anvDMwoJYi2Y/RiSg4EeikWgyys4SGpGuXNxm+vHtvjsej2MYCkF2E3dFSGhnb02AJ5Uj9mFD1GoRh+QUtBlvkDnQlsKn1L2vOWkjYY5JKc7k1byyw5eaUWBMi7bybRhpaRBZLHp+1o+GqKZNRaHUrG4sLPp3k1GKYR1S+BGRDBXS2wGAE="}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: content_block_start
+data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"dogcat"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":1}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":52}}
+
+event: message_stop
+data: {"type":"message_stop"}
+
+"#
+            .as_bytes();
+
+        let result = process_chunk(chunk).unwrap();
+        
+        // Verify thinking text is captured correctly
+        assert_eq!(result.thinking_text, "The user is asking me to repeat back only the word \"dogcat\" with no other words. This is straightforward - I should just respond with \"dogcat\" and nothing else.");
+        
+        // Verify regular text response is captured
+        assert_eq!(result.partial_text, "dogcat");
+        
+        // Verify no tool use
+        assert!(result.tool_use.is_none());
+        
+        // Verify completion status
+        assert!(result.is_done);
+        assert_eq!(result.done_reason.unwrap(), "end_turn");
+    }
+
+    #[tokio::test]
+    async fn test_no_duplicate_function_calls_with_message_delta_and_stop() {
+        let chunk = r#"event: content_block_start
+data: {"content_block":{"type":"tool_use","name":"test_tool"}}
+
+event: content_block_delta
+data: {"delta":{"type":"input_json_delta","partial_json":"{\"message\":\"hello\"}"}}
+
+event: content_block_stop
+data: {"index":0}
+
+event: message_delta
+data: {"delta":{"stop_reason":"tool_use"}}
+
+event: message_stop
+data: {}"#
+            .as_bytes();
+
+        let result = process_chunk(chunk).unwrap();
+        assert_eq!(result.partial_text, "");
+        assert_eq!(result.thinking_text, "");
+        assert!(result.tool_use.is_some());
+        let tool = result.tool_use.unwrap();
+        assert_eq!(tool.tool_name, "test_tool");
+        assert_eq!(tool.partial_tool_arguments, "{\"message\":\"hello\"}");
+        assert!(result.is_done);
+        assert_eq!(result.done_reason.unwrap(), "tool_use");
     }
 
     #[tokio::test]
@@ -1102,10 +1352,10 @@ data: {"type":"message_stop"}
 
             // 2) Parse as many complete SSE blocks as possible
             loop {
-                match process_chunk(buffer.as_bytes()) {
-                    Ok(parsed) => {
+                match parse_one_event(&buffer) {
+                    Ok((parsed, consumed_bytes)) => {
                         // Remove the processed part from the buffer
-                        buffer.clear();
+                        buffer.drain(..consumed_bytes);
 
                         // Update our accumulated state
                         if let Some(tool) = parsed.tool_use {

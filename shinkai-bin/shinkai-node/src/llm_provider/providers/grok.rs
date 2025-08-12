@@ -109,11 +109,10 @@ impl LLMService for Grok {
                 add_options_to_payload(&mut payload, config.as_ref());
 
                 let payload_log = payload.clone();
-                shinkai_log(
-                    ShinkaiLogOption::JobExecution,
-                    ShinkaiLogLevel::Debug,
-                    format!("Grok API Call Body: {:?}", payload_log).as_str(),
-                );
+                match serde_json::to_string_pretty(&payload_log) {
+                    Ok(pretty_json) => eprintln!("Grok API Call Body: {}", pretty_json),
+                    Err(e) => eprintln!("Failed to serialize payload: {:?}", e),
+                };
 
                 if let Some(ref msg_id) = tracing_message_id {
                     if let Err(e) = db.add_tracing(

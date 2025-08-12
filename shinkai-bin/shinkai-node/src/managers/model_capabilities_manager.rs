@@ -442,8 +442,9 @@ impl ModelCapabilitiesManager {
                 }
             },
             LLMProviderInterface::Claude(claude) => match claude.model_type.as_str() {
-                "claude-opus-4-20250514" | "claude-opus-4-latest" => ModelCost::Expensive,
-                "claude-sonnet-4-20250514" | "claude-sonnet-4-latest" => ModelCost::Cheap,
+                "claude-opus-4-1-20250805" | "claude-opus-4-1" => ModelCost::Expensive,
+                "claude-opus-4-20250514" | "claude-opus-4-0" => ModelCost::Expensive,
+                "claude-sonnet-4-20250514" | "claude-sonnet-4-0" => ModelCost::Cheap,
                 "claude-3-7-sonnet-20250219" | "claude-3-7-sonnet-latest" => ModelCost::Cheap,
                 "claude-3-5-sonnet-20241022" | "claude-3-5-sonnet-latest" => ModelCost::Cheap,
                 "claude-3-5-haiku-20241022" | "claude-3-5-haiku-latest" => ModelCost::VeryCheap,
@@ -722,9 +723,6 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("llama-3.1") => 128_000,
             model_type if model_type.starts_with("llama3.1") => 128_000,
             model_type if model_type.starts_with("llama3") || model_type.starts_with("llava-llama3") => 8_000,
-            model_type if model_type.starts_with("claude-opus-4") => 200_000,
-            model_type if model_type.starts_with("claude-sonnet-4") => 200_000,
-            model_type if model_type.starts_with("claude-3-7-sonnet") => 200_000,
             model_type if model_type.starts_with("claude") => 200_000,
             // Groq Production Models
             model_type if model_type.starts_with("gemma2-9b-it") => 8_192,
@@ -1078,6 +1076,7 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::ShinkaiBackend(_) => true,
             LLMProviderInterface::Gemini(model) => Self::gemini_has_tool_capabilities(model.model_type.as_str()),
             LLMProviderInterface::DeepSeek(_) => true,
+            LLMProviderInterface::Grok(_) => true, // All Grok models support tool calling
             _ => false,
         }
     }
@@ -1106,8 +1105,9 @@ impl ModelCapabilitiesManager {
             }
             LLMProviderInterface::DeepSeek(deepseek) => deepseek.model_type.starts_with("deepseek-reasoner"),
             LLMProviderInterface::Claude(claude) => {
-                claude.model_type.starts_with("claude-opus-4")
-                    || claude.model_type.starts_with("claude-4-sonnet")
+                claude.model_type.starts_with("claude-opus-4-1")
+                    || claude.model_type.starts_with("claude-opus-4")
+                    || claude.model_type.starts_with("claude-sonnet-4")
                     || claude.model_type.starts_with("claude-3-7-sonnet")
             }
             LLMProviderInterface::Gemini(gemini) => {
