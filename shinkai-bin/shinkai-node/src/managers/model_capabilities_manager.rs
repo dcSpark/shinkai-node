@@ -1076,6 +1076,7 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::ShinkaiBackend(_) => true,
             LLMProviderInterface::Gemini(model) => Self::gemini_has_tool_capabilities(model.model_type.as_str()),
             LLMProviderInterface::DeepSeek(_) => true,
+            LLMProviderInterface::Grok(_) => true, // All Grok models support tool calling
             _ => false,
         }
     }
