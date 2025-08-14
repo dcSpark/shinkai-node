@@ -679,31 +679,11 @@ impl SqliteManager {
                                              // Check if the parent_id is an LLM provider
                                              match self.get_llm_provider(&parent_id, &p) {
                                                  Ok(Some(provider)) => (
-                                                     Some(LLMProviderSubset::from_serialized_llm_provider(provider)),
-                                                     ProviderType::LLMProvider,
+                                                    Some(LLMProviderSubset::from_serialized_llm_provider(provider)),
+                                                    ProviderType::LLMProvider,
                                                  ),
-                                                 Ok(None) => { // Not found as provider, try agent
-                                                      match self.get_agent(&parent_id.to_lowercase()) {
-                                                         Ok(Some(agent)) => {
-                                                             // Fetch the serialized LLM provider for the agent
-                                                             if let Ok(Some(serialized_llm_provider)) =
-                                                                 self.get_llm_provider(&agent.llm_provider_id, &p)
-                                                             {
-                                                                 (
-                                                                     Some(LLMProviderSubset::from_agent(
-                                                                         agent,
-                                                                         serialized_llm_provider,
-                                                                     )),
-                                                                     ProviderType::Agent,
-                                                                 )
-                                                             } else {
-                                                                 (None, ProviderType::Unknown) // Agent exists but provider doesn't?
-                                                             }
-                                                         }
-                                                         _ => (None, ProviderType::Unknown), // Not found as agent either
-                                                     }
-
-                                                 }
+                                                 Ok(None) => self.get_agent_provider(p, parent_id), // Not found as provider, try agent
+                                                 Err(SqliteManagerError::DataNotFound) => self.get_agent_provider(p, parent_id), // Not found as provider, try agent
                                                  Err(_) => (None, ProviderType::Unknown) // Error fetching provider
                                              }
                                          },
@@ -757,6 +737,29 @@ impl SqliteManager {
         })
     }
 
+    fn get_agent_provider(&self, p: ShinkaiName, parent_id: String) -> (Option<LLMProviderSubset>, ProviderType) {
+        eprintln!("Trying to get agent: {:?}", parent_id);
+        match self.get_agent(&parent_id.to_lowercase()) {
+             Ok(Some(agent)) => {
+                 // Fetch the serialized LLM provider for the agent
+                 if let Ok(Some(serialized_llm_provider)) =
+                     self.get_llm_provider(&agent.llm_provider_id, &p)
+                 {
+                     (
+                         Some(LLMProviderSubset::from_agent(
+                             agent,
+                             serialized_llm_provider,
+                         )),
+                         ProviderType::Agent,
+                     )
+                 } else {
+                     (None, ProviderType::Unknown) // Agent exists but provider doesn't?
+                 }
+             }
+             _ => (None, ProviderType::Unknown), // Not found as agent either
+         }
+    }
+    
     // Note: This is unsafe because it does not update folder names which depend on the inbox name
     pub fn unsafe_update_smart_inbox_name(&self, inbox_id: &str, new_name: &str) -> Result<(), SqliteManagerError> {
         // Update the name in the database
