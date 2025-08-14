@@ -811,6 +811,7 @@ impl Node {
                     use_tools: None,
                     thinking: None,
                     reasoning_effort: None,
+                    web_search_enabled: None,
                 });
                 let _ = res.send(Ok(config)).await;
                 Ok(())

@@ -152,7 +152,7 @@ pub fn openai_prepare_messages_deprecated(
                 if let Some(functions) = tool.functions.as_mut() {
                     for function in functions {
                         // Replace any characters that aren't alphanumeric, underscore, or hyphen
-                        function.name = function
+                        let mut sanitized_name = function
                             .name
                             .chars()
                             .map(|c| {
@@ -164,6 +164,17 @@ pub fn openai_prepare_messages_deprecated(
                             })
                             .collect::<String>()
                             .to_lowercase();
+                        
+                        // Truncate function name to OpenAI's 64-character limit
+                        // If name is too long, keep the end part (similar to agent_id truncation)
+                        let max_len = 64;
+                        if sanitized_name.len() > max_len {
+                            let chars: Vec<char> = sanitized_name.chars().collect();
+                            let start_index = chars.len() - max_len;
+                            sanitized_name = chars[start_index..].iter().collect();
+                        }
+                        
+                        function.name = sanitized_name;
                     }
                 }
                 tool
