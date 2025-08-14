@@ -51,6 +51,8 @@ struct StreamingPart {
     text: String,
     #[serde(rename = "functionCall")]
     function_call: Option<FunctionCallResponse>,
+    #[serde(default)]
+    thought: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -126,7 +128,7 @@ impl LLMService for Gemini {
         model: LLMProviderInterface,
         inbox_name: Option<InboxName>,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-        _config: Option<JobConfig>,
+        config: Option<JobConfig>,
         _llm_stopper: Arc<LLMStopper>,
         db: Arc<SqliteManager>,
         tracing_message_id: Option<String>,
@@ -152,13 +154,30 @@ impl LLMService for Gemini {
                     }
                 };
 
+                let mut generation_config = json!({
+                    "temperature": config.as_ref().and_then(|c| c.temperature).unwrap_or(0.9),
+                    "topK": config.as_ref().and_then(|c| c.top_k).unwrap_or(1),
+                    "topP": config.as_ref().and_then(|c| c.top_p).unwrap_or(1.0),
+                    "maxOutputTokens": config.as_ref().and_then(|c| c.max_tokens).unwrap_or(8192)
+                });
+
+                // Add thinkingConfig if thinking is enabled
+                if let Some(true) = config.as_ref().and_then(|c| c.thinking) {
+                    let thinking_budget = match config.as_ref().and_then(|c| c.reasoning_effort.as_deref()) {
+                        Some("low") => 1024,
+                        Some("medium") => 8192,
+                        Some("high") => 24576,
+                        _ => -1, // Default unlimited budget
+                    };
+
+                    generation_config["thinkingConfig"] = json!({
+                        "thinkingBudget": thinking_budget,
+                        "includeThoughts": true
+                    });
+                }
+
                 let mut payload = json!({
-                    "generationConfig": {
-                        "temperature": 0.9,
-                        "topK": 1,
-                        "topP": 1,
-                        "maxOutputTokens": 8192
-                    },
+                    "generationConfig": generation_config,
                     "safety_settings": [
                         {
                             "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
@@ -176,18 +195,28 @@ impl LLMService for Gemini {
                             "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
                             "threshold": "BLOCK_NONE"
                         }
-                    ],
-                    "tool_config": {
-                        "function_calling_config": {
-                            "mode": "AUTO"
-                        }
-                    }
+                    ]
                 });
 
                 if let Some(payload_obj) = payload.as_object_mut() {
                     if let Some(contents_obj) = contents.as_object() {
                         for (key, value) in contents_obj {
                             payload_obj.insert(key.clone(), value.clone());
+                        }
+                    }
+                }
+
+                // Add google_search tool if web_search_enabled is true
+                if let Some(true) = config.as_ref().and_then(|c| c.web_search_enabled) {
+                    if let Some(payload_obj) = payload.as_object_mut() {
+                        let tools_array = payload_obj
+                            .entry("tools")
+                            .or_insert_with(|| json!([]));
+                        
+                        if let Some(tools) = tools_array.as_array_mut() {
+                            tools.push(json!({
+                                "google_search": {}
+                            }));
                         }
                     }
                 }
@@ -232,6 +261,8 @@ impl LLMService for Gemini {
                 let mut is_done = false;
                 let mut finish_reason = None;
                 let mut function_calls = Vec::new();
+                let mut in_thinking = false;
+                let mut thinking_started = false;
 
                 while let Some(item) = stream.next().await {
                     match item {
@@ -246,6 +277,8 @@ impl LLMService for Gemini {
                                 &mut is_done,
                                 &mut finish_reason,
                                 &mut function_calls,
+                                &mut in_thinking,
+                                &mut thinking_started,
                             )
                             .await?;
                         }
@@ -287,6 +320,8 @@ async fn process_chunk(
     is_done: &mut bool,
     finish_reason: &mut Option<String>,
     function_calls: &mut Vec<FunctionCall>,
+    in_thinking: &mut bool,
+    thinking_started: &mut bool,
 ) -> Result<(), LLMProviderError> {
     let chunk_str = String::from_utf8_lossy(chunk);
     eprintln!("Chunk: {}", chunk_str);
@@ -327,6 +362,8 @@ async fn process_chunk(
                     is_done,
                     finish_reason,
                     function_calls,
+                    in_thinking,
+                    thinking_started,
                 )
                 .await?;
             }
@@ -339,6 +376,12 @@ async fn process_chunk(
 
     // Check if is_done is true and send a final message if necessary
     if *is_done {
+        // If we're done and still in thinking mode, close the thinking tag
+        if *in_thinking {
+            response_text.push_str("</think>");
+            *in_thinking = false;
+        }
+        
         if let Some(ref manager) = ws_manager_trait {
             if let Some(ref inbox_name) = inbox_name {
                 let m = manager.lock().await;
@@ -379,6 +422,8 @@ async fn process_gemini_response(
     is_done: &bool,
     finish_reason: &mut Option<String>,
     function_calls: &mut Vec<FunctionCall>,
+    in_thinking: &mut bool,
+    thinking_started: &mut bool,
 ) -> Result<(), LLMProviderError> {
     if let Ok(response) = serde_json::from_value::<GeminiStreamingResponse>(value) {
         for candidate in &response.candidates {
@@ -399,7 +444,29 @@ async fn process_gemini_response(
 
                 // Handle text content
                 if !part.text.is_empty() {
-                    response_text.push_str(&part.text);
+                    let mut text_to_add = String::new();
+                    
+                    // Handle thinking logic
+                    if part.thought {
+                        // This is a thought
+                        if !*thinking_started {
+                            // First thought - prepend <think>
+                            text_to_add.push_str("<think>");
+                            *thinking_started = true;
+                            *in_thinking = true;
+                        }
+                        text_to_add.push_str(&part.text);
+                    } else {
+                        // This is a normal response
+                        if *in_thinking {
+                            // End thinking mode - append </think>
+                            text_to_add.push_str("</think>");
+                            *in_thinking = false;
+                        }
+                        text_to_add.push_str(&part.text);
+                    }
+                    
+                    response_text.push_str(&text_to_add);
 
                     if let Some(ref manager) = ws_manager_trait {
                         if let Some(ref inbox_name) = inbox_name {
@@ -420,7 +487,7 @@ async fn process_gemini_response(
                                 .queue_message(
                                     WSTopic::Inbox,
                                     inbox_name_string.clone(),
-                                    part.text.to_string(),
+                                    text_to_add,
                                     ws_message_type,
                                     true,
                                 )
@@ -529,6 +596,8 @@ mod tests {
         let mut is_done = false;
         let mut finish_reason = None;
         let mut function_calls = Vec::new();
+        let mut in_thinking = false;
+        let mut thinking_started = false;
 
         process_chunk(
             chunk,
@@ -540,6 +609,8 @@ mod tests {
             &mut is_done,
             &mut finish_reason,
             &mut function_calls,
+            &mut in_thinking,
+            &mut thinking_started,
         )
         .await
         .unwrap();
@@ -600,6 +671,8 @@ mod tests {
         let mut is_done = false;
         let mut finish_reason = None;
         let mut function_calls = Vec::new();
+        let mut in_thinking = false;
+        let mut thinking_started = false;
 
         process_chunk(
             chunk,
@@ -611,6 +684,8 @@ mod tests {
             &mut is_done,
             &mut finish_reason,
             &mut function_calls,
+            &mut in_thinking,
+            &mut thinking_started,
         )
         .await
         .unwrap();
@@ -674,6 +749,8 @@ mod tests {
         let mut is_done = false;
         let mut finish_reason = None;
         let mut function_calls = Vec::new();
+        let mut in_thinking = false;
+        let mut thinking_started = false;
 
         process_chunk(
             chunk,
@@ -685,6 +762,8 @@ mod tests {
             &mut is_done,
             &mut finish_reason,
             &mut function_calls,
+            &mut in_thinking,
+            &mut thinking_started,
         )
         .await
         .unwrap();
@@ -756,6 +835,8 @@ mod tests {
         let inbox_name: Option<InboxName> = None;
         let mut is_done = false;
         let mut finish_reason = None;
+        let mut in_thinking = false;
+        let mut thinking_started = false;
 
         // Process each chunk sequentially
         let chunks: Vec<&[u8]> = vec![chunk1, chunk2, chunk3];
@@ -770,6 +851,8 @@ mod tests {
                 &mut is_done,
                 &mut finish_reason,
                 &mut function_calls,
+                &mut in_thinking,
+                &mut thinking_started,
             )
             .await
             .unwrap();
@@ -793,6 +876,141 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_process_thinking_mode() {
+        // First chunk with thinking
+        let chunk1 = br#"[{
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [
+                            {
+                                "text": "**Clarifying Limitations**\n\nI understand the need for the latest news, but I'm constrained by my training data. I can't access real-time information or browse the internet. My knowledge has a cutoff date, so \"latest news\" isn't possible in the way you might expect. I'm focusing on clarifying these limitations to avoid misunderstandings.\n\n\n",
+                                "thought": true
+                            }
+                        ],
+                        "role": "model"
+                    },
+                    "index": 0
+                }
+            ],
+            "usageMetadata": {
+                "promptTokenCount": 46,
+                "totalTokenCount": 117,
+                "thoughtsTokenCount": 71
+            }
+        }"#;
+
+        // Second chunk with more thinking
+        let chunk2 = br#",
+        {
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [
+                            {
+                                "text": "**Highlighting Constraints**\n\nI'm working on explaining my limitations regarding \"the latest news.\" I'm unable to provide real-time updates as my knowledge base is fixed. To clarify, I can't browse the internet or access live news feeds. I'm focusing on explaining how users can find more current information elsewhere.\n\n\n",
+                                "thought": true
+                            }
+                        ],
+                        "role": "model"
+                    },
+                    "index": 0
+                }
+            ],
+            "usageMetadata": {
+                "promptTokenCount": 46,
+                "totalTokenCount": 139,
+                "thoughtsTokenCount": 93
+            }
+        }"#;
+
+        // Third chunk with normal response (thinking should end here)
+        let chunk3 = br#",
+        {
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [
+                            {
+                                "text": "As an AI, I don't have real-time access to breaking news or the ability to browse the internet for the very latest updates. My knowledge is based on the data I was trained on, which has a cutoff date.\n\n"
+                            }
+                        ],
+                        "role": "model"
+                    },
+                    "index": 0
+                }
+            ],
+            "usageMetadata": {
+                "promptTokenCount": 46,
+                "candidatesTokenCount": 45,
+                "totalTokenCount": 184,
+                "thoughtsTokenCount": 93
+            }
+        }"#;
+
+        // Fourth chunk with more normal response
+        let chunk4 = br#",
+        {
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [
+                            {
+                                "text": "To get the most up-to-date news, I recommend checking reputable news sources like:\n\n*   **Major news organizations:** Reuters, Associated Press, BBC News"
+                            }
+                        ],
+                        "role": "model"
+                    },
+                    "finishReason": "STOP",
+                    "index": 0
+                }
+            ]
+        }]"#;
+
+        let mut buffer = String::new();
+        let mut response_text = String::new();
+        let mut function_calls = Vec::new();
+        let session_id = "test_session_id";
+        let ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
+        let inbox_name: Option<InboxName> = None;
+        let mut is_done = false;
+        let mut finish_reason = None;
+        let mut in_thinking = false;
+        let mut thinking_started = false;
+
+        // Process each chunk sequentially
+        let chunks: Vec<&[u8]> = vec![chunk1, chunk2, chunk3, chunk4];
+        for chunk in chunks {
+            process_chunk(
+                chunk,
+                &mut buffer,
+                &mut response_text,
+                session_id,
+                &ws_manager_trait,
+                &inbox_name,
+                &mut is_done,
+                &mut finish_reason,
+                &mut function_calls,
+                &mut in_thinking,
+                &mut thinking_started,
+            )
+            .await
+            .unwrap();
+        }
+
+        // Verify the response contains properly formatted thinking tags
+        assert!(response_text.starts_with("<think>"));
+        assert!(response_text.contains("**Clarifying Limitations**"));
+        assert!(response_text.contains("**Highlighting Constraints**"));
+        assert!(response_text.contains("</think>As an AI, I don't have real-time access"));
+        assert!(response_text.contains("Major news organizations"));
+        assert!(thinking_started);
+        assert!(!in_thinking); // Should not be in thinking mode at the end
+        assert_eq!(finish_reason, Some("STOP".to_string()));
+        assert!(is_done);
+    }
+
+    #[tokio::test]
     async fn test_process_error_response() {
         let chunk = br#"[{
             "error": {
@@ -810,6 +1028,8 @@ mod tests {
         let mut is_done = false;
         let mut finish_reason = None;
         let mut function_calls = Vec::new();
+        let mut in_thinking = false;
+        let mut thinking_started = false;
 
         let result = process_chunk(
             chunk,
@@ -821,6 +1041,8 @@ mod tests {
             &mut is_done,
             &mut finish_reason,
             &mut function_calls,
+            &mut in_thinking,
+            &mut thinking_started,
         )
         .await;
 

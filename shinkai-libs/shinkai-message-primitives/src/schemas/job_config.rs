@@ -16,6 +16,7 @@ pub struct JobConfig {
     pub use_tools: Option<bool>,
     pub thinking: Option<bool>,
     pub reasoning_effort: Option<String>,
+    pub web_search_enabled: Option<bool>,
     // TODO: add ctx_...
 }
 
@@ -35,6 +36,7 @@ impl JobConfig {
             use_tools: self.use_tools.or(other.use_tools),
             thinking: self.thinking.or(other.thinking),
             reasoning_effort: self.reasoning_effort.clone().or_else(|| other.reasoning_effort.clone()),
+            web_search_enabled: self.web_search_enabled.or(other.web_search_enabled),
             other_model_params: self
                 .other_model_params
                 .clone()
@@ -57,6 +59,7 @@ impl JobConfig {
             use_tools: None,
             thinking: None,
             reasoning_effort: None,
+            web_search_enabled: None,
         }
     }
 }
@@ -80,7 +83,8 @@ mod tests {
             "other_model_params": null,
             "use_tools": false,
             "thinking": true,
-            "reasoning_effort": "medium"
+            "reasoning_effort": "medium",
+            "web_search_enabled": false
         }"#;
 
         let job_config: JobConfig = serde_json::from_str(json_data).expect("Failed to deserialize JSON");
@@ -97,5 +101,6 @@ mod tests {
         assert_eq!(job_config.use_tools, Some(false));
         assert_eq!(job_config.thinking, Some(true));
         assert_eq!(job_config.reasoning_effort, Some("medium".to_string()));
+        assert_eq!(job_config.web_search_enabled, Some(false));
     }
 }
