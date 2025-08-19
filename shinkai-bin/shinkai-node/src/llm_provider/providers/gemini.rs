@@ -206,21 +206,6 @@ impl LLMService for Gemini {
                     }
                 }
 
-                // Add google_search tool if web_search_enabled is true
-                if let Some(true) = config.as_ref().and_then(|c| c.web_search_enabled) {
-                    if let Some(payload_obj) = payload.as_object_mut() {
-                        let tools_array = payload_obj
-                            .entry("tools")
-                            .or_insert_with(|| json!([]));
-                        
-                        if let Some(tools) = tools_array.as_array_mut() {
-                            tools.push(json!({
-                                "google_search": {}
-                            }));
-                        }
-                    }
-                }
-
                 // Print payload as a pretty JSON string only if IS_TESTING is true
                 if std::env::var("LOG_ALL").unwrap_or_default() == "true"
                     || std::env::var("LOG_ALL").unwrap_or_default() == "1"

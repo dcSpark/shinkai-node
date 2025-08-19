@@ -772,9 +772,10 @@ impl GenericInferenceChain {
             }
         }
 
-        // If tools are allowed, always include the web search tool
+        // If tools are allowed and web search is enabled, include the web search tool
         let tools_allowed = job_config.as_ref().and_then(|config| config.use_tools).unwrap_or(false);
-        if tools_allowed {
+        let web_search_enabled = job_config.as_ref().and_then(|config| config.web_search_enabled).unwrap_or(false);
+        if tools_allowed && web_search_enabled {
             // Check if web search tool is not already in the tools list
             let web_search_tool_key = "local:::__official_shinkai:::web_search";
             let has_web_search = tools.iter().any(|tool| {
@@ -875,12 +876,13 @@ impl GenericInferenceChain {
                 }
             });
 
-        // Include web search instructions in system prompt only if tools are enabled
+        // Include web search instructions in system prompt only if tools are enabled and web search is enabled
         let custom_system_prompt = {
-            // Check if tools are allowed by job config (defaults to false if not specified)
+            // Check if tools are allowed and web search is enabled by job config (defaults to false if not specified)
             let tools_allowed = job_config.as_ref().and_then(|config| config.use_tools).unwrap_or(false);
+            let web_search_enabled = job_config.as_ref().and_then(|config| config.web_search_enabled).unwrap_or(false);
             
-            if tools_allowed {
+            if tools_allowed && web_search_enabled {
                 let today = chrono::Utc::now().format("%B %d, %Y").to_string();
                 let web_search_instructions = format!(
                     "Today is {}.
