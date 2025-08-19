@@ -33,6 +33,7 @@ use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_sqlite::SqliteManager;
 
 use base64::Engine;
+use chrono;
 use serde_json::json;
 use std::fmt;
 use std::path::PathBuf;
@@ -771,11 +772,48 @@ impl GenericInferenceChain {
             }
         }
 
+        // If tools are allowed and web search is enabled, include the web search tool
+        let tools_allowed = job_config.as_ref().and_then(|config| config.use_tools).unwrap_or(false);
+        let web_search_enabled = job_config.as_ref().and_then(|config| config.web_search_enabled).unwrap_or(false);
+        if tools_allowed && web_search_enabled {
+            // Check if web search tool is not already in the tools list
+            let web_search_tool_key = "local:::__official_shinkai:::web_search";
+            let has_web_search = tools.iter().any(|tool| {
+                tool.tool_router_key().to_string_without_version() == web_search_tool_key
+            });
+            
+            if !has_web_search {
+                // Add the web search tool
+                if let Some(tool_router) = &tool_router {
+                    match tool_router.get_tool_by_name(web_search_tool_key).await {
+                        Ok(Some(web_search_tool)) => {
+                            tools.push(web_search_tool);
+                        }
+                        Ok(None) => {
+                            shinkai_log(
+                                ShinkaiLogOption::JobExecution,
+                                ShinkaiLogLevel::Error,
+                                &format!("Web search tool not found: {}", web_search_tool_key),
+                            );
+                        }
+                        Err(e) => {
+                            shinkai_log(
+                                ShinkaiLogOption::JobExecution,
+                                ShinkaiLogLevel::Error,
+                                &format!("Error retrieving web search tool: {:?}", e),
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
         // After this point, 'tools' vector contains either:
         // 1. A single specifically requested tool
         // 2. Tools from an Agent's configuration
         // 3. Tools found through vector search
         // 4. Empty vector if no tools were selected/allowed
+        // 5. Web search tool (automatically added when tools are allowed)
 
         // 3) Generate Prompt
         // First, attempt to use the custom_prompt from the job's config.
@@ -837,6 +875,34 @@ impl GenericInferenceChain {
                     None
                 }
             });
+
+        // Include web search instructions in system prompt only if tools are enabled and web search is enabled
+        let custom_system_prompt = {
+            // Check if tools are allowed and web search is enabled by job config (defaults to false if not specified)
+            let tools_allowed = job_config.as_ref().and_then(|config| config.use_tools).unwrap_or(false);
+            let web_search_enabled = job_config.as_ref().and_then(|config| config.web_search_enabled).unwrap_or(false);
+            
+            if tools_allowed && web_search_enabled {
+                let today = chrono::Utc::now().format("%B %d, %Y").to_string();
+                let web_search_instructions = format!(
+                    "Today is {}.
+                    Use the web search tool to access up-to-date information from the web or when responding to the user requires information about their location. Some examples of when to use the web search tool include:
+                    
+                    - Local Information: Use the web search tool to respond to questions that require information about the user's location, such as the weather, local businesses, or events.
+                    - Freshness: If up-to-date information on a topic could potentially change or enhance the answer, call the web search tool any time you would otherwise refuse to answer a question because your knowledge might be out of date.
+                    - Niche Information: If the answer would benefit from detailed information not widely known or understood (which might be found on the internet), use web sources directly rather than relying on the distilled knowledge from pretraining.
+                    - Accuracy: If the cost of a small mistake or outdated information is high (e.g., using an outdated version of a software library or not knowing the date of the next game for a sports team), then use the web search tool.",
+                    today
+                );
+                
+                match custom_system_prompt {
+                    Some(existing_prompt) => Some(format!("{} {}", existing_prompt, web_search_instructions)),
+                    None => Some(web_search_instructions),
+                }
+            } else {
+                custom_system_prompt
+            }
+        };
 
         let additional_files = Self::get_additional_files(
             &db,
