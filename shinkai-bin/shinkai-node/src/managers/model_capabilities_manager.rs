@@ -645,9 +645,9 @@ impl ModelCapabilitiesManager {
                 }
             }
             LLMProviderInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type().as_str() {
-                "FREE_TEXT_INFERENCE" => 1_047_576,
-                "STANDARD_TEXT_INFERENCE" => 1_047_576,
-                "PREMIUM_TEXT_INFERENCE" => 200_000,
+                "FREE_TEXT_INFERENCE" => 400_000, // gpt-5-mini
+                "STANDARD_TEXT_INFERENCE" => 400_000, // gpt-5
+                "PREMIUM_TEXT_INFERENCE" => 200_000, // claude-sonnet-4
                 "CODE_GENERATOR" => 128_000,
                 "CODE_GENERATOR_NO_FEEDBACK" => 128_000,
                 _ => 128_000,
@@ -819,8 +819,8 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::ShinkaiBackend(shinkai_backend) => {
                 // Fill in the appropriate logic for ShinkaiBackend
                 match shinkai_backend.model_type().as_str() {
-                    "FREE_TEXT_INFERENCE" | "STANDARD_TEXT_INFERENCE" => 16384,
-                    "PREMIUM_TEXT_INFERENCE" => 8192,
+                    "FREE_TEXT_INFERENCE" | "STANDARD_TEXT_INFERENCE" => 128000,
+                    "PREMIUM_TEXT_INFERENCE" => 64000,
                     "CODE_GENERATOR" | "CODE_GENERATOR_NO_FEEDBACK" => 16384,
                     _ => 16384,
                 }

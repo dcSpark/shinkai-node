@@ -30,6 +30,7 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopi
 use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
+use shinkai_message_primitives::shinkai_utils::utils::count_tokens_from_message_llama3;
 use shinkai_sqlite::SqliteManager;
 
 use base64::Engine;
@@ -1085,7 +1086,7 @@ impl GenericInferenceChain {
 
                     // Note: here we can add logic to handle the case that we have network tools
                     // TODO: if shinkai_tool is None we need to retry with the LLM (hallucination)
-                    let function_response = match tool_router
+                    let mut function_response = match tool_router
                         .as_ref()
                         .unwrap()
                         .call_function(function_call.clone(), &context, &shinkai_tool, user_profile.clone())
@@ -1199,6 +1200,33 @@ impl GenericInferenceChain {
                         ) {
                             eprintln!("failed to add tool response trace: {:?}", e);
                         }
+                    }
+
+                    // Calculate safe token limit for function responses (reserve space for context)
+                    let provider_interface = match &llm_provider {
+                        ProviderOrAgent::LLMProvider(provider) => provider.model.clone(),
+                        ProviderOrAgent::Agent(agent) => {
+                            // For agents, we need to get the underlying LLM provider's model
+                            let llm_provider = db
+                                .get_llm_provider(&agent.llm_provider_id, &agent.full_identity_name)
+                                .map_err(|_e| LLMProviderError::AgentNotFound(agent.llm_provider_id.clone()))?;
+                            match llm_provider {
+                                Some(provider) => provider.model,
+                                None => return Err(LLMProviderError::AgentNotFound(agent.llm_provider_id.clone())),
+                            }
+                        }
+                    };
+
+                    let max_input_tokens = ModelCapabilitiesManager::get_max_input_tokens(&provider_interface);
+                    let max_tokens_for_response = ((max_input_tokens as f64 * 0.9) as usize).max(1024); // Allow 90% of the context window, minimum 1024 tokens
+                    let response_tokens = count_tokens_from_message_llama3(&function_response.response);
+                    if response_tokens > max_tokens_for_response {
+                        function_response.response = json!({
+                            "max_tokens_for_response": max_tokens_for_response,
+                            "max_input_tokens": max_input_tokens,
+                            "response_tokens": response_tokens,
+                            "response": "IMPORTANT: Function response exceeded model context window, try again with a smaller response or a more capable model.",
+                        }).to_string();
                     }
 
                     let mut function_call_with_router_key = function_call.clone();
