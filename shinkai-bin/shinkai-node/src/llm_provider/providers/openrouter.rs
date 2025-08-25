@@ -17,7 +17,7 @@ use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenRouter};
 use shinkai_message_primitives::schemas::prompts::Prompt;
-use shinkai_message_primitives::schemas::ws_types::{WSMessageType, WSMetadata, WSUpdateHandler};
+use shinkai_message_primitives::schemas::ws_types::{WSMessageType, WSMetadata, WSUpdateHandler, WidgetMetadata, ToolMetadata, ToolStatus, ToolStatusType};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_sqlite::SqliteManager;
@@ -145,6 +145,7 @@ impl LLMService for OpenRouter {
                         key.clone(),
                         inbox_name,
                         llm_stopper,
+                        ws_manager_trait,
                         Some(tools_json),
                     )
                     .await
@@ -397,6 +398,7 @@ async fn handle_non_streaming_response(
     api_key: String,
     inbox_name: Option<InboxName>,
     llm_stopper: Arc<LLMStopper>,
+    ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     tools: Option<Vec<JsonValue>>, // Add tools parameter
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
     let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(500));
@@ -467,41 +469,81 @@ async fn handle_non_streaming_response(
                             .collect::<Vec<String>>()
                             .join(" ");
 
-                        let function_calls: Vec<FunctionCall> = data.choices.iter().flat_map(|choice| {
-                            choice.message.tool_calls.as_ref().unwrap_or(&vec![]).iter().map(|tool_call| {
-                                let arguments = serde_json::from_str::<serde_json::Value>(&tool_call.function.arguments)
-                                    .ok()
-                                    .and_then(|args_value: serde_json::Value| args_value.as_object().cloned())
-                                    .unwrap_or_else(|| serde_json::Map::new());
+                        let function_call: Option<FunctionCall> = data.choices.iter().find_map(|choice| {
+                            choice.message.tool_calls.as_ref().and_then(|tool_calls| {
+                                tool_calls.first().map(|tool_call| {
+                                    let arguments = serde_json::from_str::<serde_json::Value>(&tool_call.function.arguments)
+                                        .ok()
+                                        .and_then(|args_value: serde_json::Value| args_value.as_object().cloned())
+                                        .unwrap_or_else(|| serde_json::Map::new());
 
-                                // Extract tool_router_key
-                                let tool_router_key = tools.as_ref().and_then(|tools_array| {
-                                    tools_array.iter().find_map(|tool| {
-                                        if tool.get("name")?.as_str()? == tool_call.function.name {
-                                            tool.get("tool_router_key").and_then(|key| key.as_str().map(|s| s.to_string()))
-                                        } else {
-                                            None
-                                        }
-                                    })
-                                });
+                                    // Extract tool_router_key from tools array
+                                    let tool_router_key = tools.as_ref().and_then(|tools_array| {
+                                        tools_array.iter().find_map(|tool| {
+                                            if tool.get("name")?.as_str()? == tool_call.function.name {
+                                                tool.get("tool_router_key").and_then(|key| key.as_str().map(|s| s.to_string()))
+                                            } else {
+                                                None
+                                            }
+                                        })
+                                    });
 
-                                FunctionCall {
-                                    name: tool_call.function.name.clone(),
-                                    arguments,
-                                    tool_router_key,
-                                    response: None,
-                                    index: 0,
-                                    id: Some(tool_call.id.clone()),
-                                    call_type: Some(tool_call.call_type.clone()),
+                                    FunctionCall {
+                                        name: tool_call.function.name.clone(),
+                                        arguments,
+                                        tool_router_key,
+                                        response: None,
+                                        index: 0,
+                                        id: Some(tool_call.id.clone()),
+                                        call_type: Some(tool_call.call_type.clone()),
+                                    }
+                                })
+                            })
+                        });
+
+                        // Send WebSocket update for tool call
+                        if let Some(ref manager) = ws_manager_trait {
+                            if let Some(ref inbox_name) = inbox_name {
+                                if let Some(ref function_call) = function_call {
+                                    let m = manager.lock().await;
+                                    let inbox_name_string = inbox_name.to_string();
+
+                                    // Serialize FunctionCall to JSON value
+                                    let function_call_json = serde_json::to_value(function_call)
+                                        .unwrap_or_else(|_| serde_json::json!({}));
+
+                                    // Prepare ToolMetadata
+                                    let tool_metadata = ToolMetadata {
+                                        tool_name: function_call.name.clone(),
+                                        tool_router_key: function_call.tool_router_key.clone(),
+                                        args: function_call_json.as_object().cloned().unwrap_or_default(),
+                                        result: None,
+                                        status: ToolStatus {
+                                            type_: ToolStatusType::Running,
+                                            reason: None,
+                                        },
+                                        index: function_call.index,
+                                    };
+
+                                    let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
+
+                                    let _ = m.queue_message(
+                                        WSTopic::Inbox,
+                                        inbox_name_string,
+                                        serde_json::to_string(&function_call).unwrap_or_else(|_| "{}".to_string()),
+                                        ws_message_type,
+                                        true,
+                                    ).await;
                                 }
-                            }).collect::<Vec<_>>()
-                        }).collect();
-                        eprintln!("Function Calls: {:?}", function_calls);
+                            }
+                        }
+
+                        eprintln!("Function Call: {:?}", function_call);
                         eprintln!("Response String: {:?}", response_string);
                         return Ok(LLMInferenceResponse::new(
                             response_string,
                             json!({}),
-                            function_calls,
+                            function_call.map_or_else(Vec::new, |fc| vec![fc]),
                             None,
                         ));
                     }
