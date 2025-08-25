@@ -2,7 +2,7 @@ use std::error::Error;
 use std::sync::Arc;
 
 use super::super::error::LLMProviderError;
-use super::shared::openai_api_deprecated::{openai_prepare_messages_deprecated, MessageContent, OpenAIResponse};
+use super::shared::openai_api::{openai_prepare_messages, MessageContent, OpenAIResponse};
 use super::LLMService;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
 use crate::llm_provider::llm_stopper::LLMStopper;
@@ -71,7 +71,7 @@ impl LLMService for OpenRouter {
                 let is_stream = config.as_ref().and_then(|c| c.stream).unwrap_or(true);
 
                 // Note: we can use prepare_messages directly or we could have called ModelCapabilitiesManager
-                let result = openai_prepare_messages_deprecated(&model, prompt)?;
+                let result = openai_prepare_messages(&model, prompt)?;
                 let messages_json = match result.messages {
                     PromptResultEnum::Value(v) => v,
                     _ => {
@@ -93,17 +93,7 @@ impl LLMService for OpenRouter {
 
                 // Conditionally add tools to the payload if tools_json is not empty
                 if !tools_json.is_empty() {
-                    // Remove tool_router_key from each tool before sending to OpenRouter
-                    let tools_payload = tools_json
-                        .clone()
-                        .into_iter()
-                        .map(|mut tool| {
-                            tool.as_object_mut().unwrap().remove("tool_router_key");
-                            tool
-                        })
-                        .collect::<Vec<JsonValue>>();
-
-                    payload["tools"] = serde_json::Value::Array(tools_payload);
+                    payload["tools"] = serde_json::Value::Array(tools_json.clone());
                 }
 
                 // Add options to payload
