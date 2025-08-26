@@ -1,23 +1,17 @@
 use crate::llm_provider::{
-    error::LLMProviderError,
-    providers::shared::{openai_api::openai_prepare_messages, shared_model_logic::llama_prepare_messages},
+    error::LLMProviderError, providers::shared::{openai_api::openai_prepare_messages, shared_model_logic::llama_prepare_messages}
 };
+use ai_model_catalog::{get_openrouter_model, providers::openrouter};
 use shinkai_message_primitives::{
     schemas::{
-        llm_message::LlmMessage,
-        llm_providers::{
-            common_agent_llm_provider::ProviderOrAgent,
-            serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider},
-        },
-        prompts::Prompt,
-        shinkai_name::ShinkaiName,
-    },
-    shinkai_utils::utils::count_tokens_from_message_llama3,
+        llm_message::LlmMessage, llm_providers::{
+            common_agent_llm_provider::ProviderOrAgent, serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider}
+        }, prompts::Prompt, shinkai_name::ShinkaiName
+    }, shinkai_utils::utils::count_tokens_from_message_llama3
 };
 use shinkai_sqlite::SqliteManager;
 use std::{
-    fmt,
-    sync::{Arc, Weak},
+    fmt, sync::{Arc, Weak}
 };
 
 #[derive(Debug)]
@@ -192,7 +186,7 @@ impl ModelCapabilitiesManager {
                 } else {
                     vec![ModelCapability::TextInference]
                 }
-            },
+            }
             LLMProviderInterface::Claude(_) => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
             LLMProviderInterface::DeepSeek(_) => vec![ModelCapability::TextInference],
             LLMProviderInterface::LocalRegex(_) => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
@@ -222,7 +216,7 @@ impl ModelCapabilitiesManager {
             }
             model_type if model_type.starts_with("qwen2.5vl") => {
                 vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
-            }  
+            }
             model_type if model_type.starts_with("devstral") => {
                 vec![ModelCapability::TextInference]
             }
@@ -256,36 +250,85 @@ impl ModelCapabilitiesManager {
                 vec![ModelCapability::TextInference]
             }
             model_type if model_type.starts_with("gemini-2.5-flash-preview-native-audio") => {
-                vec![ModelCapability::TextInference, ModelCapability::AudioAnalysis, ModelCapability::VideoAnalysis]
+                vec![
+                    ModelCapability::TextInference,
+                    ModelCapability::AudioAnalysis,
+                    ModelCapability::VideoAnalysis,
+                ]
             }
             model_type if model_type.starts_with("gemini-2.5-flash-exp-native-audio") => {
-                vec![ModelCapability::TextInference, ModelCapability::AudioAnalysis, ModelCapability::VideoAnalysis]
-            }                                    
+                vec![
+                    ModelCapability::TextInference,
+                    ModelCapability::AudioAnalysis,
+                    ModelCapability::VideoAnalysis,
+                ]
+            }
             model_type if model_type.starts_with("gemini-2.5-flash") => {
-                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis, ModelCapability::VideoAnalysis, ModelCapability::AudioAnalysis]
+                vec![
+                    ModelCapability::TextInference,
+                    ModelCapability::ImageAnalysis,
+                    ModelCapability::VideoAnalysis,
+                    ModelCapability::AudioAnalysis,
+                ]
             }
             model_type if model_type.starts_with("gemini-2.5-pro") => {
-                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis, ModelCapability::VideoAnalysis, ModelCapability::AudioAnalysis]
+                vec![
+                    ModelCapability::TextInference,
+                    ModelCapability::ImageAnalysis,
+                    ModelCapability::VideoAnalysis,
+                    ModelCapability::AudioAnalysis,
+                ]
             }
             // Gemini 2.0 models
             model_type if model_type.starts_with("gemini-2.0-flash-preview-image-generation") => {
-                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis, ModelCapability::ImageGeneration, ModelCapability::VideoAnalysis, ModelCapability::AudioAnalysis]
+                vec![
+                    ModelCapability::TextInference,
+                    ModelCapability::ImageAnalysis,
+                    ModelCapability::ImageGeneration,
+                    ModelCapability::VideoAnalysis,
+                    ModelCapability::AudioAnalysis,
+                ]
             }
             model_type if model_type.starts_with("gemini-2.0-flash-lite") => {
-                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis, ModelCapability::VideoAnalysis, ModelCapability::AudioAnalysis]
+                vec![
+                    ModelCapability::TextInference,
+                    ModelCapability::ImageAnalysis,
+                    ModelCapability::VideoAnalysis,
+                    ModelCapability::AudioAnalysis,
+                ]
             }
             model_type if model_type.starts_with("gemini-2.0-flash") => {
-                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis, ModelCapability::VideoAnalysis, ModelCapability::AudioAnalysis]
+                vec![
+                    ModelCapability::TextInference,
+                    ModelCapability::ImageAnalysis,
+                    ModelCapability::VideoAnalysis,
+                    ModelCapability::AudioAnalysis,
+                ]
             }
             // Gemini 1.5 models
             model_type if model_type.starts_with("gemini-1.5-flash-8b") => {
-                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis, ModelCapability::VideoAnalysis, ModelCapability::AudioAnalysis]
+                vec![
+                    ModelCapability::TextInference,
+                    ModelCapability::ImageAnalysis,
+                    ModelCapability::VideoAnalysis,
+                    ModelCapability::AudioAnalysis,
+                ]
             }
             model_type if model_type.starts_with("gemini-1.5-flash") => {
-                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis, ModelCapability::VideoAnalysis, ModelCapability::AudioAnalysis]
+                vec![
+                    ModelCapability::TextInference,
+                    ModelCapability::ImageAnalysis,
+                    ModelCapability::VideoAnalysis,
+                    ModelCapability::AudioAnalysis,
+                ]
             }
             model_type if model_type.starts_with("gemini-1.5-pro") => {
-                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis, ModelCapability::VideoAnalysis, ModelCapability::AudioAnalysis]
+                vec![
+                    ModelCapability::TextInference,
+                    ModelCapability::ImageAnalysis,
+                    ModelCapability::VideoAnalysis,
+                    ModelCapability::AudioAnalysis,
+                ]
             }
             // Legacy and other Gemini models
             model_type if model_type.starts_with("gemini-pro") => {
@@ -440,7 +483,7 @@ impl ModelCapabilitiesManager {
                 } else {
                     ModelCost::Unknown
                 }
-            },
+            }
             LLMProviderInterface::Claude(claude) => match claude.model_type.as_str() {
                 "claude-opus-4-1-20250805" | "claude-opus-4-1" => ModelCost::Expensive,
                 "claude-opus-4-20250514" | "claude-opus-4-0" => ModelCost::Expensive,
@@ -645,9 +688,9 @@ impl ModelCapabilitiesManager {
                 }
             }
             LLMProviderInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type().as_str() {
-                "FREE_TEXT_INFERENCE" => 400_000, // gpt-5-mini
+                "FREE_TEXT_INFERENCE" => 400_000,     // gpt-5-mini
                 "STANDARD_TEXT_INFERENCE" => 400_000, // gpt-5
-                "PREMIUM_TEXT_INFERENCE" => 200_000, // claude-sonnet-4
+                "PREMIUM_TEXT_INFERENCE" => 200_000,  // claude-sonnet-4
                 "CODE_GENERATOR" => 128_000,
                 "CODE_GENERATOR_NO_FEEDBACK" => 128_000,
                 _ => 128_000,
@@ -668,8 +711,10 @@ impl ModelCapabilitiesManager {
                 } else {
                     131_072 // Default to grok-3 context window for unknown models
                 }
-            },
-            LLMProviderInterface::OpenRouter(openrouter) => Self::get_max_tokens_for_model_type(&openrouter.model_type),
+            }
+            LLMProviderInterface::OpenRouter(openrouter) => get_openrouter_model(&openrouter.model_type)
+                .and_then(|m| m.context_length)
+                .unwrap_or(4096) as usize,
             LLMProviderInterface::Claude(_) => 200_000, // All Claude models now have 200K context window
             LLMProviderInterface::DeepSeek(_) => 64_000,
             LLMProviderInterface::LocalRegex(_) => 128_000,
@@ -796,11 +841,11 @@ impl ModelCapabilitiesManager {
                 } else if openai.model_type.starts_with("o3") || openai.model_type.starts_with("o4-mini") {
                     100_000
                 } else if openai.model_type.starts_with("gpt-5-chat-latest") {
-                    16_384 
+                    16_384
                 } else if openai.model_type.starts_with("gpt-5-mini") {
                     128_000
                 } else if openai.model_type.starts_with("gpt-5-nano") {
-                    128_000                                       
+                    128_000
                 } else if openai.model_type.starts_with("gpt-5") {
                     128_000
                 } else if openai.model_type.starts_with("gpt-3.5") {
@@ -861,16 +906,13 @@ impl ModelCapabilitiesManager {
                 } else {
                     4096
                 }
-            },
+            }
             LLMProviderInterface::Exo(_) => 4096,
             LLMProviderInterface::Gemini(gemini) => Self::get_gemini_max_output_tokens(gemini.model_type.as_str()),
-            LLMProviderInterface::OpenRouter(_) => {
-                // Fill in the appropriate logic for OpenRouter
-                if Self::get_max_tokens(model) <= 8000 {
-                    2800
-                } else {
-                    4096
-                }
+            LLMProviderInterface::OpenRouter(openrouter) => {
+                let model = get_openrouter_model(&openrouter.model_type);
+                let max_tokens = model.and_then(|m| m.top_provider.as_ref().and_then(|p| p.max_completion_tokens));
+                max_tokens.unwrap_or(model.and_then(|m| m.context_length).unwrap_or(4096)) as usize
             }
             LLMProviderInterface::Claude(claude) => {
                 if claude.model_type.starts_with("claude-opus-4") {
