@@ -100,6 +100,7 @@ ngrok = { version = "0.15.0", features = ["hyper"], optional = true }
 url = "2.5.0"
 serde_yaml = { workspace = true }
 thiserror = { workspace = true }
+ai-model-catalog = "0.1.0"
 
 [dev-dependencies]
 mockito = "1.0.2"
