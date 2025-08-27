@@ -18,8 +18,8 @@ use tokio::net::TcpListener;
 use tokio_rustls::rustls::{self, ServerConfig};
 use tokio_rustls::TlsAcceptor;
 use utoipa::ToSchema;
-use warp::Filter;
 use warp::filters::compression;
+use warp::Filter;
 
 #[derive(serde::Serialize, ToSchema, Debug, Clone)]
 pub struct SendResponseBodyData {
@@ -119,7 +119,7 @@ pub async fn run_api(
     let log = warp::log::custom(|info| {
         shinkai_log(
             ShinkaiLogOption::Api,
-            ShinkaiLogLevel::Debug,
+            ShinkaiLogLevel::Info,
             &format!(
                 "ip: {:?}, method: {:?}, path: {:?}, status: {:?}, elapsed: {:?}",
                 info.remote_addr(),
@@ -148,7 +148,8 @@ pub async fn run_api(
         api_v2::api_v2_router::v2_routes(node_commands_sender.clone(), node_name.clone())
             .recover(handle_rejection)
             .with(log)
-            .with(cors.clone()),
+            .with(cors.clone())
+            .with(compression::gzip()),
     );
 
     let mcp_routes = warp::path("mcp").and(
@@ -165,13 +166,8 @@ pub async fn run_api(
             .with(cors.clone()),
     );
 
-    // Combine all routes
-    let routes = v2_routes
-        .or(mcp_routes)
-        .or(ws_routes)
-        .with(log)
-        .with(cors)
-        .with(compression::gzip());
+    // Combine all routes (avoid applying gzip compression globally so SSE is not compressed)
+    let routes = v2_routes.or(mcp_routes).or(ws_routes).with(log).with(cors);
 
     // Wrap the HTTP server in an async block that returns a Result
     let http_server = async {

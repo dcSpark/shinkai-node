@@ -19,7 +19,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "1.1.6"
+version = "1.1.7"
 edition = "2021"
 authors = ["Nico Arqueros <nico@shinkai.com>"]
 
@@ -37,7 +37,7 @@ shinkai_embedding = { path = "./shinkai-libs/shinkai-embedding" }
 shinkai_non_rust_code = { path = "./shinkai-libs/shinkai-non-rust-code" }
 shinkai_mcp = { path = "./shinkai-libs/shinkai-mcp" }
 
-rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk.git", rev = "a66f66ae345a0fafde1e2ee496ec137d77aef82a" }
+rmcp = { version = "0.6" }
 futures = "0.3.30"
 keyphrases = "0.3.3"
 tokio = { version = "1.36", features = [
