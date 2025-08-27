@@ -4,20 +4,17 @@ use futures::StreamExt as FuturesStreamExt;
 use futures::TryStreamExt;
 use rand::random;
 use rmcp::{
-    model::{ClientJsonRpcMessage, InitializeRequestParam, JsonRpcError, RequestId, ServerJsonRpcMessage},
-    service::serve_directly,
+    model::{ClientJsonRpcMessage, InitializeRequestParam, JsonRpcError, RequestId, ServerJsonRpcMessage}, service::serve_directly
 };
 use serde_json::{json, Value};
 use std::pin::Pin;
 use std::{collections::HashMap, convert::Infallible, sync::Arc};
 use tokio::{
-    sync::{mpsc, RwLock},
-    time::Duration,
+    sync::{mpsc, RwLock}, time::Duration
 };
 use tokio_stream::wrappers::ReceiverStream;
 use warp::{
-    http::{Response, StatusCode},
-    reject, Rejection, Reply,
+    http::{Response, StatusCode}, reject, Rejection, Reply
 };
 
 use crate::api_sse::mcp_tools_service::McpToolsService;
@@ -271,12 +268,14 @@ pub async fn sse_handler(state: Arc<McpState>, tools_service: Arc<McpToolsServic
             Box::pin(base_stream)
         };
 
-    // Build the response
+    // Build the response with headers that discourage buffering by proxies and intermediaries
     let resp = Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", "text/event-stream")
-        .header("Cache-Control", "no-cache")
+        .header("Cache-Control", "no-cache, no-transform")
         .header("Connection", "keep-alive")
+        .header("X-Accel-Buffering", "no")
+        .header("Transfer-Encoding", "chunked")
         .body(warp::hyper::Body::wrap_stream(final_stream.map_err(|_| {
             std::io::Error::new(std::io::ErrorKind::Other, "infallible stream error")
         })))

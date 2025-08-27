@@ -1,33 +1,17 @@
-use async_channel::Sender;
-use std::sync::{Arc, RwLock};
-use once_cell::sync::Lazy;
 use crate::node_commands::NodeCommand;
-use rmcp::{ServerHandler, model::{
-    ServerInfo,
-    Implementation,
-    ProtocolVersion,
-    ServerCapabilities,
-    Tool,
-    InitializeRequestParam,
-    InitializeResult,
-    ErrorData,
-    PaginatedRequestParam,
-    ListPromptsResult,
-    ListResourcesResult,
-    ListToolsResult,
-    Content,
-    CallToolRequestParam,
-    CallToolResult,
-},
-    service::RequestContext,
-    RoleServer,
-    model::ErrorData as McpError,
-};
-use serde_json::{Value, Map};
-use std::borrow::Cow;
+use async_channel::Sender;
 use async_trait::async_trait;
-use std::future::{self, Future};
+use once_cell::sync::Lazy;
+use rmcp::{
+    model::ErrorData as McpError, model::{
+        CallToolRequestParam, CallToolResult, Content, ErrorData, Implementation, InitializeRequestParam, InitializeResult, ListPromptsResult, ListResourcesResult, ListToolsResult, PaginatedRequestParam, ProtocolVersion, ServerCapabilities, ServerInfo, Tool
+    }, service::RequestContext, RoleServer, ServerHandler
+};
+use serde_json::{Map, Value};
+use std::borrow::Cow;
 use std::collections::HashMap;
+use std::future::{self, Future};
+use std::sync::{Arc, RwLock};
 
 // Singleton for the tools cache using once_cell::sync::Lazy
 pub static TOOLS_CACHE: Lazy<RwLock<Vec<Tool>>> = Lazy::new(|| RwLock::new(Vec::new()));
@@ -46,7 +30,7 @@ impl McpToolsService {
             node_commands_sender,
             node_name,
         };
-        
+
         // Spawn a task to update the cache
         let service_clone = service.clone();
         tokio::spawn(async move {
@@ -54,15 +38,13 @@ impl McpToolsService {
                 tracing::error!("Failed to initialize tools cache: {:?}", e);
             }
         });
-        
+
         service
     }
 
     /// Get the current list of tools from the cache
     pub fn list_tools(&self) -> Vec<Tool> {
-        TOOLS_CACHE.read()
-            .expect("Failed to read tools cache")
-            .clone()
+        TOOLS_CACHE.read().expect("Failed to read tools cache").clone()
     }
 
     /// Update the tools cache and name-to-key map by fetching tools through the node commands
@@ -80,7 +62,9 @@ impl McpToolsService {
             .map_err(|e| anyhow::anyhow!("Failed to send list tools command: {:?}", e))?;
 
         // Wait for the response
-        let tools_json_value = rx.recv().await
+        let tools_json_value = rx
+            .recv()
+            .await
             .map_err(|e| anyhow::anyhow!("Failed to receive tools response: {:?}", e))?
             .map_err(|e| anyhow::anyhow!("Failed to get tools: {:?}", e))?;
 
@@ -93,32 +77,49 @@ impl McpToolsService {
             for tool_json in tools_array {
                 // Extract required fields (handle potential missing fields gracefully)
                 let name_opt = tool_json.get("name").and_then(Value::as_str).map(String::from);
-                let key_opt = tool_json.get("tool_router_key").and_then(Value::as_str).map(String::from); // <<< Extract the key
+                let key_opt = tool_json
+                    .get("tool_router_key")
+                    .and_then(Value::as_str)
+                    .map(String::from); // <<< Extract the key
                 let description_opt = tool_json.get("description").and_then(Value::as_str).map(String::from);
                 let input_schema_val_opt = tool_json.get("input_args").cloned();
 
                 // Only proceed if we have all necessary parts
-                if let (Some(name), Some(key), Some(description), Some(input_schema_val)) = (name_opt, key_opt, description_opt, input_schema_val_opt) {
+                if let (Some(name), Some(key), Some(description), Some(input_schema_val)) =
+                    (name_opt, key_opt, description_opt, input_schema_val_opt)
+                {
                     // Convert schema to the map expected by rmcp::model::Tool
                     if let Value::Object(schema_map) = input_schema_val {
                         // Create the rmcp::model::Tool for the cache
-                        let tool_name = name.clone().replace(' ', "_").to_lowercase().chars().filter(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '_').collect::<String>();
+                        let tool_name = name
+                            .clone()
+                            .replace(' ', "_")
+                            .to_lowercase()
+                            .chars()
+                            .filter(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '_')
+                            .collect::<String>();
                         let mcp_tool = Tool {
                             name: Cow::Owned(tool_name.clone()),
                             description: Some(Cow::Owned(description)),
                             input_schema: Arc::new(schema_map),
+                            output_schema: None,
                             annotations: None,
                         };
                         mcp_tools_list.push(mcp_tool);
 
                         // Add entry to the temporary name->key map
                         name_to_key_temp_map.insert(tool_name.clone(), key); // Move name into the map key
-
                     } else {
-                        tracing::warn!("Skipping tool due to invalid input_args schema: {:?}", tool_json.get("name"));
+                        tracing::warn!(
+                            "Skipping tool due to invalid input_args schema: {:?}",
+                            tool_json.get("name")
+                        );
                     }
                 } else {
-                    tracing::warn!("Skipping tool due to missing fields (name, tool_router_key, description, or input_args): {:?}", tool_json);
+                    tracing::warn!(
+                        "Skipping tool due to missing fields (name, tool_router_key, description, or input_args): {:?}",
+                        tool_json
+                    );
                 }
             }
         } else {
@@ -138,8 +139,13 @@ impl McpToolsService {
 
         // Update the TOOL_NAME_TO_KEY_MAP
         match TOOL_NAME_TO_KEY_MAP.write() {
-             Ok(mut map_guard) => *map_guard = name_to_key_temp_map,
-             Err(e) => return Err(anyhow::anyhow!("Failed to acquire write lock for TOOL_NAME_TO_KEY_MAP: {:?}", e)),
+            Ok(mut map_guard) => *map_guard = name_to_key_temp_map,
+            Err(e) => {
+                return Err(anyhow::anyhow!(
+                    "Failed to acquire write lock for TOOL_NAME_TO_KEY_MAP: {:?}",
+                    e
+                ))
+            }
         }
         tracing::info!("Updated tool name to key map with {} entries", map_count);
 
@@ -160,7 +166,7 @@ impl McpToolsService {
                 map
             }
         };
-        
+
         tracing::debug!(
             target: "mcp_tools_service",
             "[execute_tool] Sending NodeCommand with tool_router_key: '{}'",
@@ -168,7 +174,8 @@ impl McpToolsService {
         );
 
         // Send the command to execute the tool
-        match self.node_commands_sender
+        match self
+            .node_commands_sender
             .send(NodeCommand::V2ApiExecuteMcpTool {
                 tool_router_key, // Use the passed-in key
                 parameters,
@@ -179,10 +186,11 @@ impl McpToolsService {
                 mounts: None,
                 res: tx,
             })
-            .await {
-                Ok(_) => (),
-                Err(e) => return Err(format!("Failed to send execute tool command: {:?}", e)),
-            };
+            .await
+        {
+            Ok(_) => (),
+            Err(e) => return Err(format!("Failed to send execute tool command: {:?}", e)),
+        };
 
         // Wait for the response
         match rx.recv().await {
@@ -223,8 +231,11 @@ impl ServerHandler for McpToolsService {
         param: InitializeRequestParam,
         _ctx: RequestContext<RoleServer>,
     ) -> impl Future<Output = Result<InitializeResult, ErrorData>> + Send + '_ {
-        tracing::info!("Handling initialize request with protocol version: {:?}", param.protocol_version);
-        
+        tracing::info!(
+            "Handling initialize request with protocol version: {:?}",
+            param.protocol_version
+        );
+
         // Wrap existing logic in std::future::ready
         let result = InitializeResult {
             protocol_version: ProtocolVersion::default(),
@@ -238,7 +249,7 @@ impl ServerHandler for McpToolsService {
             },
             instructions: Some(format!("Shinkai Node {} command interface", self.node_name)),
         };
-        
+
         future::ready(Ok(result))
     }
 
@@ -248,7 +259,7 @@ impl ServerHandler for McpToolsService {
         _context: RequestContext<RoleServer>,
     ) -> impl Future<Output = Result<ListPromptsResult, ErrorData>> + Send + '_ {
         // Use ErrorData and ListPromptsResult::default()
-        future::ready(Ok(ListPromptsResult::default())) 
+        future::ready(Ok(ListPromptsResult::default()))
     }
 
     fn list_resources(
@@ -256,7 +267,7 @@ impl ServerHandler for McpToolsService {
         _request: Option<PaginatedRequestParam>,
         _context: RequestContext<RoleServer>,
     ) -> impl Future<Output = Result<ListResourcesResult, ErrorData>> + Send + '_ {
-         // Use ErrorData and ListResourcesResult::default()
+        // Use ErrorData and ListResourcesResult::default()
         future::ready(Ok(ListResourcesResult::default()))
     }
 
@@ -278,8 +289,9 @@ impl ServerHandler for McpToolsService {
 
             // --- Look up the tool_router_key from the map using the request.name ---
             let tool_router_key = {
-                let map_guard = TOOL_NAME_TO_KEY_MAP.read()
-                    .map_err(|_| McpError::internal_error("Failed to acquire read lock for TOOL_NAME_TO_KEY_MAP", None))?;
+                let map_guard = TOOL_NAME_TO_KEY_MAP.read().map_err(|_| {
+                    McpError::internal_error("Failed to acquire read lock for TOOL_NAME_TO_KEY_MAP", None)
+                })?;
                 map_guard.get(&tool_name).cloned()
             };
 
@@ -287,25 +299,35 @@ impl ServerHandler for McpToolsService {
                 Some(key) => {
                     // Found the key, proceed to execute directly
                     tracing::debug!(target: "mcp_tools_service", "Found tool_router_key '{}' for name '{}'", key, tool_name);
-                    
+
                     // Convert arguments JsonObject into the Value expected by execute_shinkai_tool
-                    let params_value = Value::Object(arguments); 
-                    
+                    let params_value = Value::Object(arguments);
+
                     match self.execute_shinkai_tool(key, params_value).await {
                         Ok(output_str) => {
-                            tracing::debug!("call_tool: execution successful for '{}', result: {}", tool_name, output_str);
+                            tracing::debug!(
+                                "call_tool: execution successful for '{}', result: {}",
+                                tool_name,
+                                output_str
+                            );
                             Ok(CallToolResult::success(vec![Content::text(output_str)]))
-                        },
+                        }
                         Err(err_str) => {
                             tracing::error!("call_tool: execution failed for '{}': {}", tool_name, err_str);
-                            Err(McpError::internal_error(format!("Tool '{}' execution failed: {}", tool_name, err_str), None))
+                            Err(McpError::internal_error(
+                                format!("Tool '{}' execution failed: {}", tool_name, err_str),
+                                None,
+                            ))
                         }
                     }
                 }
                 None => {
                     // Key not found for the given name
                     tracing::error!(target: "mcp_tools_service", "Could not find tool_router_key for tool name: {}", tool_name);
-                    Err(McpError::invalid_params(format!("Tool '{}' not found or mapping missing", tool_name), None))
+                    Err(McpError::invalid_params(
+                        format!("Tool '{}' not found or mapping missing", tool_name),
+                        None,
+                    ))
                 }
             }
         }
@@ -319,7 +341,8 @@ impl ServerHandler for McpToolsService {
         async move {
             // This is implemented in an async block to avoid blocking the main thread,
             // and to ensure that the cache is updated before reading it.
-            // If performance issues arise, just return the cached list instead. And consider other cache update strategies.
+            // If performance issues arise, just return the cached list instead. And consider other cache update
+            // strategies.
             tracing::debug!("Handling list_tools request, attempting cache update first.");
 
             // 1. Attempt to update the cache before reading
@@ -335,7 +358,7 @@ impl ServerHandler for McpToolsService {
                     // Convert the anyhow::Error to McpError::internal_error
                     return Err(McpError::internal_error(
                         format!("Failed to update tool cache before listing: {}", e),
-                        None // No specific data to add here
+                        None, // No specific data to add here
                     ));
                 }
             }
@@ -349,7 +372,10 @@ impl ServerHandler for McpToolsService {
                 tools: tools_from_cache,
                 next_cursor: None,
             };
-            tracing::debug!("Responding to list_tools with {} tools after cache update attempt.", result.tools.len());
+            tracing::debug!(
+                "Responding to list_tools with {} tools after cache update attempt.",
+                result.tools.len()
+            );
             Ok(result) // Return Ok with the ListToolsResult
         }
     }
@@ -357,7 +383,6 @@ impl ServerHandler for McpToolsService {
 
 #[cfg(test)]
 mod tests {
-    
-    
+
     // Add tests as needed
-} 
+}
