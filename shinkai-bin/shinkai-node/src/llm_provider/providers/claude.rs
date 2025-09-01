@@ -136,6 +136,11 @@ impl LLMService for Claude {
                 // Add options to payload
                 add_options_to_payload(&mut payload, config.as_ref());
 
+                // If model is Opus 4.1, remove top_p parameter from payload
+                if self.model_type.starts_with("claude-opus-4-1") {
+                    payload.as_object_mut().unwrap().remove("top_p");
+                }
+
                 // If thinking is enabled, subtract the thinking budget from the max_tokens
                 if let Some(thinking) = payload.get("thinking") {
                     if let Some(thinking_type) = thinking.get("type") {
@@ -309,7 +314,7 @@ async fn handle_streaming_response(
                         .await;
                 }
 
-                return Ok(LLMInferenceResponse::new(response_text, json!({}), Vec::new(), None));
+                return Ok(LLMInferenceResponse::new(response_text, json!({}), Vec::new(), Vec::new(), None));
             }
         }
 
@@ -492,6 +497,7 @@ async fn handle_streaming_response(
         final_response,
         json!({}),
         function_calls,
+        Vec::new(),
         None,
     ))
 }
@@ -525,7 +531,7 @@ async fn handle_non_streaming_response(
                         eprintln!("LLM job stopped by user request");
                         llm_stopper.reset(&inbox_name.to_string());
 
-                        return Ok(LLMInferenceResponse::new("".to_string(), json!({}), Vec::new(), None));
+                        return Ok(LLMInferenceResponse::new("".to_string(), json!({}), Vec::new(), Vec::new(), None));
                     }
                 }
             },
@@ -652,6 +658,7 @@ async fn handle_non_streaming_response(
                         final_response,
                         json!({}),
                         function_calls,
+                        Vec::new(),
                         None,
                     ));
                 } else {
@@ -708,6 +715,7 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
     if let Some(top_p) = get_value("LLM_TOP_P", config.and_then(|c| c.top_p.as_ref())) {
         payload["top_p"] = serde_json::json!(top_p);
     }
+    
     if let Some(max_tokens) = get_value("LLM_MAX_TOKENS", config.and_then(|c| c.max_tokens.as_ref())) {
         payload["max_completion_tokens"] = serde_json::json!(max_tokens);
     }

@@ -934,7 +934,7 @@ pub async fn handle_streaming_response(
 
                 // Create the response object
                 let response =
-                    LLMInferenceResponse::new(response_text.clone(), json!({}), function_calls.clone(), None);
+                    LLMInferenceResponse::new(response_text.clone(), json!({}), function_calls.clone(), Vec::new(), None);
 
                 // Log the response if LOG_REQUESTS is enabled
                 log_response_to_file(&response_text, &function_calls, true);
@@ -997,7 +997,7 @@ pub async fn handle_streaming_response(
     }
 
     // Create the response object
-    let response = LLMInferenceResponse::new(response_text.clone(), json!({}), function_calls.clone(), None);
+    let response = LLMInferenceResponse::new(response_text.clone(), json!({}), function_calls.clone(), Vec::new(), None);
 
     // Log the response if LOG_REQUESTS is enabled
     log_response_to_file(&response_text, &function_calls, false);
@@ -1084,7 +1084,7 @@ pub async fn handle_non_streaming_response(
                         );
                         llm_stopper.reset(&inbox_name.to_string());
 
-                        return Ok(LLMInferenceResponse::new("".to_string(), json!({}), Vec::new(), None));
+                        return Ok(LLMInferenceResponse::new("".to_string(), json!({}), Vec::new(), Vec::new(), None));
                     }
                 }
             },
@@ -1261,6 +1261,7 @@ pub async fn handle_non_streaming_response(
                             final_response_string,
                             json!({}),
                             function_call.map_or_else(Vec::new, |fc| vec![fc]),
+                            Vec::new(),
                             None,
                         ));
                     }

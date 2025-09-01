@@ -263,6 +263,13 @@ impl ModelCapabilitiesManager {
                     ModelCapability::VideoAnalysis,
                 ]
             }
+            model_type if model_type.starts_with("gemini-2.5-flash-image-preview") => {
+                vec![
+                    ModelCapability::TextInference,
+                    ModelCapability::ImageAnalysis,
+                    ModelCapability::ImageGeneration,
+                ]
+            }            
             model_type if model_type.starts_with("gemini-2.5-flash") => {
                 vec![
                     ModelCapability::TextInference,
@@ -346,6 +353,7 @@ impl ModelCapabilitiesManager {
             // Gemini 2.5 models (preview/experimental - more expensive due to restricted limits)
             model_type if model_type.starts_with("gemini-2.5-flash-preview") => ModelCost::GoodValue,
             model_type if model_type.starts_with("gemini-2.5-pro-preview") => ModelCost::Expensive,
+            model_type if model_type.starts_with("gemini-2.5-flash-image-preview") => ModelCost::Expensive,
             // Gemini 2.0 models
             model_type if model_type.starts_with("gemini-2.0-flash-lite") => ModelCost::VeryCheap,
             model_type if model_type.starts_with("gemini-2.0-flash") => ModelCost::Cheap,
@@ -367,6 +375,7 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("gemini-2.5-flash-preview-native-audio-dialog") => 128_000,
             model_type if model_type.starts_with("gemini-2.5-flash-exp-native-audio-thinking-dialog") => 128_000,
             model_type if model_type.starts_with("gemini-2.5-flash-preview-tts") => 8_000,
+            model_type if model_type.starts_with("gemini-2.5-flash-image-preview") => 32_768,
             model_type if model_type.starts_with("gemini-2.5-pro-preview-06-05") => 1_048_576,
             model_type if model_type.starts_with("gemini-2.5-pro-preview-tts") => 8_000,
             // Gemini 2.0 models
@@ -390,6 +399,7 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("gemini-2.5-flash-preview-native-audio-dialog") => 8_000,
             model_type if model_type.starts_with("gemini-2.5-flash-exp-native-audio-thinking-dialog") => 8_000,
             model_type if model_type.starts_with("gemini-2.5-flash-preview-tts") => 16_000,
+            model_type if model_type.starts_with("gemini-2.5-flash-image-preview") => 32_768,
             model_type if model_type.starts_with("gemini-2.5-pro-preview-06-05") => 65_536,
             model_type if model_type.starts_with("gemini-2.5-pro-preview-tts") => 16_000,
             // Gemini 2.0 models
@@ -410,6 +420,7 @@ impl ModelCapabilitiesManager {
         match model_type {
             // Gemini 2.5 models - TTS models don't support function calling
             model_type if model_type.starts_with("gemini-2.5-flash-preview-tts") => false,
+            model_type if model_type.starts_with("gemini-2.5-flash-image-preview") => false,
             model_type if model_type.starts_with("gemini-2.5-pro-preview-tts") => false,
             model_type if model_type.starts_with("gemini-2.5-flash-preview-05-20") => true,
             model_type if model_type.starts_with("gemini-2.5-flash-preview-native-audio") => true,
@@ -1153,12 +1164,12 @@ impl ModelCapabilitiesManager {
                     || claude.model_type.starts_with("claude-3-7-sonnet")
             }
             LLMProviderInterface::Gemini(gemini) => {
-                gemini.model_type.starts_with("gemini-2.5-flash-preview-05-20")
-                    || gemini
-                        .model_type
-                        .starts_with("gemini-2.5-flash-exp-native-audio-thinking")
-                    || gemini.model_type.starts_with("gemini-2.5-pro-preview")
-                    || gemini.model_type.starts_with("gemini-2.0-flash")
+                gemini.model_type == "gemini-2.5-flash-preview-05-20"
+                    || gemini.model_type == "gemini-2.5-flash-lite-preview-06-17"
+                    || gemini.model_type == "gemini-2.5-flash-lite"
+                    || gemini.model_type == "gemini-2.5-flash"
+                    || gemini.model_type == "gemini-2.5-pro"
+                    || gemini.model_type == "gemini-2.0-flash-exp"
             }
             _ => false,
         }

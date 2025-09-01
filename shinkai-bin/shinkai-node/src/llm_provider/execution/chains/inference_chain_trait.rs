@@ -360,6 +360,7 @@ pub struct InferenceChainResult {
     pub tps: Option<String>,
     pub answer_duration: Option<String>,
     pub tool_calls: Option<Vec<FunctionCall>>,
+    pub generated_files: Vec<ShinkaiPath>,
 }
 
 impl InferenceChainResult {
@@ -369,6 +370,7 @@ impl InferenceChainResult {
             tps: None,
             answer_duration: None,
             tool_calls: None,
+            generated_files: Vec::new(),
         }
     }
 
@@ -377,12 +379,14 @@ impl InferenceChainResult {
         tps: Option<String>,
         answer_duration_ms: Option<String>,
         tool_calls: Option<Vec<FunctionCall>>,
+        generated_files: Vec<ShinkaiPath>,
     ) -> Self {
         Self {
             response,
             tps,
             answer_duration: answer_duration_ms,
             tool_calls,
+            generated_files,
         }
     }
 
@@ -421,16 +425,18 @@ impl FunctionCall {
 pub struct LLMInferenceResponse {
     pub response_string: String,
     pub function_calls: Vec<FunctionCall>,
+    pub generated_files: Vec<ShinkaiPath>,
     pub json: JsonValue,
     pub tps: Option<f64>,
 }
 
 impl LLMInferenceResponse {
-    pub fn new(response_string: String, json: JsonValue, function_calls: Vec<FunctionCall>, tps: Option<f64>) -> Self {
+    pub fn new(response_string: String, json: JsonValue, function_calls: Vec<FunctionCall>, generated_files: Vec<ShinkaiPath>, tps: Option<f64>) -> Self {
         Self {
             response_string,
             json,
             function_calls,
+            generated_files,
             tps,
         }
     }

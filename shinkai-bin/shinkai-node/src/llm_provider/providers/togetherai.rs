@@ -128,7 +128,7 @@ impl LLMService for TogetherAI {
                             .map(|choice| choice.text.clone())
                             .unwrap_or_else(String::new);
 
-                        return Ok(LLMInferenceResponse::new(response_string, json!({}), vec![], None));
+                        return Ok(LLMInferenceResponse::new(response_string, json!({}), vec![], Vec::new(), None));
                     }
                     Err(e) => {
                         shinkai_log(

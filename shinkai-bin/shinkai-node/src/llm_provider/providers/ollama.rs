@@ -213,7 +213,7 @@ async fn handle_streaming_response(
                         llm_stopper.reset(&inbox_name.to_string());
 
                         // Return early since we never got a response
-                        return Ok(LLMInferenceResponse::new("".to_string(), json!({}), Vec::new(), None));
+                        return Ok(LLMInferenceResponse::new("".to_string(), json!({}), Vec::new(), Vec::new(), None));
                     }
                 }
             },
@@ -288,7 +288,7 @@ async fn process_stream(
                 }
 
                 // Return early
-                return Ok(LLMInferenceResponse::new(response_text, json!({}), Vec::new(), None));
+                return Ok(LLMInferenceResponse::new(response_text, json!({}), Vec::new(), Vec::new(), None));
             }
         }
 
@@ -607,6 +607,7 @@ async fn process_stream(
         response_text,
         json!({}),
         final_function_calls,
+        Vec::new(),
         tps,
     ))
 }
@@ -637,7 +638,7 @@ async fn handle_non_streaming_response(
                             "LLM job stopped by user request before response arrived",
                         );
                         llm_stopper.reset(&inbox_name.to_string());
-                        return Ok(LLMInferenceResponse::new("".to_string(), json!({}), Vec::new(), None));
+                        return Ok(LLMInferenceResponse::new("".to_string(), json!({}), Vec::new(), Vec::new(), None));
                     }
                 }
             },
@@ -790,6 +791,7 @@ async fn handle_non_streaming_response(
                                 final_content,
                                 json!({}),
                                 function_calls,
+                                Vec::new(),
                                 tps,
                             ));
                         } else {

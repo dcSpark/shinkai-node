@@ -562,7 +562,11 @@ impl GenericInferenceChain {
         }
 
         // 2) Vector search for tooling / workflows if the workflow / tooling scope isn't empty
-        let job_config = full_job.config();
+        let mut job_config = full_job.config();
+        if let ProviderOrAgent::Agent(agent) = &llm_provider {
+            job_config = agent.config.as_ref();
+        }
+
         shinkai_log(
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Info,
@@ -927,6 +931,7 @@ impl GenericInferenceChain {
 
         // NEW: Accumulate all LLM response messages
         let mut all_llm_messages = Vec::new();
+        let mut all_generated_files = Vec::new();
 
         let mut filled_prompt = JobPromptGenerator::generic_inference_prompt(
             db.clone(),
@@ -971,6 +976,7 @@ impl GenericInferenceChain {
                     None,
                     answer_duration_ms,
                     Some(tool_calls_history.clone()),
+                    all_generated_files.clone(),
                 );
 
                 return Ok(inference_result);
@@ -1020,6 +1026,7 @@ impl GenericInferenceChain {
 
             // NEW: Accumulate this LLM message
             all_llm_messages.push(response.response_string.clone());
+            all_generated_files.extend(response.generated_files.clone());
 
             // 5) Check response if it requires a function call
             if !response.is_function_calls_empty() {
@@ -1294,6 +1301,7 @@ impl GenericInferenceChain {
                     response.tps.map(|tps| tps.to_string()),
                     answer_duration_ms,
                     Some(tool_calls_history.clone()),
+                    all_generated_files.clone(),
                 );
 
                 return Ok(inference_result);
