@@ -1206,7 +1206,8 @@ mod tests {
         // Verify that the image was successfully processed and saved
         assert_eq!(finish_reason, Some("STOP".to_string()));
         
-        // Verify that the image file reference was added to response_text  
-        assert!(response_text.contains("generated_image_test_session_id_"));
+        // Verify that the image file reference was added to generated_files
+        let found = generated_files.iter().any(|f| f.contains("generated_image_test_session_id_"));
+        assert!(found, "Expected a generated file with 'generated_image_test_session_id_' format.");
     }
 }
