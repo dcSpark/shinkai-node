@@ -616,6 +616,7 @@ mod tests {
         let job_message = JobMessage {
             job_id: "job_id".to_string(),
             content: "message".to_string(),
+            reasoning_content: None,
             parent: None,
             sheet_job_data: None,
             callback: None,

@@ -236,7 +236,7 @@ async fn handle_streaming_response(
                 );
                 llm_stopper.reset(&inbox_name.to_string());
 
-                return Ok(LLMInferenceResponse::new(response_text, json!({}), Vec::new(), Vec::new(), None));
+                return Ok(LLMInferenceResponse::new(response_text, None, json!({}), Vec::new(), Vec::new(), None));
             }
         }
 
@@ -260,6 +260,7 @@ async fn handle_streaming_response(
 
                                     let metadata = WSMetadata {
                                         id: Some(session_id.clone()),
+                                        is_reasoning: false,
                                         is_done: function_calls.is_empty(),
                                         done_reason: Some("streaming completed".to_string()),
                                         total_duration: None,
@@ -416,6 +417,7 @@ async fn handle_streaming_response(
 
                                                             let metadata = WSMetadata {
                                                                 id: Some(session_id.clone()),
+                                                                is_reasoning: false,
                                                                 is_done: function_calls.is_empty()
                                                                     && data_json
                                                                         .get("done")
@@ -484,6 +486,7 @@ async fn handle_streaming_response(
 
             let metadata = WSMetadata {
                 id: Some(session_id.clone()),
+                is_reasoning: false,
                 is_done: function_calls.is_empty(),
                 done_reason: Some("finished".to_string()),
                 total_duration: None,
@@ -506,6 +509,7 @@ async fn handle_streaming_response(
 
     Ok(LLMInferenceResponse::new(
         response_text,
+        None,
         json!({}),
         function_calls,
         Vec::new(),
@@ -544,7 +548,7 @@ async fn handle_non_streaming_response(
                         );
                         llm_stopper.reset(&inbox_name.to_string());
 
-                        return Ok(LLMInferenceResponse::new("".to_string(), json!({}), Vec::new(), Vec::new(), None));
+                        return Ok(LLMInferenceResponse::new("".to_string(), None, json!({}), Vec::new(), Vec::new(), None));
                     }
                 }
             },
@@ -635,6 +639,7 @@ async fn handle_non_streaming_response(
 
                         return Ok(LLMInferenceResponse::new(
                             response_string,
+                            None,
                             json!({}),
                             function_calls,
                             Vec::new(),

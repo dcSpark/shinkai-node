@@ -5,7 +5,6 @@ use crate::shinkai_utils::job_scope::MinimalJobScope;
 use crate::shinkai_utils::shinkai_path::ShinkaiPath;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::collections::HashMap;
 use std::fmt;
 use utoipa::ToSchema;
 
@@ -253,6 +252,7 @@ pub enum CallbackAction {
 pub struct JobMessage {
     pub job_id: String,
     pub content: String,
+    pub reasoning_content: Option<String>,
     pub parent: Option<String>,
     // TODO: remove this after checking is safe
     pub sheet_job_data: Option<String>,
@@ -615,12 +615,14 @@ mod tests {
         let job_message = JobMessage {
             job_id: "test_job".to_string(),
             content: "test content".to_string(),
+            reasoning_content: None,
             parent: Some("parent_id".to_string()),
             sheet_job_data: Some("sheet_data".to_string()),
             tools: Some(vec!["tool1".to_string(), "tool2".to_string()]),
             callback: Some(Box::new(CallbackAction::Job(JobMessage {
                 job_id: "callback_job".to_string(),
                 content: "callback content".to_string(),
+                reasoning_content: None,
                 parent: None,
                 sheet_job_data: None,
                 tools: None,
@@ -663,6 +665,7 @@ mod tests {
         let minimal_message = JobMessage {
             job_id: "minimal_job".to_string(),
             content: "minimal content".to_string(),
+            reasoning_content: None,
             parent: None,
             sheet_job_data: None,
             tools: None,
@@ -687,6 +690,7 @@ mod tests {
         let expected = JobMessage {
             job_id: "minimal_job".to_string(),
             content: "minimal content".to_string(),
+            reasoning_content: None,
             parent: None,
             sheet_job_data: None,
             tools: None,

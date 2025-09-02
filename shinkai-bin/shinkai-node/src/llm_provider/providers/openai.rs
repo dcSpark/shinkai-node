@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use super::super::error::LLMProviderError;
 use super::shared::openai_api::{openai_prepare_messages, MessageContent, OpenAIResponse};
+use super::shared::shared_model_logic::send_ws_update;
 use super::LLMService;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
 use crate::llm_provider::llm_stopper::LLMStopper;
@@ -18,7 +19,7 @@ use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI};
 use shinkai_message_primitives::schemas::prompts::Prompt;
 use shinkai_message_primitives::schemas::ws_types::{
-    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSMetadata, WSUpdateHandler, WidgetMetadata,
+    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSUpdateHandler, WidgetMetadata,
 };
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -98,8 +99,7 @@ impl LLMService for OpenAI {
                 let tools_json = result.functions.unwrap_or_else(Vec::new);
 
                 // Set up initial payload with appropriate token limit field based on model capabilities
-                let mut payload = if ModelCapabilitiesManager::has_reasoning_capabilities(&model) 
-                {
+                let mut payload = if ModelCapabilitiesManager::has_reasoning_capabilities(&model) {
                     json!({
                         "model": self.model_type,
                         "messages": messages_json,
@@ -307,6 +307,7 @@ fn finalize_function_call_sync(
 pub async fn parse_openai_stream_chunk(
     buffer: &mut String,
     response_text: &mut String,
+    reasoning_content: &mut String,
     function_calls: &mut Vec<FunctionCall>,
     partial_fc: &mut PartialFunctionCall,
     tools: &Option<Vec<JsonValue>>,
@@ -449,6 +450,7 @@ pub async fn parse_openai_stream_chunk(
                     Some(inbox_name.clone()),
                     session_id,
                     "".to_string(),
+                    false,
                     function_calls.is_empty(),
                     None,
                 )
@@ -515,55 +517,50 @@ pub async fn parse_openai_stream_chunk(
                             .unwrap_or_default();
 
                         if let Some(delta) = choice.get("delta") {
-                            // Handle reasoning_content with proper <think> tags
-                            if let Some(reasoning) =
-                                delta.get("reasoning_content").and_then(|c| c.as_str())
-                            {
-                                let mut content_to_send = String::new();
-                                
-                                // Add opening <think> tag if this is the first reasoning content
-                                if !partial_fc.reasoning_started {
-                                    content_to_send.push_str("<think>");
-                                    partial_fc.reasoning_started = true;
-                                }
-                                
-                                content_to_send.push_str(reasoning);
-                                response_text.push_str(&content_to_send);
+                            // Handle reasoning_content
+                            // Only skip processing if reasoning_content is null/undefined, empty strings are valid
+                            if let Some(reasoning_value) = delta.get("reasoning_content") {
+                                if let Some(reasoning) = reasoning_value.as_str() {
+                                    // First reasoning delta, set reasoning_started to true
+                                    if !partial_fc.reasoning_started {
+                                        partial_fc.reasoning_started = true;
+                                    }
 
-                                if let Some(inbox_name) = inbox_name.as_ref() {
-                                    send_ws_update(
-                                        ws_manager_trait,
-                                        Some(inbox_name.clone()),
-                                        session_id,
-                                        content_to_send,
-                                        false,
-                                        None,
-                                    )
-                                    .await?;
+                                    reasoning_content.push_str(reasoning);
+
+                                    if let Some(inbox_name) = inbox_name.as_ref() {
+                                        send_ws_update(
+                                            ws_manager_trait,
+                                            Some(inbox_name.clone()),
+                                            session_id,
+                                            reasoning.to_string(),
+                                            true,
+                                            false,
+                                            None,
+                                        )
+                                        .await?;
+                                    }
                                 }
                             }
-                            
-                            // If we have reasoning started and see regular content, close the think tag
+
+                            // Last reasoning delta, set reasoning_started to false
                             if partial_fc.reasoning_started {
                                 if let Some(content) = delta.get("content").and_then(|c| c.as_str()) {
                                     if !content.is_empty() {
-                                        // Close the thinking tag before regular content
-                                        let close_tag = "</think>";
-                                        response_text.push_str(close_tag);
-                                        
-                                        if let Some(inbox_name) = inbox_name.as_ref() {
-                                            send_ws_update(
-                                                ws_manager_trait,
-                                                Some(inbox_name.clone()),
-                                                session_id,
-                                                close_tag.to_string(),
-                                                false,
-                                                None,
-                                            )
-                                            .await?;
-                                        }
-                                        
                                         partial_fc.reasoning_started = false;
+                                    }
+
+                                    if let Some(inbox_name) = inbox_name.as_ref() {
+                                        send_ws_update(
+                                            ws_manager_trait,
+                                            Some(inbox_name.clone()),
+                                            session_id,
+                                            "".to_string(),
+                                            false,
+                                            false,
+                                            None,
+                                        )
+                                        .await?;
                                     }
                                 }
                             }
@@ -579,6 +576,7 @@ pub async fn parse_openai_stream_chunk(
                                         Some(inbox_name.clone()),
                                         session_id,
                                         content.to_string(),
+                                        false,
                                         // if finish_reason is empty, we are not at the end of the stream
                                         !finish_reason.is_empty(),
                                         Some(finish_reason.to_string()),
@@ -682,24 +680,21 @@ pub async fn parse_openai_stream_chunk(
                             if partial_fc.name.is_some() {
                                 finalize_function_call_sync(partial_fc, function_calls, tools);
                             }
-                            
+
                             // Close reasoning tag if it was started but not closed
                             if partial_fc.reasoning_started {
-                                let close_tag = "</think>";
-                                response_text.push_str(close_tag);
-                                
                                 if let Some(inbox_name) = inbox_name.as_ref() {
-                                    let _ = send_ws_update(
+                                    send_ws_update(
                                         ws_manager_trait,
                                         Some(inbox_name.clone()),
                                         session_id,
-                                        close_tag.to_string(),
+                                        "".to_string(),
+                                        false,
                                         false,
                                         None,
                                     )
-                                    .await;
+                                    .await?;
                                 }
-                                
                                 partial_fc.reasoning_started = false;
                             }
                         }
@@ -874,6 +869,7 @@ pub async fn handle_streaming_response(
 
     let mut stream = res.bytes_stream();
     let mut response_text = String::new();
+    let mut reasoning_content = String::new();
     let mut buffer = String::new();
     let mut function_calls: Vec<FunctionCall> = Vec::new();
     let mut error_message: Option<String> = None;
@@ -904,6 +900,7 @@ pub async fn handle_streaming_response(
                     Some(inbox_name.clone()),
                     &session_id,
                     response_text.clone(),
+                    false,
                     true,
                     Some("Stopped by user request".to_string()),
                 )
@@ -913,6 +910,7 @@ pub async fn handle_streaming_response(
                 if let Ok(Some(_err)) = parse_openai_stream_chunk(
                     &mut buffer,
                     &mut response_text,
+                    &mut reasoning_content,
                     &mut function_calls,
                     &mut partial_fc,
                     &tools,
@@ -933,8 +931,18 @@ pub async fn handle_streaming_response(
                 }
 
                 // Create the response object
-                let response =
-                    LLMInferenceResponse::new(response_text.clone(), json!({}), function_calls.clone(), Vec::new(), None);
+                let response = LLMInferenceResponse::new(
+                    response_text.clone(),
+                    if reasoning_content.is_empty() {
+                        None
+                    } else {
+                        Some(reasoning_content.clone())
+                    },
+                    json!({}),
+                    function_calls.clone(),
+                    Vec::new(),
+                    None,
+                );
 
                 // Log the response if LOG_REQUESTS is enabled
                 log_response_to_file(&response_text, &function_calls, true);
@@ -952,6 +960,7 @@ pub async fn handle_streaming_response(
                 if let Ok(Some(err)) = parse_openai_stream_chunk(
                     &mut buffer,
                     &mut response_text,
+                    &mut reasoning_content,
                     &mut function_calls,
                     &mut partial_fc,
                     &tools,
@@ -997,7 +1006,18 @@ pub async fn handle_streaming_response(
     }
 
     // Create the response object
-    let response = LLMInferenceResponse::new(response_text.clone(), json!({}), function_calls.clone(), Vec::new(), None);
+    let response = LLMInferenceResponse::new(
+        response_text.clone(),
+        if reasoning_content.is_empty() {
+            None
+        } else {
+            Some(reasoning_content)
+        },
+        json!({}),
+        function_calls.clone(),
+        Vec::new(),
+        None,
+    );
 
     // Log the response if LOG_REQUESTS is enabled
     log_response_to_file(&response_text, &function_calls, false);
@@ -1084,7 +1104,7 @@ pub async fn handle_non_streaming_response(
                         );
                         llm_stopper.reset(&inbox_name.to_string());
 
-                        return Ok(LLMInferenceResponse::new("".to_string(), json!({}), Vec::new(), Vec::new(), None));
+                        return Ok(LLMInferenceResponse::new("".to_string(), None, json!({}), Vec::new(), Vec::new(), None));
                     }
                 }
             },
@@ -1121,7 +1141,7 @@ pub async fn handle_non_streaming_response(
 
                 match data_resp {
                     Ok(value) => {
-                        // Extract reasoning_content (if any) to prepend to final response as <think>...</think>
+                        // Extract reasoning_content (if any) to prepend to final response
                         let reasoning_concat = value
                             .get("choices")
                             .and_then(|c| c.as_array())
@@ -1172,13 +1192,6 @@ pub async fn handle_non_streaming_response(
                             })
                             .collect::<Vec<String>>()
                             .join(" ");
-
-                        // Prepend reasoning content if present
-                        let final_response_string = if !reasoning_concat.is_empty() {
-                            format!("<think>{}</think>{}", reasoning_concat, response_string.clone())
-                        } else {
-                            response_string.clone()
-                        };
 
                         let function_call: Option<FunctionCall> = data.choices.iter().find_map(|choice| {
                             choice.message.tool_calls.as_ref().and_then(|tool_calls| {
@@ -1258,7 +1271,8 @@ pub async fn handle_non_streaming_response(
                         }
 
                         return Ok(LLMInferenceResponse::new(
-                            final_response_string,
+                            response_string,
+                            if reasoning_concat.is_empty() { None } else { Some(reasoning_concat) },
                             json!({}),
                             function_call.map_or_else(Vec::new, |fc| vec![fc]),
                             Vec::new(),
@@ -1327,44 +1341,6 @@ pub fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&J
             }
         }
     }
-}
-
-// Add helper function for sending WS updates
-async fn send_ws_update(
-    ws_manager_trait: &Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-    inbox_name: Option<InboxName>,
-    session_id: &str,
-    content: String,
-    is_done: bool,
-    done_reason: Option<String>,
-) -> Result<(), LLMProviderError> {
-    if let Some(ref manager) = ws_manager_trait {
-        if let Some(inbox_name) = inbox_name {
-            let m = manager.lock().await;
-            let inbox_name_string = inbox_name.to_string();
-
-            let metadata = WSMetadata {
-                id: Some(session_id.to_string()),
-                is_done,
-                done_reason,
-                total_duration: None,
-                eval_count: None,
-            };
-
-            let ws_message_type = WSMessageType::Metadata(metadata);
-
-            shinkai_log(
-                ShinkaiLogOption::JobExecution,
-                ShinkaiLogLevel::Debug,
-                format!("Websocket content: {}", content).as_str(),
-            );
-
-            let _ = m
-                .queue_message(WSTopic::Inbox, inbox_name_string, content, ws_message_type, true)
-                .await;
-        }
-    }
-    Ok(())
 }
 
 async fn send_tool_ws_update(
@@ -1491,9 +1467,11 @@ mod tests {
 
         // Test basic content streaming
         buffer.push_str("data: {\"choices\":[{\"delta\":{\"content\":\"Hello \"}}]}\n");
+        let mut reasoning_content = String::new();
         let result = parse_openai_stream_chunk(
             &mut buffer,
             &mut response_text,
+            &mut reasoning_content,
             &mut function_calls,
             &mut partial_fc,
             &tools,
@@ -1509,6 +1487,7 @@ mod tests {
         let result = parse_openai_stream_chunk(
             &mut buffer,
             &mut response_text,
+            &mut reasoning_content,
             &mut function_calls,
             &mut partial_fc,
             &tools,
@@ -1539,11 +1518,13 @@ mod tests {
             "tool_router_key": "test_router"
         })]);
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
+        let mut reasoning_content = String::new();
 
         buffer.push_str("data: {\"choices\":[{\"delta\":{\"function_call\":{\"name\":\"test_function\"}}}]}\n");
         let result = parse_openai_stream_chunk(
             &mut buffer,
             &mut response_text,
+            &mut reasoning_content,
             &mut function_calls,
             &mut partial_fc,
             &tools,
@@ -1559,6 +1540,7 @@ mod tests {
         let result = parse_openai_stream_chunk(
             &mut buffer,
             &mut response_text,
+            &mut reasoning_content,
             &mut function_calls,
             &mut partial_fc,
             &tools,
@@ -1573,6 +1555,7 @@ mod tests {
         let result = parse_openai_stream_chunk(
             &mut buffer,
             &mut response_text,
+            &mut reasoning_content,
             &mut function_calls,
             &mut partial_fc,
             &tools,
@@ -1601,12 +1584,14 @@ mod tests {
             reasoning_started: false,
         };
         let tools = None;
+        let mut reasoning_content = String::new();
 
         // Initial message with role
         buffer.push_str("data: {\"id\":\"chatcmpl-AqTyN7bHxp10cCuIMNoPv9DuT4v0L\",\"object\":\"chat.completion.chunk\",\"created\":1737071635,\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_72ed7ab54c\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\",\"refusal\":null},\"logprobs\":null,\"finish_reason\":null}]}\n");
         let result = parse_openai_stream_chunk(
             &mut buffer,
             &mut response_text,
+            &mut reasoning_content,
             &mut function_calls,
             &mut partial_fc,
             &tools,
@@ -1627,6 +1612,7 @@ mod tests {
             let result = parse_openai_stream_chunk(
                 &mut buffer,
                 &mut response_text,
+                &mut reasoning_content,
                 &mut function_calls,
                 &mut partial_fc,
                 &tools,
@@ -1643,6 +1629,7 @@ mod tests {
         let result = parse_openai_stream_chunk(
             &mut buffer,
             &mut response_text,
+            &mut reasoning_content,
             &mut function_calls,
             &mut partial_fc,
             &tools,
@@ -1658,6 +1645,7 @@ mod tests {
         let result = parse_openai_stream_chunk(
             &mut buffer,
             &mut response_text,
+            &mut reasoning_content,
             &mut function_calls,
             &mut partial_fc,
             &tools,
@@ -1687,12 +1675,14 @@ mod tests {
             reasoning_started: false,
         };
         let tools = None;
+        let mut reasoning_content = String::new();
 
         // First chunk with split system_fingerprint
         buffer.push_str("data: {\"id\":\"chatcmpl-AqUiMlZBEj4bSQKmwhXPjGR0HStpQ\",\"object\":\"chat.completion.chunk\",\"created\":1737074486,\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"syste");
         let result = parse_openai_stream_chunk(
             &mut buffer,
             &mut response_text,
+            &mut reasoning_content,
             &mut function_calls,
             &mut partial_fc,
             &tools,
@@ -1708,6 +1698,7 @@ mod tests {
         let result = parse_openai_stream_chunk(
             &mut buffer,
             &mut response_text,
+            &mut reasoning_content,
             &mut function_calls,
             &mut partial_fc,
             &tools,
@@ -1747,6 +1738,7 @@ mod tests {
             let result = parse_openai_stream_chunk(
                 &mut buffer,
                 &mut response_text,
+                &mut reasoning_content,
                 &mut function_calls,
                 &mut partial_fc,
                 &tools,
@@ -1784,6 +1776,7 @@ mod tests {
             "tool_router_key": "test_router"
         })]);
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
+        let mut reasoning_content = String::new();
 
         // Initial message with role and function call name
         buffer.push_str("data: {\"id\":\"chatcmpl-ApllfOJ8EuDsd9Qe6J1j3EMGPhywA\",\"object\":\"chat.completion.chunk\",\"created\":1736901711,\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_72ed7ab54c\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":null,\"function_call\":{\"name\":\"shinkai_tool_config_updater\",\"arguments\":\"\"},\"refusal\":null},\"logprobs\":null,\"finish_reason\":null}]}\n");
@@ -1843,6 +1836,7 @@ mod tests {
             let result = parse_openai_stream_chunk(
                 &mut buffer,
                 &mut response_text,
+                &mut reasoning_content,
                 &mut function_calls,
                 &mut partial_fc,
                 &tools,
@@ -1859,6 +1853,7 @@ mod tests {
         let result = parse_openai_stream_chunk(
             &mut buffer,
             &mut response_text,
+            &mut reasoning_content,
             &mut function_calls,
             &mut partial_fc,
             &tools,
@@ -1874,6 +1869,7 @@ mod tests {
         let result = parse_openai_stream_chunk(
             &mut buffer,
             &mut response_text,
+            &mut reasoning_content,
             &mut function_calls,
             &mut partial_fc,
             &tools,
@@ -1935,6 +1931,7 @@ mod tests {
             r#"data: {"id":"chatcmpl-Ar9TM4lQXVkjrdwTchuU6H3TPiAFB","object":"chat.completion.chunk","created":1737231160,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{},"logprobs":null,"finish_reason":"function_call"}]}"#,
             "data: [DONE]\n",
         ];
+        let mut reasoning_content = String::new();
 
         for chunk in chunks {
             buffer.push_str(chunk);
@@ -1942,6 +1939,7 @@ mod tests {
             let result = parse_openai_stream_chunk(
                 &mut buffer,
                 &mut response_text,
+                &mut reasoning_content,
                 &mut function_calls,
                 &mut partial_fc,
                 &tools,
@@ -2099,6 +2097,7 @@ mod tests {
         };
         let tools = None;
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
+        let mut reasoning_content = String::new();
 
         // Add the error response exactly as provided
         buffer.push_str(r#"{"error": {"message": "Invalid schema for function 'shinkai_typescript_unsafe_processor': ['code', 'package', 'parameters', 'code'] has non-unique elements.", "type": "invalid_request_error", "param": "functions[2].parameters", "code": "invalid_function_parameters"}}"#);
@@ -2107,6 +2106,7 @@ mod tests {
         let result = parse_openai_stream_chunk(
             &mut buffer,
             &mut response_text,
+            &mut reasoning_content,
             &mut function_calls,
             &mut partial_fc,
             &tools,
@@ -2152,6 +2152,7 @@ mod tests {
             "tool_router_key": "test_router"
         })]);
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
+        let mut reasoning_content = String::new();
 
         // Test each chunk exactly as they appeared in the logs
         let chunks = vec![
@@ -2194,6 +2195,7 @@ mod tests {
             let result = parse_openai_stream_chunk(
                 &mut buffer,
                 &mut response_text,
+                &mut reasoning_content,
                 &mut function_calls,
                 &mut partial_fc,
                 &tools,

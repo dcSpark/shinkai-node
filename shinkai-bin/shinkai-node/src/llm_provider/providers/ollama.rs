@@ -4,6 +4,7 @@ use crate::llm_provider::providers::llm_cancellable_request::make_cancellable_re
 use crate::llm_provider::providers::shared::ollama_api::{
     ollama_conversation_prepare_messages_with_tooling, OllamaAPIStreamingResponse
 };
+use crate::llm_provider::providers::shared::shared_model_logic::send_ws_update;
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
 
 use super::super::error::LLMProviderError;
@@ -19,7 +20,7 @@ use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, Ollama};
 use shinkai_message_primitives::schemas::prompts::Prompt;
 use shinkai_message_primitives::schemas::ws_types::{
-    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSMetadata, WSUpdateHandler, WidgetMetadata
+    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSUpdateHandler, WidgetMetadata
 };
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -213,7 +214,7 @@ async fn handle_streaming_response(
                         llm_stopper.reset(&inbox_name.to_string());
 
                         // Return early since we never got a response
-                        return Ok(LLMInferenceResponse::new("".to_string(), json!({}), Vec::new(), Vec::new(), None));
+                        return Ok(LLMInferenceResponse::new("".to_string(), None, json!({}), Vec::new(), Vec::new(), None));
                     }
                 }
             },
@@ -243,6 +244,7 @@ async fn process_stream(
     tools: Option<Vec<JsonValue>>,
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
     let mut response_text = String::new();
+    let mut regular_content = String::new();
     let mut thinking_content = String::new();
     let mut thinking_started = false;
     let mut thinking_ended = false;
@@ -262,33 +264,19 @@ async fn process_stream(
                 llm_stopper.reset(&inbox_name.to_string());
 
                 // Send WS message indicating the job is done
-                if let Some(ref manager) = ws_manager_trait {
-                    let m = manager.lock().await;
-                    let inbox_name_string = inbox_name.to_string();
-
-                    let metadata = WSMetadata {
-                        id: Some(session_id.clone()),
-                        is_done: true,
-                        done_reason: Some("Stopped by user request".to_string()),
-                        total_duration: None,
-                        eval_count: None,
-                    };
-
-                    let ws_message_type = WSMessageType::Metadata(metadata);
-
-                    let _ = m
-                        .queue_message(
-                            WSTopic::Inbox,
-                            inbox_name_string,
-                            response_text.clone(),
-                            ws_message_type,
-                            true,
-                        )
-                        .await;
-                }
+                let _ = send_ws_update(
+                    &ws_manager_trait,
+                    Some(inbox_name.clone()),
+                    &session_id,
+                    response_text.clone(),
+                    false,
+                    true,
+                    Some("Stopped by user request".to_string()),
+                )
+                .await;
 
                 // Return early
-                return Ok(LLMInferenceResponse::new(response_text, json!({}), Vec::new(), Vec::new(), None));
+                return Ok(LLMInferenceResponse::new(response_text, None, json!({}), Vec::new(), Vec::new(), None));
             }
         }
 
@@ -324,62 +312,33 @@ async fn process_stream(
                             if !thinking.is_empty() {
                                 if !thinking_started {
                                     thinking_started = true;
-                                    // Send opening <think> tag immediately via WebSocket
-                                    if let Some(ref manager) = ws_manager_trait {
-                                        if let Some(ref inbox_name) = inbox_name {
-                                            let m = manager.lock().await;
-                                            let inbox_name_string = inbox_name.to_string();
-                                            let metadata = WSMetadata {
-                                                id: Some(session_id.clone()),
-                                                is_done: false,
-                                                done_reason: None,
-                                                total_duration: None,
-                                                eval_count: None,
-                                            };
-                                            let ws_message_type = WSMessageType::Metadata(metadata);
-                                            let _ = m
-                                                .queue_message(
-                                                    WSTopic::Inbox,
-                                                    inbox_name_string,
-                                                    "<think>".to_string(),
-                                                    ws_message_type,
-                                                    true,
-                                                )
-                                                .await;
-                                        }
-                                    }
-                                    // Add to response text for final accumulation
-                                    response_text.push_str("<think>");
+                                    // Send opening event immediately via WebSocket
+                                    let _ = send_ws_update(
+                                        &ws_manager_trait,
+                                        inbox_name.clone(),
+                                        &session_id,
+                                        "".to_string(),
+                                        true,
+                                        false,
+                                        None,
+                                    )
+                                    .await;
                                 }
                                 
                                 // Stream thinking content immediately via WebSocket
-                                if let Some(ref manager) = ws_manager_trait {
-                                    if let Some(ref inbox_name) = inbox_name {
-                                        let m = manager.lock().await;
-                                        let inbox_name_string = inbox_name.to_string();
-                                        let metadata = WSMetadata {
-                                            id: Some(session_id.clone()),
-                                            is_done: false,
-                                            done_reason: None,
-                                            total_duration: None,
-                                            eval_count: None,
-                                        };
-                                        let ws_message_type = WSMessageType::Metadata(metadata);
-                                        let _ = m
-                                            .queue_message(
-                                                WSTopic::Inbox,
-                                                inbox_name_string,
-                                                thinking.clone(),
-                                                ws_message_type,
-                                                true,
-                                            )
-                                            .await;
-                                    }
-                                }
+                                let _ = send_ws_update(
+                                    &ws_manager_trait,
+                                    inbox_name.clone(),
+                                    &session_id,
+                                    thinking.clone(),
+                                    true,
+                                    false,
+                                    None,
+                                )
+                                .await;
                                 
                                 // Also accumulate for final response
                                 thinking_content.push_str(thinking);
-                                response_text.push_str(thinking);
                             }
                         }
                         
@@ -390,33 +349,19 @@ async fn process_stream(
                             if thinking_started && !thinking_ended {
                                 thinking_ended = true;
                                 // Send closing </think> tag via WebSocket
-                                if let Some(ref manager) = ws_manager_trait {
-                                    if let Some(ref inbox_name) = inbox_name {
-                                        let m = manager.lock().await;
-                                        let inbox_name_string = inbox_name.to_string();
-                                        let metadata = WSMetadata {
-                                            id: Some(session_id.clone()),
-                                            is_done: false,
-                                            done_reason: None,
-                                            total_duration: None,
-                                            eval_count: None,
-                                        };
-                                        let ws_message_type = WSMessageType::Metadata(metadata);
-                                        let _ = m
-                                            .queue_message(
-                                                WSTopic::Inbox,
-                                                inbox_name_string,
-                                                "</think>".to_string(),
-                                                ws_message_type,
-                                                true,
-                                            )
-                                            .await;
-                                    }
-                                }
-                                // Add to response text for final accumulation
-                                response_text.push_str("</think>");
+                                let _ = send_ws_update(
+                                    &ws_manager_trait,
+                                    inbox_name.clone(),
+                                    &session_id,
+                                    "".to_string(),
+                                    false,
+                                    false,
+                                    None,
+                                )
+                                .await;
                             }
                             response_text.push_str(&data.message.content);
+                            regular_content.push_str(&data.message.content);
                         }
 
                         if let Some(tool_calls) = data.message.tool_calls {
@@ -504,43 +449,20 @@ async fn process_stream(
                             final_eval_duration = data.eval_duration;
                         }
 
-                        if let Some(ref manager) = ws_manager_trait {
-                            if let Some(ref inbox_name) = inbox_name {
-                                let m = manager.lock().await;
-                                let inbox_name_string = inbox_name.to_string();
-                                let metadata = WSMetadata {
-                                    id: Some(session_id.clone()),
-                                    is_done: final_function_calls.is_empty() && data.done,
-                                    done_reason: if final_function_calls.is_empty() && data.done {
-                                        data.done_reason.clone()
-                                    } else {
-                                        None
-                                    },
-                                    total_duration: if final_function_calls.is_empty() && data.done {
-                                        data.total_duration.map(|d| d as u64)
-                                    } else {
-                                        None
-                                    },
-                                    eval_count: if final_function_calls.is_empty() && data.done {
-                                        data.eval_count.map(|c| c as u64)
-                                    } else {
-                                        None
-                                    },
-                                };
-
-                                let ws_message_type = WSMessageType::Metadata(metadata);
-
-                                let _ = m
-                                    .queue_message(
-                                        WSTopic::Inbox,
-                                        inbox_name_string,
-                                        data.message.content,
-                                        ws_message_type,
-                                        true,
-                                    )
-                                    .await;
-                            }
-                        }
+                        let _ = send_ws_update(
+                            &ws_manager_trait,
+                            inbox_name.clone(),
+                            &session_id,
+                            data.message.content,
+                            false,
+                            final_function_calls.is_empty() && data.done,
+                            if final_function_calls.is_empty() && data.done {
+                                data.done_reason.clone()
+                            } else {
+                                None
+                            },
+                        )
+                        .await;
                     }
                     Err(_e) => {
                         shinkai_log(
@@ -566,31 +488,16 @@ async fn process_stream(
     // If we ended with thinking content but no regular content, send closing tag
     if thinking_started && !thinking_ended && !thinking_content.is_empty() {
         // Send closing </think> tag via WebSocket
-        if let Some(ref manager) = ws_manager_trait {
-            if let Some(ref inbox_name) = inbox_name {
-                let m = manager.lock().await;
-                let inbox_name_string = inbox_name.to_string();
-                let metadata = WSMetadata {
-                    id: Some(session_id.clone()),
-                    is_done: true,
-                    done_reason: None,
-                    total_duration: None,
-                    eval_count: None,
-                };
-                let ws_message_type = WSMessageType::Metadata(metadata);
-                let _ = m
-                    .queue_message(
-                        WSTopic::Inbox,
-                        inbox_name_string,
-                        "</think>".to_string(),
-                        ws_message_type,
-                        true,
-                    )
-                    .await;
-            }
-        }
-        // Add to response text for final accumulation
-        response_text.push_str("</think>");
+        let _ = send_ws_update(
+            &ws_manager_trait,
+            inbox_name.clone(),
+            &session_id,
+            "".to_string(),
+            false,
+            false,
+            None,
+        )
+        .await;
     }
 
     let tps = if let (Some(eval_count), Some(eval_duration)) = (final_eval_count, final_eval_duration) {
@@ -604,7 +511,8 @@ async fn process_stream(
     };
 
     Ok(LLMInferenceResponse::new(
-        response_text,
+        regular_content,
+        if thinking_content.is_empty() { None } else { Some(thinking_content) },
         json!({}),
         final_function_calls,
         Vec::new(),
@@ -638,7 +546,7 @@ async fn handle_non_streaming_response(
                             "LLM job stopped by user request before response arrived",
                         );
                         llm_stopper.reset(&inbox_name.to_string());
-                        return Ok(LLMInferenceResponse::new("".to_string(), json!({}), Vec::new(), Vec::new(), None));
+                        return Ok(LLMInferenceResponse::new("".to_string(), None, json!({}), Vec::new(), Vec::new(), None));
                     }
                 }
             },
@@ -666,14 +574,8 @@ async fn handle_non_streaming_response(
                             // Handle thinking content in non-streaming response
                             let mut final_content = String::new();
                             
-                            // Check for thinking content and prepend it with tags
-                            if let Some(thinking) = message.get("thinking").and_then(|t| t.as_str()) {
-                                if !thinking.is_empty() {
-                                    final_content.push_str("<think>");
-                                    final_content.push_str(thinking);
-                                    final_content.push_str("</think>");
-                                }
-                            }
+                            // Extract thinking content for separate handling
+                            let thinking_content = message.get("thinking").and_then(|t| t.as_str()).filter(|s| !s.is_empty());
                             
                             // Add regular content
                             final_content.push_str(content_str);
@@ -755,29 +657,16 @@ async fn handle_non_streaming_response(
                             );
 
                             // Send the final content (including thinking) via WebSocket in non-streaming mode
-                            if let Some(ref manager) = ws_manager_trait {
-                                if let Some(ref inbox_name) = inbox_name {
-                                    let m = manager.lock().await;
-                                    let inbox_name_string = inbox_name.to_string();
-                                    let metadata = WSMetadata {
-                                        id: None,
-                                        is_done: true,
-                                        done_reason: None,
-                                        total_duration: None,
-                                        eval_count: None,
-                                    };
-                                    let ws_message_type = WSMessageType::Metadata(metadata);
-                                    let _ = m
-                                        .queue_message(
-                                            WSTopic::Inbox,
-                                            inbox_name_string,
-                                            final_content.clone(),
-                                            ws_message_type,
-                                            true,
-                                        )
-                                        .await;
-                                }
-                            }
+                            let _ = send_ws_update(
+                                &ws_manager_trait,
+                                inbox_name.clone(),
+                                "", // No session_id for non-streaming mode in original code
+                                final_content.clone(),
+                                false,
+                                true,
+                                None,
+                            )
+                            .await;
 
                             let eval_count = response_json.get("eval_count").and_then(|v| v.as_u64()).unwrap_or(0);
                             let eval_duration = response_json.get("eval_duration").and_then(|v| v.as_u64()).unwrap_or(1);
@@ -788,7 +677,8 @@ async fn handle_non_streaming_response(
                             };
 
                             break Ok(LLMInferenceResponse::new(
-                                final_content,
+                                content_str.to_string(),
+                                thinking_content.map(|t| t.to_string()),
                                 json!({}),
                                 function_calls,
                                 Vec::new(),

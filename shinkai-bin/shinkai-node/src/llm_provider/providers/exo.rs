@@ -168,6 +168,7 @@ impl LLMService for Exo {
 
                                             let metadata = WSMetadata {
                                                 id: Some(session_id.clone()),
+                                                is_reasoning: false,
                                                 is_done: choice.finish_reason.is_some(),
                                                 done_reason: choice.finish_reason.clone(),
                                                 total_duration: None, // Not available in the new format
@@ -213,7 +214,7 @@ impl LLMService for Exo {
             );
 
             // Return response_text with an empty JSON object and empty function calls vector
-            Ok(LLMInferenceResponse::new(response_text, json!({}), Vec::new(), Vec::new(), None))
+            Ok(LLMInferenceResponse::new(response_text, None, json!({}), Vec::new(), Vec::new(), None))
         } else {
             Err(LLMProviderError::UrlNotSet)
         }

@@ -11,6 +11,11 @@ use crate::{
     llm_provider::error::LLMProviderError,
     managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResult, PromptResultEnum},
 };
+use shinkai_message_primitives::schemas::ws_types::{WSMessageType, WSMetadata, WSUpdateHandler};
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 #[allow(unused)]
 pub fn llama_prepare_messages(
@@ -163,4 +168,44 @@ pub async fn save_image_file(
     .map_err(|e| LLMProviderError::NetworkError(format!("Failed to save image file: {}", e)))?;
 
     Ok(shinkai_path)
+}
+
+/// Send a WebSocket update message through the provided manager
+pub async fn send_ws_update(
+    ws_manager_trait: &Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    inbox_name: Option<InboxName>,
+    session_id: &str,
+    content: String,
+    is_reasoning: bool,
+    is_done: bool,
+    done_reason: Option<String>,
+) -> Result<(), LLMProviderError> {
+    if let Some(ref manager) = ws_manager_trait {
+        if let Some(inbox_name) = inbox_name {
+            let m = manager.lock().await;
+            let inbox_name_string = inbox_name.to_string();
+
+            let metadata = WSMetadata {
+                id: Some(session_id.to_string()),
+                is_reasoning,
+                is_done,
+                done_reason,
+                total_duration: None,
+                eval_count: None,
+            };
+
+            let ws_message_type = WSMessageType::Metadata(metadata);
+
+            shinkai_log(
+                ShinkaiLogOption::JobExecution,
+                ShinkaiLogLevel::Debug,
+                format!("Websocket content: {}", content).as_str(),
+            );
+
+            let _ = m
+                .queue_message(WSTopic::Inbox, inbox_name_string, content, ws_message_type, true)
+                .await;
+        }
+    }
+    Ok(())
 }

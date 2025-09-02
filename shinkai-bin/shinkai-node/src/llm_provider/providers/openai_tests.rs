@@ -26,6 +26,7 @@ mod tests {
             "tool_router_key": "test_router"
         })]);
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
+        let mut reasoning_content = String::new();
 
         // Each string in this vector represents a complete chunk that may contain multiple data entries
         let chunks = vec![
@@ -51,8 +52,9 @@ data: [DONE]"#,
             buffer.push('\n');
             let result = parse_openai_stream_chunk(
                 &mut buffer,
-                &mut response_text,
-                &mut function_calls,
+                            &mut response_text,
+            &mut reasoning_content,
+            &mut function_calls,
                 &mut partial_fc,
                 &tools,
                 &ws_manager,
@@ -93,6 +95,7 @@ data: [DONE]"#,
         };
         let tools = None;
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
+        let mut reasoning_content = String::new();
 
         let chunks = vec![
             // Initial role setup
@@ -155,8 +158,9 @@ data: {"id":"chatcmpl-BLGOkzXc864uH3CZxRW9stxqzlpOl","object":"chat.completion.c
             buffer.push('\n');
             let result = parse_openai_stream_chunk(
                 &mut buffer,
-                &mut response_text,
-                &mut function_calls,
+                            &mut response_text,
+            &mut reasoning_content,
+            &mut function_calls,
                 &mut partial_fc,
                 &tools,
                 &ws_manager,
@@ -199,6 +203,7 @@ data: {"id":"chatcmpl-BLGOkzXc864uH3CZxRW9stxqzlpOl","object":"chat.completion.c
             }),
         ]);
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
+        let mut reasoning_content = String::new();
 
         // Chunks representing streaming tool calls
         let chunks = vec![
@@ -226,8 +231,9 @@ data: {"id":"chatcmpl-BLGOkzXc864uH3CZxRW9stxqzlpOl","object":"chat.completion.c
             buffer.push('\n');
             let result = parse_openai_stream_chunk(
                 &mut buffer,
-                &mut response_text,
-                &mut function_calls,
+                            &mut response_text,
+            &mut reasoning_content,
+            &mut function_calls,
                 &mut partial_fc,
                 &tools,
                 &ws_manager,
@@ -289,6 +295,7 @@ data: {"id":"chatcmpl-BLGOkzXc864uH3CZxRW9stxqzlpOl","object":"chat.completion.c
             "tool_router_key": "youtube_router"
         })]);
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
+        let mut reasoning_content = String::new();
 
         // Each string in this vector represents one of the "Received chunk:" blocks from the input
         let chunks = vec![
@@ -338,8 +345,9 @@ data: [DONE]"#,
             buffer.push('\n');
             let result = parse_openai_stream_chunk(
                 &mut buffer,
-                &mut response_text,
-                &mut function_calls,
+                            &mut response_text,
+            &mut reasoning_content,
+            &mut function_calls,
                 &mut partial_fc,
                 &tools,
                 &ws_manager,
@@ -414,6 +422,7 @@ data: [DONE]"#,
         })]);
 
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
+        let mut reasoning_content = String::new();
 
         // These chunks are directly lifted from your "Received chunk" logs
         let chunks = vec![
@@ -503,8 +512,9 @@ data: [DONE]"#,
 
             let result = parse_openai_stream_chunk(
                 &mut buffer,
-                &mut response_text,
-                &mut function_calls,
+                            &mut response_text,
+            &mut reasoning_content,
+            &mut function_calls,
                 &mut partial_fc,
                 &tools,
                 &ws_manager,
@@ -558,6 +568,7 @@ data: [DONE]"#,
         };
         let tools = None;
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
+        let mut reasoning_content = String::new();
 
         // Quota exceeded error chunk
         let chunks = vec![
@@ -569,8 +580,9 @@ data: [DONE]"#,
             buffer.push('\n');
             let result = parse_openai_stream_chunk(
                 &mut buffer,
-                &mut response_text,
-                &mut function_calls,
+                            &mut response_text,
+            &mut reasoning_content,
+            &mut function_calls,
                 &mut partial_fc,
                 &tools,
                 &ws_manager,

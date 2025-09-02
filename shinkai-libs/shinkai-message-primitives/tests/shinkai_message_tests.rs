@@ -149,6 +149,7 @@ mod tests {
         let job_message = JobMessage {
             job_id: "test_job_id".to_string(),
             content: "This is a test message".to_string(),
+            reasoning_content: None,
             parent: Some("parent_id".to_string()),
             sheet_job_data: Some("sheet_data".to_string()),
             callback: None,
@@ -175,6 +176,7 @@ mod tests {
         let job_message = JobMessage {
             job_id: "test_job_id".to_string(),
             content: "This is a test message with files".to_string(),
+            reasoning_content: None,
             parent: Some("parent_id".to_string()),
             sheet_job_data: Some("sheet_data".to_string()),
             callback: None,

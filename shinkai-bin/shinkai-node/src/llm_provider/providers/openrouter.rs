@@ -234,7 +234,7 @@ async fn handle_streaming_response(
                 );
                 llm_stopper.reset(&inbox_name.to_string());
 
-                return Ok(LLMInferenceResponse::new(response_text, json!({}), Vec::new(), Vec::new(), None));
+                return Ok(LLMInferenceResponse::new(response_text, None, json!({}), Vec::new(), Vec::new(), None));
             }
         }
 
@@ -385,6 +385,7 @@ async fn handle_streaming_response(
 
     Ok(LLMInferenceResponse::new(
         response_text,
+        None,
         json!({}),
         function_calls,
         Vec::new(),
@@ -424,7 +425,7 @@ async fn handle_non_streaming_response(
                         );
                         llm_stopper.reset(&inbox_name.to_string());
 
-                        return Ok(LLMInferenceResponse::new("".to_string(), json!({}), Vec::new(), Vec::new(), None));
+                        return Ok(LLMInferenceResponse::new("".to_string(), None, json!({}), Vec::new(), Vec::new(), None));
                     }
                 }
             },
@@ -543,6 +544,7 @@ async fn handle_non_streaming_response(
                         eprintln!("Response String: {:?}", response_string);
                         return Ok(LLMInferenceResponse::new(
                             response_string,
+                            None,
                             json!({}),
                             function_call.map_or_else(Vec::new, |fc| vec![fc]),
                             Vec::new(),
@@ -694,6 +696,7 @@ async fn send_ws_update(
             let inbox_name_string = inbox_name.to_string();
             let metadata = WSMetadata {
                 id: Some(session_id.to_string()),
+                is_reasoning: false,
                 is_done,
                 done_reason,
                 total_duration: None,
@@ -725,6 +728,7 @@ async fn send_ws_message(
 
     let metadata = WSMetadata {
         id: Some(session_id.to_string()),
+        is_reasoning: false,
         is_done: data.get("done").and_then(|d| d.as_bool()).unwrap_or(false),
         done_reason: data.get("done_reason").and_then(|d| d.as_str()).map(|s| s.to_string()),
         total_duration: data.get("total_duration").and_then(|d| d.as_u64()),

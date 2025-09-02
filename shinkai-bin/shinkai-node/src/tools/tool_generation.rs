@@ -128,6 +128,7 @@ pub async fn v2_send_basic_job_message_for_existing_job(
     let job_message = JobMessage {
         job_id: job_id.clone(),
         content,
+        reasoning_content: None,
         parent: None,
         sheet_job_data: None,
         callback: None,

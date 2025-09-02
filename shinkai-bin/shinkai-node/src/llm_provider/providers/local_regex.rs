@@ -74,7 +74,7 @@ impl LLMService for LocalRegex {
         for pattern in patterns {
             if let Ok(regex) = Regex::new(&pattern.pattern) {
                 if regex.is_match(messages) {
-                    return Ok(LLMInferenceResponse::new(pattern.response, json!({}), Vec::new(), Vec::new(), None));
+                    return Ok(LLMInferenceResponse::new(pattern.response, None, json!({}), Vec::new(), Vec::new(), None));
                 }
             }
         }
@@ -82,6 +82,7 @@ impl LLMService for LocalRegex {
         // If no pattern matches, return a default response
         Ok(LLMInferenceResponse::new(
             "No matching pattern found".to_string(),
+            None,
             json!({}),
             Vec::new(),
             Vec::new(),

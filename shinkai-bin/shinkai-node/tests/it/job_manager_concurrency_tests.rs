@@ -182,6 +182,7 @@ async fn test_process_job_queue_concurrency() {
             JobMessage {
                 job_id: format!("job_id::{}::false", i).to_string(),
                 content: format!("my content {}", i).to_string(),
+                reasoning_content: None,
                 parent: None,
                 sheet_job_data: None,
                 callback: None,
@@ -324,6 +325,7 @@ async fn test_sequential_process_for_same_job_id() {
             JobMessage {
                 job_id: "job_id::123::false".to_string(),
                 content: format!("my content {}", i).to_string(),
+                reasoning_content: None,
                 parent: None,
                 sheet_job_data: None,
                 callback: None,

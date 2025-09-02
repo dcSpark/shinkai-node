@@ -149,6 +149,7 @@ impl ShinkaiMessageBuilder {
         let job_message = JobMessage {
             job_id,
             content,
+            reasoning_content: None,
             fs_files_paths: fs_files_path,
             parent: Some(parent_hash),
             sheet_job_data: None,
@@ -196,6 +197,7 @@ impl ShinkaiMessageBuilder {
         let job_message = JobMessage {
             job_id,
             content,
+            reasoning_content: None,
             fs_files_paths: fs_files,
             parent: Some(parent_hash),
             sheet_job_data: None,
@@ -236,6 +238,7 @@ impl ShinkaiMessageBuilder {
     pub fn job_message_from_llm_provider(
         job_id: String,
         content: String,
+        reasoning_content: Option<String>,
         files: Vec<ShinkaiPath>,
         metadata: Option<MessageMetadata>,
         my_signature_secret_key: SigningKey,
@@ -246,6 +249,7 @@ impl ShinkaiMessageBuilder {
         let job_message = JobMessage {
             job_id,
             content,
+            reasoning_content,
             parent: None,
             sheet_job_data: None,
             callback: None,

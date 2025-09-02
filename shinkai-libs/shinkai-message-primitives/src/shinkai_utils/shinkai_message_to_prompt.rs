@@ -25,6 +25,7 @@ impl ShinkaiMessage {
             Err(_) => JobMessage {
                 content: self.get_message_content().unwrap_or_default(),
                 job_id: "".to_string(),
+                reasoning_content: None,
                 parent: None,
                 sheet_job_data: None,
                 callback: None,

@@ -1935,6 +1935,7 @@ impl Node {
                 let ai_shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
                     job_id.to_string(),
                     message.content,
+                    message.reasoning_content,
                     message.fs_files_paths,
                     None,
                     identity_secret_key_clone,

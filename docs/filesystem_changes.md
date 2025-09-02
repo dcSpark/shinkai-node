@@ -16,6 +16,7 @@ The `JobMessage` struct has been updated to reflect these changes:
 pub struct JobMessage {
     pub job_id: String,
     pub content: String,
+    pub reasoning_content: Option<String>,
     pub parent: Option<String>,
     pub sheet_job_data: Option<String>,
     // Whenever we need to chain actions, we can use this

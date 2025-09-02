@@ -931,6 +931,7 @@ impl GenericInferenceChain {
 
         // NEW: Accumulate all LLM response messages
         let mut all_llm_messages = Vec::new();
+        let mut all_reasoning_content = Vec::new();
         let mut all_generated_files = Vec::new();
 
         let mut filled_prompt = JobPromptGenerator::generic_inference_prompt(
@@ -971,8 +972,16 @@ impl GenericInferenceChain {
                     .collect::<Vec<&str>>()
                     .join("\n\n");
 
+                let full_reasoning_content = all_reasoning_content
+                    .iter()
+                    .map(|msg: &String| msg.trim())
+                    .filter(|msg| !msg.is_empty())
+                    .collect::<Vec<&str>>()
+                    .join("\n\n");
+
                 let inference_result = InferenceChainResult::with_full_details(
                     format!("{}\n\n{}", full_conversation, max_iterations_message),
+                    Some(full_reasoning_content),
                     None,
                     answer_duration_ms,
                     Some(tool_calls_history.clone()),
@@ -1026,6 +1035,9 @@ impl GenericInferenceChain {
 
             // NEW: Accumulate this LLM message
             all_llm_messages.push(response.response_string.clone());
+            if let Some(reasoning_content) = response.reasoning_content.clone() {
+                all_reasoning_content.push(reasoning_content);
+            }
             all_generated_files.extend(response.generated_files.clone());
 
             // 5) Check response if it requires a function call
@@ -1298,6 +1310,7 @@ impl GenericInferenceChain {
 
                 let inference_result = InferenceChainResult::with_full_details(
                     last_message,
+                    Some(all_reasoning_content.join("\n\n")),
                     response.tps.map(|tps| tps.to_string()),
                     answer_duration_ms,
                     Some(tool_calls_history.clone()),
