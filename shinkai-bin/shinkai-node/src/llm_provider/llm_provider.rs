@@ -82,7 +82,7 @@ impl LLMProvider {
         });
 
         match handle.await {
-            Ok(response) => Ok(LLMInferenceResponse::new(content, response, Vec::new(), None)),
+            Ok(response) => Ok(LLMInferenceResponse::new(content, response, Vec::new(), Vec::new(), None)),
             Err(_e) => Err(LLMProviderError::InferenceFailed),
         }
     }
@@ -96,20 +96,6 @@ impl LLMProvider {
         llm_stopper: Arc<LLMStopper>,
         tracing_message_id: Option<String>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
-        // Merge config with agent's config, preferring the provided config
-        let merged_config = if let Some(agent) = &self.agent {
-            if let Some(agent_config) = &agent.config {
-                // Prefer `config` over `agent_config`
-                Some(config.unwrap_or_else(JobConfig::empty).merge(agent_config))
-            } else {
-                // Use provided config or create an empty one if none is provided
-                config.or_else(|| Some(JobConfig::empty()))
-            }
-        } else {
-            // Use provided config if no agent is present
-            config
-        };
-
         let response = match &self.model {
             LLMProviderInterface::OpenAI(openai) => {
                 openai
@@ -121,7 +107,7 @@ impl LLMProvider {
                         self.model.clone(),
                         inbox_name,
                         ws_manager_trait,
-                        merged_config,
+                        config,
                         llm_stopper,
                         self.db.clone(),
                         tracing_message_id,
@@ -138,7 +124,7 @@ impl LLMProvider {
                         self.model.clone(),
                         inbox_name,
                         ws_manager_trait,
-                        merged_config,
+                        config,
                         llm_stopper,
                         self.db.clone(),
                         tracing_message_id,
@@ -155,7 +141,7 @@ impl LLMProvider {
                         self.model.clone(),
                         inbox_name,
                         ws_manager_trait,
-                        merged_config,
+                        config,
                         llm_stopper,
                         self.db.clone(),
                         tracing_message_id,
@@ -171,7 +157,7 @@ impl LLMProvider {
                     self.model.clone(),
                     inbox_name,
                     ws_manager_trait,
-                    merged_config,
+                    config,
                     llm_stopper,
                     self.db.clone(),
                     tracing_message_id,
@@ -188,7 +174,7 @@ impl LLMProvider {
                         self.model.clone(),
                         inbox_name,
                         ws_manager_trait,
-                        merged_config,
+                        config,
                         llm_stopper,
                         self.db.clone(),
                         tracing_message_id,
@@ -204,7 +190,7 @@ impl LLMProvider {
                     self.model.clone(),
                     inbox_name,
                     ws_manager_trait,
-                    merged_config,
+                    config,
                     llm_stopper,
                     self.db.clone(),
                     tracing_message_id,
@@ -220,7 +206,7 @@ impl LLMProvider {
                     self.model.clone(),
                     inbox_name,
                     ws_manager_trait,
-                    merged_config,
+                    config,
                     llm_stopper,
                     self.db.clone(),
                     tracing_message_id,
@@ -237,7 +223,7 @@ impl LLMProvider {
                         self.model.clone(),
                         inbox_name,
                         ws_manager_trait,
-                        merged_config,
+                        config,
                         llm_stopper,
                         self.db.clone(),
                         tracing_message_id,
@@ -254,7 +240,7 @@ impl LLMProvider {
                         self.model.clone(),
                         inbox_name,
                         ws_manager_trait,
-                        merged_config,
+                        config,
                         llm_stopper,
                         self.db.clone(),
                         tracing_message_id,
@@ -271,7 +257,7 @@ impl LLMProvider {
                         self.model.clone(),
                         inbox_name,
                         ws_manager_trait,
-                        merged_config,
+                        config,
                         llm_stopper,
                         self.db.clone(),
                         tracing_message_id,
@@ -288,7 +274,7 @@ impl LLMProvider {
                         self.model.clone(),
                         inbox_name,
                         ws_manager_trait,
-                        merged_config,
+                        config,
                         llm_stopper,
                         self.db.clone(),
                         tracing_message_id,
@@ -305,7 +291,7 @@ impl LLMProvider {
                         self.model.clone(),
                         inbox_name,
                         ws_manager_trait,
-                        merged_config,
+                        config,
                         llm_stopper,
                         self.db.clone(),
                         tracing_message_id,

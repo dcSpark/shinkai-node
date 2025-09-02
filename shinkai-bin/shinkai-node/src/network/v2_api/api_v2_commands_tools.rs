@@ -2718,6 +2718,7 @@ impl Node {
         db: Arc<SqliteManager>,
         shinkai_file_protocol: String,
         node_storage_path: String,
+        node_name: ShinkaiName,
         res: Sender<Result<Vec<u8>, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -2727,6 +2728,7 @@ impl Node {
 
         // Parse the shinkai file protocol
         // Format: shinkai://file/{node_name}/{app-id}/{full-path}
+        // now we also have shinkai://file/{full-path} (will search on the node storage filesystem)
         let parts: Vec<&str> = shinkai_file_protocol.split('/').collect();
         if parts.len() < 5 || !shinkai_file_protocol.starts_with("shinkai://file/") {
             let api_error = APIError {
@@ -2739,15 +2741,23 @@ impl Node {
         }
 
         // TODO This should be verified (?)
-        let _user_name = parts[3];
+        let user_name = parts[3];
         let app_id = parts[4];
         let remaining_path = parts[5..].join("/");
 
         // Construct the full file path
         let mut file_path = PathBuf::from(&node_storage_path);
-        file_path.push("tools_storage");
-        file_path.push(app_id);
-        file_path.push(&remaining_path);
+        
+        if user_name == node_name.get_node_name_string() {
+            // Keep the current behavior (output files from tools)
+            file_path.push("tools_storage");
+            file_path.push(app_id);
+            file_path.push(&remaining_path);
+        } else {
+            // We will try to find the file in the node storage filesystem
+            file_path.push("filesystem");
+            file_path.push(parts[3..].join("/"));
+        }
 
         // Read and return the file directly
         match fs::read(&file_path).await {

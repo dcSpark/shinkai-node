@@ -234,7 +234,7 @@ async fn handle_streaming_response(
                 );
                 llm_stopper.reset(&inbox_name.to_string());
 
-                return Ok(LLMInferenceResponse::new(response_text, json!({}), Vec::new(), None));
+                return Ok(LLMInferenceResponse::new(response_text, json!({}), Vec::new(), Vec::new(), None));
             }
         }
 
@@ -387,6 +387,7 @@ async fn handle_streaming_response(
         response_text,
         json!({}),
         function_calls,
+        Vec::new(),
         None,
     ))
 }
@@ -423,7 +424,7 @@ async fn handle_non_streaming_response(
                         );
                         llm_stopper.reset(&inbox_name.to_string());
 
-                        return Ok(LLMInferenceResponse::new("".to_string(), json!({}), Vec::new(), None));
+                        return Ok(LLMInferenceResponse::new("".to_string(), json!({}), Vec::new(), Vec::new(), None));
                     }
                 }
             },
@@ -544,6 +545,7 @@ async fn handle_non_streaming_response(
                             response_string,
                             json!({}),
                             function_call.map_or_else(Vec::new, |fc| vec![fc]),
+                            Vec::new(),
                             None,
                         ));
                     }

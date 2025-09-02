@@ -1,14 +1,18 @@
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
 use shinkai_message_primitives::{schemas::{
-    llm_providers::serialized_llm_provider::LLMProviderInterface, prompts::Prompt,
-}, shinkai_utils::utils::count_tokens_from_message_llama3};
+    inbox_name::InboxName, llm_providers::serialized_llm_provider::LLMProviderInterface, prompts::Prompt
+}, shinkai_utils::{shinkai_path::ShinkaiPath, utils::count_tokens_from_message_llama3}};
+use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
+use shinkai_fs::shinkai_file_manager::{FileProcessingMode, ShinkaiFileManager};
+use shinkai_sqlite::SqliteManager;
 
 use crate::{
     llm_provider::error::LLMProviderError,
     managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResult, PromptResultEnum},
 };
 
+#[allow(unused)]
 pub fn llama_prepare_messages(
     _model: &LLMProviderInterface,
     _model_type: String,
@@ -96,4 +100,67 @@ pub fn get_audio_type(base64_str: &str) -> Option<&'static str> {
         }
     }
     None
+}
+
+/// Save an image file from base64 data to the job's file storage
+pub async fn save_image_file(
+    mime_type: &str,
+    base64_data: &str,
+    inbox_name: &Option<InboxName>,
+    session_id: &str,
+    db: &SqliteManager,
+) -> Result<ShinkaiPath, LLMProviderError> {
+    // Decode base64 image data
+    let image_data = BASE64
+        .decode(base64_data)
+        .map_err(|e| LLMProviderError::NetworkError(format!("Failed to decode base64 image data: {}", e)))?;
+
+    // Create a unique filename for the image
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+
+    let file_extension = match mime_type {
+        "image/png" => "png",
+        "image/jpeg" => "jpg",
+        "image/gif" => "gif",
+        "image/webp" => "webp",
+        _ => "png", // Default to png
+    };
+
+    let filename = format!("generated_image_{}_{}.{}", session_id, timestamp, file_extension);
+
+    // Extract job ID from inbox name using the proper method
+    let job_id = if let Some(inbox) = inbox_name {
+        match inbox.get_job_id() {
+            Some(job_id) => job_id,
+            None => {
+                return Err(LLMProviderError::NetworkError(
+                    "Inbox is not a job inbox - cannot save images".to_string()
+                ));
+            }
+        }
+    } else {
+        return Err(LLMProviderError::NetworkError(
+            "Inbox name is required for saving images".to_string()
+        ));
+    };
+
+    // Create a default embedding generator
+    let embedding_generator = RemoteEmbeddingGenerator::new_default();
+
+    // Save the image file with the job ID - this will use the proper job-based file organization
+    let shinkai_path = ShinkaiFileManager::save_and_process_file_with_jobid(
+        &job_id,
+        filename.clone(),
+        image_data,
+        db,
+        FileProcessingMode::NoParsing, // Images don't contain parseable text, but file is still saved to job context
+        &embedding_generator,
+    )
+    .await
+    .map_err(|e| LLMProviderError::NetworkError(format!("Failed to save image file: {}", e)))?;
+
+    Ok(shinkai_path)
 }

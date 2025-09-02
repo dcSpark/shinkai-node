@@ -354,6 +354,7 @@ impl JobManager {
                     tps: None,
                     answer_duration: None,
                     tool_calls: None,
+                    generated_files: Vec::new(),
                 };
                 (error_response, error_message)
             }
@@ -377,7 +378,7 @@ impl JobManager {
         let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
             job_id.to_string(),
             inference_response_content.to_string(),
-            vec![],
+            inference_response.generated_files.clone(),
             Some(message_metadata),
             identity_secret_key_clone,
             user_profile.node_name.clone(),

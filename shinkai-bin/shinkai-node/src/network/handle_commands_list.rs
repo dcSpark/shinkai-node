@@ -2089,12 +2089,14 @@ impl Node {
                 // Get the node storage path
                 let node_env = fetch_node_environment();
                 let node_storage_path = node_env.node_storage_path.unwrap_or_default();
+                let node_name = self.node_name.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_api_resolve_shinkai_file_protocol(
                         bearer,
                         db_clone,
                         shinkai_file_protocol,
                         node_storage_path,
+                        node_name,
                         res,
                     )
                     .await;

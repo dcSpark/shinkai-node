@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use super::super::error::LLMProviderError;
 use super::shared::gemini_api::gemini_prepare_messages;
+use super::shared::shared_model_logic::save_image_file;
 use super::LLMService;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
 use crate::llm_provider::llm_stopper::LLMStopper;
@@ -21,6 +22,7 @@ use shinkai_message_primitives::schemas::ws_types::{
 };
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_sqlite::SqliteManager;
 use std::error::Error;
 use tokio::sync::Mutex;
@@ -53,6 +55,15 @@ struct StreamingPart {
     function_call: Option<FunctionCallResponse>,
     #[serde(default)]
     thought: bool,
+    #[serde(rename = "inlineData")]
+    inline_data: Option<InlineData>,
+}
+
+#[derive(Debug, Deserialize)]
+struct InlineData {
+    #[serde(rename = "mimeType")]
+    mime_type: String,
+    data: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -242,6 +253,7 @@ impl LLMService for Gemini {
 
                 let mut stream = res.bytes_stream();
                 let mut response_text = String::new();
+                let mut generated_files = Vec::new();
                 let mut buffer = String::new();
                 let mut is_done = false;
                 let mut finish_reason = None;
@@ -256,9 +268,11 @@ impl LLMService for Gemini {
                                 &chunk,
                                 &mut buffer,
                                 &mut response_text,
+                                &mut generated_files,
                                 &session_id,
                                 &ws_manager_trait,
                                 &inbox_name,
+                                &db,
                                 &mut is_done,
                                 &mut finish_reason,
                                 &mut function_calls,
@@ -283,6 +297,7 @@ impl LLMService for Gemini {
                     response_text,
                     json!({}),
                     function_calls,
+                    generated_files,
                     None,
                 ))
             } else {
@@ -299,9 +314,11 @@ async fn process_chunk(
     chunk: &[u8],
     buffer: &mut String,
     response_text: &mut String,
+    generated_files: &mut Vec<ShinkaiPath>,
     session_id: &str,
     ws_manager_trait: &Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     inbox_name: &Option<InboxName>,
+    db: &SqliteManager,
     is_done: &mut bool,
     finish_reason: &mut Option<String>,
     function_calls: &mut Vec<FunctionCall>,
@@ -309,8 +326,6 @@ async fn process_chunk(
     thinking_started: &mut bool,
 ) -> Result<(), LLMProviderError> {
     let chunk_str = String::from_utf8_lossy(chunk);
-    eprintln!("Chunk: {}", chunk_str);
-
     buffer.push_str(&chunk_str);
 
     // Remove leading comma or square bracket if they exist
@@ -341,9 +356,11 @@ async fn process_chunk(
                 process_gemini_response(
                     value,
                     response_text,
+                    generated_files,
                     session_id,
                     ws_manager_trait,
                     inbox_name,
+                    db,
                     is_done,
                     finish_reason,
                     function_calls,
@@ -355,7 +372,11 @@ async fn process_chunk(
             buffer.clear();
         }
         Err(e) => {
-            eprintln!("Failed to parse JSON array: {:?}", e);
+            shinkai_log(
+                ShinkaiLogOption::JobExecution,
+                ShinkaiLogLevel::Debug,
+                &format!("Failed to parse chunk as JSON array: {:?}.", e),
+            );
         }
     }
 
@@ -401,9 +422,11 @@ async fn process_chunk(
 async fn process_gemini_response(
     value: JsonValue,
     response_text: &mut String,
+    generated_files: &mut Vec<ShinkaiPath>,
     session_id: &str,
     ws_manager_trait: &Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     inbox_name: &Option<InboxName>,
+    db: &SqliteManager,
     is_done: &bool,
     finish_reason: &mut Option<String>,
     function_calls: &mut Vec<FunctionCall>,
@@ -480,6 +503,16 @@ async fn process_gemini_response(
                         }
                     }
                 }
+
+                // Handle inline data (images)
+                if let Some(inline_data) = &part.inline_data {
+                    match save_image_file(&inline_data.mime_type, &inline_data.data, inbox_name, session_id, db).await {
+                        Ok(shinkai_path) => {
+                            generated_files.push(shinkai_path);
+                        }
+                        Err(e) => eprintln!("Failed to save image file: {:?}", e),
+                    }
+                }
             }
         }
     }
@@ -546,8 +579,23 @@ async fn process_function_call(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use shinkai_embedding::model_type::EmbeddingModelType;
+    use shinkai_embedding::model_type::OllamaTextEmbeddingsInference;
+    use shinkai_sqlite::SqliteManager;
     use std::sync::Arc;
+    use tempfile::NamedTempFile;
     use tokio::sync::Mutex;
+
+    async fn setup_test_db() -> SqliteManager {
+        let temp_file = NamedTempFile::new().unwrap();
+        let db_path = std::path::PathBuf::from(temp_file.path());
+        let api_url = String::new();
+        let model_type = EmbeddingModelType::OllamaTextEmbeddingsInference(
+            OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM
+        );
+
+        SqliteManager::new(db_path, api_url, model_type).unwrap()
+    }
 
     #[tokio::test]
     async fn test_process_first_chunk() {
@@ -575,9 +623,11 @@ mod tests {
 
         let mut buffer = String::new();
         let mut response_text = String::new();
+        let mut generated_files = Vec::new();
         let session_id = "test_session_id";
         let ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
         let inbox_name: Option<InboxName> = None;
+        let db = setup_test_db().await;
         let mut is_done = false;
         let mut finish_reason = None;
         let mut function_calls = Vec::new();
@@ -588,9 +638,11 @@ mod tests {
             chunk,
             &mut buffer,
             &mut response_text,
+            &mut generated_files,
             session_id,
             &ws_manager_trait,
             &inbox_name,
+            &db,
             &mut is_done,
             &mut finish_reason,
             &mut function_calls,
@@ -650,9 +702,11 @@ mod tests {
 
         let mut buffer = String::new();
         let mut response_text = String::new();
+        let mut generated_files = Vec::new();
         let session_id = "test_session_id";
         let ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
         let inbox_name: Option<InboxName> = None;
+        let db = setup_test_db().await;
         let mut is_done = false;
         let mut finish_reason = None;
         let mut function_calls = Vec::new();
@@ -663,9 +717,11 @@ mod tests {
             chunk,
             &mut buffer,
             &mut response_text,
+            &mut generated_files,
             session_id,
             &ws_manager_trait,
             &inbox_name,
+            &db,
             &mut is_done,
             &mut finish_reason,
             &mut function_calls,
@@ -728,9 +784,11 @@ mod tests {
 
         let mut buffer = String::new();
         let mut response_text = String::new();
+        let mut generated_files = Vec::new();
         let session_id = "test_session_id";
         let ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
         let inbox_name: Option<InboxName> = None;
+        let db = setup_test_db().await;
         let mut is_done = false;
         let mut finish_reason = None;
         let mut function_calls = Vec::new();
@@ -741,9 +799,11 @@ mod tests {
             chunk,
             &mut buffer,
             &mut response_text,
+            &mut generated_files,
             session_id,
             &ws_manager_trait,
             &inbox_name,
+            &db,
             &mut is_done,
             &mut finish_reason,
             &mut function_calls,
@@ -814,10 +874,12 @@ mod tests {
 
         let mut buffer = String::new();
         let mut response_text = String::new();
+        let mut generated_files = Vec::new();
         let mut function_calls = Vec::new();
         let session_id = "test_session_id";
         let ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
         let inbox_name: Option<InboxName> = None;
+        let db = setup_test_db().await;
         let mut is_done = false;
         let mut finish_reason = None;
         let mut in_thinking = false;
@@ -830,9 +892,11 @@ mod tests {
                 chunk,
                 &mut buffer,
                 &mut response_text,
+                &mut generated_files,
                 session_id,
                 &ws_manager_trait,
                 &inbox_name,
+                &db,
                 &mut is_done,
                 &mut finish_reason,
                 &mut function_calls,
@@ -954,10 +1018,12 @@ mod tests {
 
         let mut buffer = String::new();
         let mut response_text = String::new();
+        let mut generated_files = Vec::new();
         let mut function_calls = Vec::new();
         let session_id = "test_session_id";
         let ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
         let inbox_name: Option<InboxName> = None;
+        let db = setup_test_db().await;
         let mut is_done = false;
         let mut finish_reason = None;
         let mut in_thinking = false;
@@ -970,9 +1036,11 @@ mod tests {
                 chunk,
                 &mut buffer,
                 &mut response_text,
+                &mut generated_files,
                 session_id,
                 &ws_manager_trait,
                 &inbox_name,
+                &db,
                 &mut is_done,
                 &mut finish_reason,
                 &mut function_calls,
@@ -1007,9 +1075,11 @@ mod tests {
 
         let mut buffer = String::new();
         let mut response_text = String::new();
+        let mut generated_files = Vec::new();
         let session_id = "test_session_id";
         let ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
         let inbox_name: Option<InboxName> = None;
+        let db = setup_test_db().await;
         let mut is_done = false;
         let mut finish_reason = None;
         let mut function_calls = Vec::new();
@@ -1020,9 +1090,11 @@ mod tests {
             chunk,
             &mut buffer,
             &mut response_text,
+            &mut generated_files,
             session_id,
             &ws_manager_trait,
             &inbox_name,
+            &db,
             &mut is_done,
             &mut finish_reason,
             &mut function_calls,
@@ -1042,5 +1114,102 @@ mod tests {
                 _ => panic!("Expected NetworkError variant"),
             }
         }
+    }
+
+    #[tokio::test]
+    async fn test_process_image_chunk() {
+        let chunk = b"[{
+            \"candidates\": [
+                {
+                    \"content\": {
+                        \"parts\": [
+                            {
+                                \"inlineData\": {
+                                    \"mimeType\": \"image/png\",
+                                    \"data\": \"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==\"
+                                }
+                            }
+                        ],
+                        \"role\": \"model\"
+                    },
+                    \"finishReason\": \"STOP\",
+                    \"index\": 0
+                }
+            ],
+            \"usageMetadata\": {
+                \"promptTokenCount\": 57,
+                \"candidatesTokenCount\": 1310,
+                \"totalTokenCount\": 1367,
+                \"promptTokensDetails\": [
+                    {
+                        \"modality\": \"TEXT\",
+                        \"tokenCount\": 57
+                    }
+                ],
+                \"candidatesTokensDetails\": [
+                    {
+                        \"modality\": \"IMAGE\",
+                        \"tokenCount\": 1290
+                    }
+                ]
+            }
+        }";
+
+        let mut buffer = String::new();
+        let mut response_text = String::new();
+        let mut generated_files = Vec::new();
+        let session_id = "test_session_id";
+        let ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
+        let job_id = "jobid_18b7d629-751f-4b0d-8f14-2ffbeb521106";
+        let inbox_name: Option<InboxName> = Some(InboxName::get_job_inbox_name_from_params(job_id.to_string()).unwrap());
+        let db = setup_test_db().await;
+        
+        // Create the job in the database so save_and_process_file_with_jobid won't fail
+        use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
+        use shinkai_message_primitives::schemas::job_config::JobConfig;
+        
+        let scope = MinimalJobScope::default();
+        let config = JobConfig::empty();
+        db.create_new_job(
+            job_id.to_string(),
+            "test_agent".to_string(),
+            scope,
+            false,
+            None,
+            Some(config),
+        )
+        .expect("Failed to create test job");
+        let mut is_done = false;
+        let mut finish_reason = None;
+        let mut function_calls = Vec::new();
+        let mut in_thinking = false;
+        let mut thinking_started = false;
+
+        process_chunk(
+            chunk,
+            &mut buffer,
+            &mut response_text,
+            &mut generated_files,
+            session_id,
+            &ws_manager_trait,
+            &inbox_name,
+            &db,
+            &mut is_done,
+            &mut finish_reason,
+            &mut function_calls,
+            &mut in_thinking,
+            &mut thinking_started,
+        )
+        .await
+        .unwrap();
+
+        // Verify that the image was successfully processed and saved
+        assert_eq!(finish_reason, Some("STOP".to_string()));
+        
+        // Verify that the image file reference was added to generated_files
+        let found = generated_files
+            .iter()
+            .any(|f| f.path.to_string_lossy().contains("generated_image_test_session_id_"));
+        assert!(found, "Expected a generated file with 'generated_image_test_session_id_' format.");
     }
 }
