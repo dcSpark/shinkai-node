@@ -6,6 +6,8 @@ use serde_json::{self};
 use shinkai_message_primitives::schemas::llm_message::LlmMessage;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::LLMProviderInterface;
 use shinkai_message_primitives::schemas::prompts::Prompt;
+use std::collections::HashMap;
+use uuid::Uuid;
 use super::shared_model_logic::get_image_type;
 
 fn sanitize_tool_name(name: &str) -> String {
@@ -75,8 +77,23 @@ pub fn process_llm_messages(
     let tools_json = serde_json::to_value(tools)?;
 
     let messages_vec = match messages_json {
-        serde_json::Value::Array(arr) => arr
-            .into_iter()
+        serde_json::Value::Array(arr) => {
+            // First pass: collect function calls and generate unique IDs
+            let mut function_name_to_tool_id: HashMap<String, String> = HashMap::new();
+            
+            for message in &arr {
+                if message.get("role") == Some(&serde_json::Value::String("assistant".to_string())) {
+                    if let Some(function_call) = message.get("function_call") {
+                        if let Some(name) = function_call.get("name").and_then(|n| n.as_str()) {
+                            let tool_id = format!("toolu_{}", Uuid::new_v4().to_string().replace("-", "")[0..12].to_string());
+                            function_name_to_tool_id.insert(name.to_string(), tool_id);
+                        }
+                    }
+                }
+            }
+            
+            // Second pass: process messages with generated IDs
+            arr.into_iter()
             .map(|mut message| {
                 if message.get("role") == Some(&serde_json::Value::String("user".to_string())) {
                     let images = message.get("images").cloned();
@@ -153,10 +170,18 @@ pub fn process_llm_messages(
                                 .map(sanitize_tool_name)
                                 .unwrap_or_else(|| "tool".to_string());
 
+                            // Get the pre-generated tool ID
+                            let tool_id = if let Some(original_name) = function_call.get("name").and_then(|n| n.as_str()) {
+                                function_name_to_tool_id.get(original_name).cloned()
+                                    .unwrap_or_else(|| format!("toolu_{}", Uuid::new_v4().to_string().replace("-", "")[0..12].to_string()))
+                            } else {
+                                format!("toolu_{}", Uuid::new_v4().to_string().replace("-", "")[0..12].to_string())
+                            };
+
                             message["content"] = serde_json::json!([
                                 {
                                     "type": "tool_use",
-                                    "id": "toolu_abc123",
+                                    "id": tool_id,
                                     "name": tool_name,
                                     "input": input
                                 }
@@ -171,9 +196,18 @@ pub fn process_llm_messages(
 
                 if message.get("role") == Some(&serde_json::Value::String("function".to_string())) {
                     if let Some(content) = message.get("content").cloned() {
+                        // Try to get the function name to find the corresponding tool ID
+                        let tool_use_id = if let Some(name) = message.get("name").and_then(|n| n.as_str()) {
+                            function_name_to_tool_id.get(name).cloned()
+                                .unwrap_or_else(|| format!("toolu_{}", Uuid::new_v4().to_string().replace("-", "")[0..12].to_string()))
+                        } else {
+                            // Fallback: generate a new unique ID
+                            format!("toolu_{}", Uuid::new_v4().to_string().replace("-", "")[0..12].to_string())
+                        };
+
                         message["content"] = serde_json::json!([{
                             "type": "tool_result",
-                            "tool_use_id": "toolu_abc123",
+                            "tool_use_id": tool_use_id,
                             "content": content
                         }]);
                     }
@@ -183,7 +217,8 @@ pub fn process_llm_messages(
 
                 message
             })
-            .collect(),
+            .collect()
+        },
         _ => vec![],
     };
 
@@ -367,36 +402,6 @@ mod tests {
             },
         ];
 
-        let expected_json = json!([
-          {
-            "role": "user",
-            "content": "tell me what's the response when using shinkai echo tool with: say hello"
-          },
-          {
-            "role": "assistant",
-            "content": [
-          {
-            "type": "tool_use",
-            "id": "toolu_abc123",
-            "name": "shinkai__echo",
-            "input": {
-              "message": "hello"
-            }
-          }
-            ]
-          },
-          {
-            "role": "user",
-            "content": [
-              {
-                "type": "tool_result",
-                "tool_use_id": "toolu_abc123",
-                "content": "{\"data\":{\"message\":\"echoing: hello\"}}"
-              }
-            ]
-          }
-        ]);
-
         let (messages_result, _system_messages) = process_llm_messages(llm_messages, &model).unwrap();
         let messages_json = match messages_result.messages {
             PromptResultEnum::Value(v) => v,
@@ -404,7 +409,36 @@ mod tests {
                 panic!("Expected Value variant in PromptResultEnum");
             }
         };
-        assert_eq!(messages_json, expected_json);
+
+        let messages = messages_json.as_array().unwrap();
+        
+        // Should have 3 messages: user, assistant (with tool_use), user (with tool_result)
+        assert_eq!(messages.len(), 3);
+        
+        // Check user message
+        assert_eq!(messages[0]["role"], "user");
+        assert_eq!(messages[0]["content"], "tell me what's the response when using shinkai echo tool with: say hello");
+        
+        // Check assistant message with tool_use
+        assert_eq!(messages[1]["role"], "assistant");
+        let assistant_content = messages[1]["content"].as_array().unwrap();
+        assert_eq!(assistant_content.len(), 1);
+        assert_eq!(assistant_content[0]["type"], "tool_use");
+        assert_eq!(assistant_content[0]["name"], "shinkai__echo");
+        assert_eq!(assistant_content[0]["input"]["message"], "hello");
+        
+        // Extract the tool_use ID
+        let tool_use_id = assistant_content[0]["id"].as_str().unwrap();
+        assert!(tool_use_id.starts_with("toolu_"));
+        assert_eq!(tool_use_id.len(), 18); // "toolu_" + 12 chars
+        
+        // Check tool_result message
+        assert_eq!(messages[2]["role"], "user");
+        let tool_result_content = messages[2]["content"].as_array().unwrap();
+        assert_eq!(tool_result_content.len(), 1);
+        assert_eq!(tool_result_content[0]["type"], "tool_result");
+        assert_eq!(tool_result_content[0]["tool_use_id"], tool_use_id); // Should match the tool_use ID
+        assert_eq!(tool_result_content[0]["content"], "{\"data\":{\"message\":\"echoing: hello\"}}");
     }
 
     #[test]
