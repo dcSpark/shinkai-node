@@ -3,12 +3,12 @@ use std::sync::Arc;
 
 use super::super::error::LLMProviderError;
 use super::shared::openai_api_deprecated::{MessageContent, OpenAIResponse};
-use super::shared::shared_model_logic::send_tool_ws_update;
+use super::shared::shared_model_logic::{send_tool_ws_update, send_ws_update};
 use super::LLMService;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::llm_provider::providers::shared::groq_api::groq_prepare_messages;
-use crate::managers::model_capabilities_manager::PromptResultEnum;
+use crate::managers::model_capabilities_manager::{PromptResultEnum, ModelCapabilitiesManager};
 use async_trait::async_trait;
 use futures::StreamExt;
 use reqwest::Client;
@@ -64,12 +64,21 @@ impl LLMService for Groq {
                 let tools_json = result.functions.clone().unwrap_or_else(Vec::new);
                 let original_tools = tools_json.clone(); // Keep original for matching
 
-                let mut payload = json!({
-                    "model": self.model_type,
-                    "messages": messages_json,
-                    // "max_tokens": result.remaining_tokens,
-                    "stream": is_stream,
-                });
+                // Set up initial payload with appropriate token limit field based on model capabilities
+                let mut payload = if ModelCapabilitiesManager::has_reasoning_capabilities(&model) {
+                    json!({
+                        "model": self.model_type,
+                        "messages": messages_json,
+                        "max_completion_tokens": result.remaining_output_tokens,
+                        "stream": is_stream,
+                    })
+                } else {
+                    json!({
+                        "model": self.model_type,
+                        "messages": messages_json,
+                        "stream": is_stream,
+                    })
+                };
 
                 // Add tools to payload if they exist, but remove tool_router_key
                 if !tools_json.is_empty() {
@@ -108,8 +117,22 @@ impl LLMService for Groq {
                     }
                 }
 
-                // Add options to payload
-                add_options_to_payload(&mut payload, config.as_ref());
+                // Handle reasoning parameters for supported models, otherwise add regular options
+                if ModelCapabilitiesManager::has_reasoning_capabilities(&model) {
+                    if self.model_type.starts_with("qwen/qwen3") {
+                        payload["reasoning_effort"] = serde_json::json!("default");
+                    } else if self.model_type.starts_with("openai/gpt-oss") {
+                        payload["reasoning_effort"] = serde_json::json!(config.as_ref()
+                                .and_then(|c| c.reasoning_effort.clone())
+                                .unwrap_or_else(|| "medium".to_string()));
+                    }
+
+                    payload["reasoning_format"] = serde_json::json!("parsed");
+                    
+                    add_options_to_payload(&mut payload, config.as_ref(), true);
+                } else {
+                    add_options_to_payload(&mut payload, config.as_ref(), false);
+                }
 
                 let payload_log = payload.clone();
                 shinkai_log(
@@ -225,6 +248,7 @@ async fn handle_streaming_response(
     let mut response_text = String::new();
     let mut buffer = String::new();
     let mut function_calls: Vec<FunctionCall> = Vec::new();
+    let mut reasoning_content = String::new();
 
     while let Some(item) = stream.next().await {
         // Check if we need to stop the LLM job
@@ -237,7 +261,14 @@ async fn handle_streaming_response(
                 );
                 llm_stopper.reset(&inbox_name.to_string());
 
-                return Ok(LLMInferenceResponse::new(response_text, None, json!({}), Vec::new(), Vec::new(), None));
+                return Ok(LLMInferenceResponse::new(
+                    response_text,
+                    if reasoning_content.is_empty() { None } else { Some(reasoning_content) },
+                    json!({}),
+                    Vec::new(),
+                    Vec::new(),
+                    None
+                ));
             }
         }
 
@@ -300,6 +331,24 @@ async fn handle_streaming_response(
                                     if let Some(choices) = data_json.get("choices") {
                                         for choice in choices.as_array().unwrap_or(&vec![]) {
                                             if let Some(delta) = choice.get("delta") {
+                                                // Handle reasoning content
+                                                if let Some(reasoning) = delta.get("reasoning").and_then(|r| r.as_str()) {
+                                                    reasoning_content.push_str(reasoning);
+                                                    
+                                                    // Send WebSocket update for reasoning content
+                                                    if let Some(ref inbox_name) = inbox_name {
+                                                        let _ = send_ws_update(
+                                                            &ws_manager_trait,
+                                                            Some(inbox_name.clone()),
+                                                            &session_id,
+                                                            reasoning.to_string(),
+                                                            true, // is_reasoning
+                                                            false, // is_done
+                                                            None, // done_reason
+                                                        ).await;
+                                                    }
+                                                }
+                                                
                                                 if let Some(fc) = delta.get("tool_calls") {
                                                     if let Some(tool_calls_array) = fc.as_array() {
                                                         for tool_call in tool_calls_array {
@@ -463,7 +512,7 @@ async fn handle_streaming_response(
 
     Ok(LLMInferenceResponse::new(
         response_text,
-        None,
+        if reasoning_content.is_empty() { None } else { Some(reasoning_content) },
         json!({}),
         function_calls,
         Vec::new(),
@@ -530,6 +579,23 @@ async fn handle_non_streaming_response(
                             });
                         }
 
+                        // Extract reasoning content before deserializing into OpenAIResponse
+                        let reasoning_content: String = value
+                            .get("choices")
+                            .and_then(|choices| choices.as_array())
+                            .map(|choices_array| {
+                                choices_array
+                                    .iter()
+                                    .filter_map(|choice| {
+                                        choice.get("message")
+                                            .and_then(|msg| msg.get("reasoning"))
+                                            .and_then(|reasoning| reasoning.as_str())
+                                    })
+                                    .collect::<Vec<&str>>()
+                                    .join("")
+                            })
+                            .unwrap_or_default();
+
                         let data: OpenAIResponse = serde_json::from_value(value).map_err(LLMProviderError::SerdeError)?;
 
                         let response_string: String = data
@@ -593,7 +659,7 @@ async fn handle_non_streaming_response(
 
                         return Ok(LLMInferenceResponse::new(
                             response_string,
-                            None,
+                            if reasoning_content.is_empty() { None } else { Some(reasoning_content) },
                             json!({}),
                             function_calls,
                             Vec::new(),
@@ -614,7 +680,7 @@ async fn handle_non_streaming_response(
     }
 }
 
-fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobConfig>) {
+fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobConfig>, is_reasoning_model: bool) {
     // Helper function to read and parse environment variables
     fn read_env_var<T: std::str::FromStr>(key: &str) -> Option<T> {
         std::env::var(key).ok().and_then(|val| val.parse::<T>().ok())
@@ -635,8 +701,11 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
     if let Some(top_p) = get_value("LLM_TOP_P", config.and_then(|c| c.top_p.as_ref())) {
         payload["top_p"] = serde_json::json!(top_p);
     }
-    if let Some(max_tokens) = get_value("LLM_MAX_TOKENS", config.and_then(|c| c.max_tokens.as_ref())) {
-        payload["max_completion_tokens"] = serde_json::json!(max_tokens);
+
+    if !is_reasoning_model {
+        if let Some(max_tokens) = get_value("LLM_MAX_TOKENS", config.and_then(|c| c.max_tokens.as_ref())) {
+            payload["max_completion_tokens"] = serde_json::json!(max_tokens);
+        }
     }
 
     // Handle other model params
@@ -648,7 +717,6 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
                     "logit_bias" => payload["logit_bias"] = value.clone(),
                     "logprobs" => payload["logprobs"] = value.clone(),
                     "top_logprobs" => payload["top_logprobs"] = value.clone(),
-                    "max_completion_tokens" => payload["max_completion_tokens"] = value.clone(),
                     "n" => payload["n"] = value.clone(),
                     "presence_penalty" => payload["presence_penalty"] = value.clone(),
                     "response_format" => payload["response_format"] = value.clone(),
@@ -656,6 +724,11 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
                     "stop" => payload["stop"] = value.clone(),
                     "stream_options" => payload["stream_options"] = value.clone(),
                     "parallel_tool_calls" => payload["parallel_tool_calls"] = value.clone(),
+                    "max_completion_tokens" => {
+                        if !is_reasoning_model {
+                            payload["max_completion_tokens"] = value.clone();
+                        }
+                    },
                     _ => (),
                 };
             }
