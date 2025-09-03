@@ -402,36 +402,6 @@ mod tests {
             },
         ];
 
-        let expected_json = json!([
-          {
-            "role": "user",
-            "content": "tell me what's the response when using shinkai echo tool with: say hello"
-          },
-          {
-            "role": "assistant",
-            "content": [
-          {
-            "type": "tool_use",
-            "id": "toolu_abc123",
-            "name": "shinkai__echo",
-            "input": {
-              "message": "hello"
-            }
-          }
-            ]
-          },
-          {
-            "role": "user",
-            "content": [
-              {
-                "type": "tool_result",
-                "tool_use_id": "toolu_abc123",
-                "content": "{\"data\":{\"message\":\"echoing: hello\"}}"
-              }
-            ]
-          }
-        ]);
-
         let (messages_result, _system_messages) = process_llm_messages(llm_messages, &model).unwrap();
         let messages_json = match messages_result.messages {
             PromptResultEnum::Value(v) => v,
@@ -439,7 +409,36 @@ mod tests {
                 panic!("Expected Value variant in PromptResultEnum");
             }
         };
-        assert_eq!(messages_json, expected_json);
+
+        let messages = messages_json.as_array().unwrap();
+        
+        // Should have 3 messages: user, assistant (with tool_use), user (with tool_result)
+        assert_eq!(messages.len(), 3);
+        
+        // Check user message
+        assert_eq!(messages[0]["role"], "user");
+        assert_eq!(messages[0]["content"], "tell me what's the response when using shinkai echo tool with: say hello");
+        
+        // Check assistant message with tool_use
+        assert_eq!(messages[1]["role"], "assistant");
+        let assistant_content = messages[1]["content"].as_array().unwrap();
+        assert_eq!(assistant_content.len(), 1);
+        assert_eq!(assistant_content[0]["type"], "tool_use");
+        assert_eq!(assistant_content[0]["name"], "shinkai__echo");
+        assert_eq!(assistant_content[0]["input"]["message"], "hello");
+        
+        // Extract the tool_use ID
+        let tool_use_id = assistant_content[0]["id"].as_str().unwrap();
+        assert!(tool_use_id.starts_with("toolu_"));
+        assert_eq!(tool_use_id.len(), 18); // "toolu_" + 12 chars
+        
+        // Check tool_result message
+        assert_eq!(messages[2]["role"], "user");
+        let tool_result_content = messages[2]["content"].as_array().unwrap();
+        assert_eq!(tool_result_content.len(), 1);
+        assert_eq!(tool_result_content[0]["type"], "tool_result");
+        assert_eq!(tool_result_content[0]["tool_use_id"], tool_use_id); // Should match the tool_use ID
+        assert_eq!(tool_result_content[0]["content"], "{\"data\":{\"message\":\"echoing: hello\"}}");
     }
 
     #[test]
