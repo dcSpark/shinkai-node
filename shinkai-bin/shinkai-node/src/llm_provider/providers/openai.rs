@@ -574,8 +574,8 @@ pub async fn parse_openai_stream_chunk(
                                         content.to_string(),
                                         false,
                                         // if finish_reason is empty, we are not at the end of the stream
-                                        !finish_reason.is_empty(),
-                                        Some(finish_reason.to_string()),
+                                        false,
+                                        None,
                                     )
                                     .await?;
                                 }
