@@ -507,6 +507,7 @@ impl Node {
                                 let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
                                     job_id.to_string(),
                                     welcome_message.to_string(),
+                                    Some("We have a helpful assistant for you to use, but first, let's get you set up.".to_string()),
                                     vec![],
                                     None,
                                     identity_secret_key_clone,

@@ -161,6 +161,7 @@ fn test_job_code_fork() {
                 let message = JobMessage {
                     job_id: job_id.clone(),
                     content: "Create a simple tool that prints hello world".to_string(),
+                    reasoning_content: None,
                     parent: None,
                     sheet_job_data: None,
                     tools: None,

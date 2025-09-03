@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use super::super::error::LLMProviderError;
 use super::shared::openai_api_deprecated::{MessageContent, OpenAIResponse};
+use super::shared::shared_model_logic::send_tool_ws_update;
 use super::LLMService;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
 use crate::llm_provider::llm_stopper::LLMStopper;
@@ -19,7 +20,7 @@ use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{Groq, LLMProviderInterface};
 use shinkai_message_primitives::schemas::prompts::Prompt;
 use shinkai_message_primitives::schemas::ws_types::{
-    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSMetadata, WSUpdateHandler, WidgetMetadata
+    WSMessageType, WSMetadata, WSUpdateHandler
 };
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -236,7 +237,7 @@ async fn handle_streaming_response(
                 );
                 llm_stopper.reset(&inbox_name.to_string());
 
-                return Ok(LLMInferenceResponse::new(response_text, json!({}), Vec::new(), Vec::new(), None));
+                return Ok(LLMInferenceResponse::new(response_text, None, json!({}), Vec::new(), Vec::new(), None));
             }
         }
 
@@ -260,6 +261,7 @@ async fn handle_streaming_response(
 
                                     let metadata = WSMetadata {
                                         id: Some(session_id.clone()),
+                                        is_reasoning: false,
                                         is_done: function_calls.is_empty(),
                                         done_reason: Some("streaming completed".to_string()),
                                         total_duration: None,
@@ -351,54 +353,7 @@ async fn handle_streaming_response(
                                                                     };
                                                                     function_calls.push(function_call.clone());
 
-                                                                    if let Some(ref manager) = ws_manager_trait {
-                                                                        if let Some(ref inbox_name) = inbox_name {
-                                                                            let m = manager.lock().await;
-                                                                            let inbox_name_string =
-                                                                                inbox_name.to_string();
-                                                                            let function_call_json =
-                                                                                serde_json::to_value(&function_call)
-                                                                                    .unwrap_or_else(|_| {
-                                                                                        serde_json::json!({})
-                                                                                    });
-
-                                                                            let tool_metadata = ToolMetadata {
-                                                                                tool_name: name.to_string(),
-                                                                                tool_router_key: None,
-                                                                                args: function_call_json
-                                                                                    .as_object()
-                                                                                    .cloned()
-                                                                                    .unwrap_or_default(),
-                                                                                result: None,
-                                                                                status: ToolStatus {
-                                                                                    type_: ToolStatusType::Running,
-                                                                                    reason: None,
-                                                                                },
-                                                                                index: function_call.index,
-                                                                            };
-
-                                                                            let ws_message_type = WSMessageType::Widget(
-                                                                                WidgetMetadata::ToolRequest(
-                                                                                    tool_metadata,
-                                                                                ),
-                                                                            );
-
-                                                                            let _ = m
-                                                                                .queue_message(
-                                                                                    WSTopic::Inbox,
-                                                                                    inbox_name_string,
-                                                                                    serde_json::to_string(
-                                                                                        &function_call,
-                                                                                    )
-                                                                                    .unwrap_or_else(|_| {
-                                                                                        "{}".to_string()
-                                                                                    }),
-                                                                                    ws_message_type,
-                                                                                    true,
-                                                                                )
-                                                                                .await;
-                                                                        }
-                                                                    }
+                                                                    let _ = send_tool_ws_update(&ws_manager_trait, inbox_name.clone(), &function_call).await;
                                                                 }
                                                             }
                                                         }
@@ -416,6 +371,7 @@ async fn handle_streaming_response(
 
                                                             let metadata = WSMetadata {
                                                                 id: Some(session_id.clone()),
+                                                                is_reasoning: false,
                                                                 is_done: function_calls.is_empty()
                                                                     && data_json
                                                                         .get("done")
@@ -484,6 +440,7 @@ async fn handle_streaming_response(
 
             let metadata = WSMetadata {
                 id: Some(session_id.clone()),
+                is_reasoning: false,
                 is_done: function_calls.is_empty(),
                 done_reason: Some("finished".to_string()),
                 total_duration: None,
@@ -506,6 +463,7 @@ async fn handle_streaming_response(
 
     Ok(LLMInferenceResponse::new(
         response_text,
+        None,
         json!({}),
         function_calls,
         Vec::new(),
@@ -520,7 +478,7 @@ async fn handle_non_streaming_response(
     api_key: String,
     inbox_name: Option<InboxName>,
     llm_stopper: Arc<LLMStopper>,
-    ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    _ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     tools: Option<Vec<JsonValue>>,
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
     let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(500));
@@ -544,7 +502,7 @@ async fn handle_non_streaming_response(
                         );
                         llm_stopper.reset(&inbox_name.to_string());
 
-                        return Ok(LLMInferenceResponse::new("".to_string(), json!({}), Vec::new(), Vec::new(), None));
+                        return Ok(LLMInferenceResponse::new("".to_string(), None, json!({}), Vec::new(), Vec::new(), None));
                     }
                 }
             },
@@ -635,6 +593,7 @@ async fn handle_non_streaming_response(
 
                         return Ok(LLMInferenceResponse::new(
                             response_string,
+                            None,
                             json!({}),
                             function_calls,
                             Vec::new(),

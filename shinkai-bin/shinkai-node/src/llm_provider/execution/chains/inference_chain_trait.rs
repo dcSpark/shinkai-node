@@ -357,6 +357,7 @@ impl fmt::Debug for InferenceChainContext {
 #[derive(Debug, Clone)]
 pub struct InferenceChainResult {
     pub response: String,
+    pub reasoning_content: Option<String>,
     pub tps: Option<String>,
     pub answer_duration: Option<String>,
     pub tool_calls: Option<Vec<FunctionCall>>,
@@ -364,9 +365,10 @@ pub struct InferenceChainResult {
 }
 
 impl InferenceChainResult {
-    pub fn new(response: String) -> Self {
+    pub fn new(response: String, reasoning_content: Option<String>) -> Self {
         Self {
             response,
+            reasoning_content,
             tps: None,
             answer_duration: None,
             tool_calls: None,
@@ -376,6 +378,7 @@ impl InferenceChainResult {
 
     pub fn with_full_details(
         response: String,
+        reasoning_content: Option<String>,
         tps: Option<String>,
         answer_duration_ms: Option<String>,
         tool_calls: Option<Vec<FunctionCall>>,
@@ -383,6 +386,7 @@ impl InferenceChainResult {
     ) -> Self {
         Self {
             response,
+            reasoning_content,
             tps,
             answer_duration: answer_duration_ms,
             tool_calls,
@@ -424,6 +428,7 @@ impl FunctionCall {
 #[derive(Debug, Clone)]
 pub struct LLMInferenceResponse {
     pub response_string: String,
+    pub reasoning_content: Option<String>,
     pub function_calls: Vec<FunctionCall>,
     pub generated_files: Vec<ShinkaiPath>,
     pub json: JsonValue,
@@ -431,9 +436,10 @@ pub struct LLMInferenceResponse {
 }
 
 impl LLMInferenceResponse {
-    pub fn new(response_string: String, json: JsonValue, function_calls: Vec<FunctionCall>, generated_files: Vec<ShinkaiPath>, tps: Option<f64>) -> Self {
+    pub fn new(response_string: String, reasoning_content: Option<String>, json: JsonValue, function_calls: Vec<FunctionCall>, generated_files: Vec<ShinkaiPath>, tps: Option<f64>) -> Self {
         Self {
             response_string,
+            reasoning_content,
             json,
             function_calls,
             generated_files,

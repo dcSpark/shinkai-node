@@ -136,6 +136,7 @@ impl JobManager {
         let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
             job_id.to_string(),
             error_for_frontend.to_string(),
+            None,
             vec![],
             None,
             identity_secret_key_clone,
@@ -351,6 +352,7 @@ impl JobManager {
                 // Create a minimal inference response with the error message
                 let error_response = InferenceChainResult {
                     response: error_message.clone(),
+                    reasoning_content: None,
                     tps: None,
                     answer_duration: None,
                     tool_calls: None,
@@ -378,6 +380,7 @@ impl JobManager {
         let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
             job_id.to_string(),
             inference_response_content.to_string(),
+            inference_response.reasoning_content.clone(),
             inference_response.generated_files.clone(),
             Some(message_metadata),
             identity_secret_key_clone,

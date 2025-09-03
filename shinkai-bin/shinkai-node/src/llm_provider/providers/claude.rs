@@ -6,14 +6,7 @@ use futures::StreamExt;
 use reqwest::Client;
 use serde_json::json;
 use serde_json::Value as JsonValue;
-use shinkai_message_primitives::schemas::ws_types::ToolMetadata;
-use shinkai_message_primitives::schemas::ws_types::ToolStatus;
-use shinkai_message_primitives::schemas::ws_types::ToolStatusType;
-use shinkai_message_primitives::schemas::ws_types::WSMessageType;
-use shinkai_message_primitives::schemas::ws_types::WSMetadata;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
-use shinkai_message_primitives::schemas::ws_types::WidgetMetadata;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::{
     schemas::{
         inbox_name::InboxName, job_config::JobConfig, llm_providers::serialized_llm_provider::{Claude, LLMProviderInterface}, prompts::Prompt
@@ -30,6 +23,7 @@ use crate::llm_provider::{
 use crate::managers::model_capabilities_manager::PromptResultEnum;
 
 use super::shared::claude_api::claude_prepare_messages;
+use super::shared::shared_model_logic::{send_ws_update, send_tool_ws_update};
 use super::LLMService;
 
 pub fn truncate_image_content_in_claude_payload(payload: &mut JsonValue) {
@@ -289,32 +283,18 @@ async fn handle_streaming_response(
                 llm_stopper.reset(&inbox_name.to_string());
 
                 // Send WS message indicating the job is done
-                if let Some(ref manager) = ws_manager_trait {
-                    let m = manager.lock().await;
-                    let inbox_name_string = inbox_name.to_string();
+                let _ = send_ws_update(
+                    &ws_manager_trait,
+                    Some(inbox_name.clone()),
+                    &session_id,
+                    response_text.clone(),
+                    false,
+                    true,
+                    Some("Stopped by user request".to_string()),
+                )
+                .await;
 
-                    let metadata = WSMetadata {
-                        id: Some(session_id.clone()),
-                        is_done: true,
-                        done_reason: Some("Stopped by user request".to_string()),
-                        total_duration: None,
-                        eval_count: None,
-                    };
-
-                    let ws_message_type = WSMessageType::Metadata(metadata);
-
-                    let _ = m
-                        .queue_message(
-                            WSTopic::Inbox,
-                            inbox_name_string,
-                            response_text.clone(),
-                            ws_message_type,
-                            true,
-                        )
-                        .await;
-                }
-
-                return Ok(LLMInferenceResponse::new(response_text, json!({}), Vec::new(), Vec::new(), None));
+                return Ok(LLMInferenceResponse::new(response_text, None, json!({}), Vec::new(), Vec::new(), None));
             }
         }
 
@@ -389,75 +369,29 @@ async fn handle_streaming_response(
                                 // since is_done can be set true multiple times (message_delta + message_stop)
                                 processed_tool = None;
 
-                                if let Some(ref manager) = ws_manager_trait {
-                                    if let Some(ref inbox_name) = inbox_name {
-                                        let m = manager.lock().await;
-                                        let inbox_name_string = inbox_name.to_string();
-
-                                        // Serialize FunctionCall to JSON value
-                                        let function_call_json = serde_json::to_value(&function_call)
-                                            .unwrap_or_else(|_| serde_json::json!({}));
-
-                                        // Prepare ToolMetadata
-                                        let tool_metadata = ToolMetadata {
-                                            tool_name: function_call.name.clone(),
-                                            tool_router_key: None,
-                                            args: function_call_json.as_object().cloned().unwrap_or_default(),
-                                            result: None,
-                                            status: ToolStatus {
-                                                type_: ToolStatusType::Running,
-                                                reason: None,
-                                            },
-                                            index: function_call.index,
-                                        };
-
-                                        let ws_message_type =
-                                            WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
-
-                                        let _ = m
-                                            .queue_message(
-                                                WSTopic::Inbox,
-                                                inbox_name_string,
-                                                serde_json::to_string(&function_call)
-                                                    .unwrap_or_else(|_| "{}".to_string()),
-                                                ws_message_type,
-                                                true,
-                                            )
-                                            .await;
-                                    }
-                                }
+                                let _ = send_tool_ws_update(&ws_manager_trait, inbox_name.clone(), &function_call).await;
                             }
 
                             // Send WS update
-                            if let Some(ref manager) = ws_manager_trait {
-                                if let Some(ref inbox_name) = inbox_name {
-                                    let m = manager.lock().await;
-                                    let inbox_name_string = inbox_name.to_string();
-                                    let metadata = WSMetadata {
-                                        id: Some(session_id.clone()),
-                                        is_done: function_calls.is_empty() && processed_chunk.is_done,
-                                        done_reason: if function_calls.is_empty() && processed_chunk.is_done {
-                                            processed_chunk.done_reason.clone()
-                                        } else {
-                                            None
-                                        },
-                                        total_duration: None,
-                                        eval_count: None,
-                                    };
-
-                                    let ws_message_type = WSMessageType::Metadata(metadata);
-
-                                    let _ = m
-                                        .queue_message(
-                                            WSTopic::Inbox,
-                                            inbox_name_string,
-                                            processed_chunk.partial_text.clone(),
-                                            ws_message_type,
-                                            true,
-                                        )
-                                        .await;
-                                }
+                            let is_reasoning = !processed_chunk.thinking_text.is_empty();
+                            let mut content = processed_chunk.partial_text.clone();
+                            if is_reasoning {
+                                content = processed_chunk.thinking_text.clone();
                             }
+                            let _ = send_ws_update(
+                                &ws_manager_trait,
+                                inbox_name.clone(),
+                                &session_id,
+                                content,
+                                is_reasoning,
+                                function_calls.is_empty() && processed_chunk.is_done,
+                                if function_calls.is_empty() && processed_chunk.is_done {
+                                    processed_chunk.done_reason.clone()
+                                } else {
+                                    None
+                                },
+                            )
+                            .await;
 
                             // If buffer is empty, break to get next chunk
                             if buffer.is_empty() {
@@ -487,14 +421,9 @@ async fn handle_streaming_response(
         }
     }
 
-    let final_response = if !thinking_text.is_empty() {
-        format!("<think>{}</think>{}", thinking_text, response_text)
-    } else {
-        response_text
-    };
-
     Ok(LLMInferenceResponse::new(
-        final_response,
+        response_text,
+        if thinking_text.is_empty() { None } else { Some(thinking_text) },
         json!({}),
         function_calls,
         Vec::new(),
@@ -531,7 +460,7 @@ async fn handle_non_streaming_response(
                         eprintln!("LLM job stopped by user request");
                         llm_stopper.reset(&inbox_name.to_string());
 
-                        return Ok(LLMInferenceResponse::new("".to_string(), json!({}), Vec::new(), Vec::new(), None));
+                        return Ok(LLMInferenceResponse::new("".to_string(), None, json!({}), Vec::new(), Vec::new(), None));
                     }
                 }
             },
@@ -603,59 +532,16 @@ async fn handle_non_streaming_response(
                                     eprintln!("Function Call: {:?}", function_call);
 
                                     // Send WS message if a function call is detected
-                                    if let Some(ref manager) = ws_manager_trait {
-                                        if let Some(ref inbox_name) = inbox_name {
-                                            let m = manager.lock().await;
-                                            let inbox_name_string = inbox_name.to_string();
-
-                                            // Serialize FunctionCall to JSON value
-                                            let function_call_json = serde_json::to_value(&function_call)
-                                                .unwrap_or_else(|_| serde_json::json!({}));
-
-                                            // Prepare ToolMetadata
-                                            let tool_metadata = ToolMetadata {
-                                                tool_name: function_call.name.clone(),
-                                                tool_router_key: None,
-                                                args: function_call_json
-                                                    .as_object()
-                                                    .cloned()
-                                                    .unwrap_or_default(),
-                                                result: None,
-                                                status: ToolStatus {
-                                                    type_: ToolStatusType::Running,
-                                                    reason: None,
-                                                },
-                                                index: function_call.index,
-                                            };
-
-                                            let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
-
-                                            let _ = m
-                                                .queue_message(
-                                                    WSTopic::Inbox,
-                                                    inbox_name_string,
-                                                    serde_json::to_string(&function_call)
-                                                        .unwrap_or_else(|_| "{}".to_string()),
-                                                    ws_message_type,
-                                                    true,
-                                                )
-                                                .await;
-                                        }
-                                    }
+                                    let _ = send_tool_ws_update(&ws_manager_trait, inbox_name.clone(), &function_call).await;
                                 }
                                 _ => {}
                             }
                         }
                     }
 
-                    let final_response = if !thinking_text.is_empty() {
-                        format!("<think>{}</think>{}", thinking_text, response_text)
-                    } else {
-                        response_text
-                    };
-
                     break Ok(LLMInferenceResponse::new(
-                        final_response,
+                        response_text,
+                        if thinking_text.is_empty() { None } else { Some(thinking_text) },
                         json!({}),
                         function_calls,
                         Vec::new(),

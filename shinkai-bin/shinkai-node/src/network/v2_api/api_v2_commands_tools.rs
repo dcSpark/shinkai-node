@@ -2316,6 +2316,7 @@ impl Node {
         let job_message = JobMessage {
             job_id: job_id.clone(),
             content: format!("<input_command>Update the code to: {}</input_command>", code),
+            reasoning_content: None,
             parent: None,
             sheet_job_data: None,
             callback: None,
@@ -2365,6 +2366,7 @@ impl Node {
         let ai_shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
             job_id.to_string(),
             ai_message_content,
+            None,
             vec![],
             None,
             identity_secret_key_clone,

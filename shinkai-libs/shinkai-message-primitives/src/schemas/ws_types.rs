@@ -30,6 +30,7 @@ pub struct WSMessagePayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WSMetadata {
     pub id: Option<String>,
+    pub is_reasoning: bool,
     pub is_done: bool,
     pub done_reason: Option<String>,
     pub total_duration: Option<u64>,

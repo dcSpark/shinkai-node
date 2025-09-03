@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use super::super::error::LLMProviderError;
 use super::shared::gemini_api::gemini_prepare_messages;
-use super::shared::shared_model_logic::save_image_file;
+use super::shared::shared_model_logic::{save_image_file, send_ws_update, send_tool_ws_update};
 use super::LLMService;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
 use crate::llm_provider::llm_stopper::LLMStopper;
@@ -18,9 +18,8 @@ use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{Gemini, LLMProviderInterface};
 use shinkai_message_primitives::schemas::prompts::Prompt;
 use shinkai_message_primitives::schemas::ws_types::{
-    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSMetadata, WSUpdateHandler, WidgetMetadata
+    WSUpdateHandler
 };
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_sqlite::SqliteManager;
@@ -252,7 +251,8 @@ impl LLMService for Gemini {
                 );
 
                 let mut stream = res.bytes_stream();
-                let mut response_text = String::new();
+                let mut thinking_content = String::new();
+                let mut regular_content = String::new();
                 let mut generated_files = Vec::new();
                 let mut buffer = String::new();
                 let mut is_done = false;
@@ -267,7 +267,8 @@ impl LLMService for Gemini {
                             process_chunk(
                                 &chunk,
                                 &mut buffer,
-                                &mut response_text,
+                                &mut thinking_content,
+                                &mut regular_content,
                                 &mut generated_files,
                                 &session_id,
                                 &ws_manager_trait,
@@ -294,7 +295,8 @@ impl LLMService for Gemini {
                 }
 
                 Ok(LLMInferenceResponse::new(
-                    response_text,
+                    regular_content,
+                    if thinking_content.is_empty() { None } else { Some(thinking_content) },
                     json!({}),
                     function_calls,
                     generated_files,
@@ -313,7 +315,8 @@ impl LLMService for Gemini {
 async fn process_chunk(
     chunk: &[u8],
     buffer: &mut String,
-    response_text: &mut String,
+    thinking_content: &mut String,
+    regular_content: &mut String,
     generated_files: &mut Vec<ShinkaiPath>,
     session_id: &str,
     ws_manager_trait: &Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
@@ -355,7 +358,8 @@ async fn process_chunk(
 
                 process_gemini_response(
                     value,
-                    response_text,
+                    thinking_content,
+                    regular_content,
                     generated_files,
                     session_id,
                     ws_manager_trait,
@@ -384,36 +388,19 @@ async fn process_chunk(
     if *is_done {
         // If we're done and still in thinking mode, close the thinking tag
         if *in_thinking {
-            response_text.push_str("</think>");
             *in_thinking = false;
         }
         
-        if let Some(ref manager) = ws_manager_trait {
-            if let Some(ref inbox_name) = inbox_name {
-                let m = manager.lock().await;
-                let inbox_name_string = inbox_name.to_string();
-
-                let metadata = WSMetadata {
-                    id: Some(session_id.to_string()),
-                    is_done: *is_done,
-                    done_reason: finish_reason.clone(),
-                    total_duration: None,
-                    eval_count: None,
-                };
-
-                let ws_message_type = WSMessageType::Metadata(metadata);
-
-                let _ = m
-                    .queue_message(
-                        WSTopic::Inbox,
-                        inbox_name_string.clone(),
-                        response_text.to_string(),
-                        ws_message_type,
-                        true,
-                    )
-                    .await;
-            }
-        }
+        let _ = send_ws_update(
+            ws_manager_trait,
+            inbox_name.clone(),
+            session_id,
+            regular_content.to_string(),
+            false,
+            *is_done,
+            finish_reason.clone(),
+        )
+        .await;
     }
 
     Ok(())
@@ -421,7 +408,8 @@ async fn process_chunk(
 
 async fn process_gemini_response(
     value: JsonValue,
-    response_text: &mut String,
+    thinking_content: &mut String,
+    regular_content: &mut String,
     generated_files: &mut Vec<ShinkaiPath>,
     session_id: &str,
     ws_manager_trait: &Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
@@ -458,50 +446,40 @@ async fn process_gemini_response(
                     if part.thought {
                         // This is a thought
                         if !*thinking_started {
-                            // First thought - prepend <think>
-                            text_to_add.push_str("<think>");
                             *thinking_started = true;
                             *in_thinking = true;
                         }
-                        text_to_add.push_str(&part.text);
+                        thinking_content.push_str(&part.text);
                     } else {
                         // This is a normal response
                         if *in_thinking {
-                            // End thinking mode - append </think>
-                            text_to_add.push_str("</think>");
                             *in_thinking = false;
+                            let _ = send_ws_update(
+                                ws_manager_trait,
+                                inbox_name.clone(),
+                                session_id,
+                                "".to_string(),
+                                false,
+                                true,
+                                None,
+                            )
+                            .await;
                         }
-                        text_to_add.push_str(&part.text);
+                        regular_content.push_str(&part.text);
                     }
-                    
-                    response_text.push_str(&text_to_add);
 
-                    if let Some(ref manager) = ws_manager_trait {
-                        if let Some(ref inbox_name) = inbox_name {
-                            let m = manager.lock().await;
-                            let inbox_name_string = inbox_name.to_string();
+                    text_to_add.push_str(&part.text);
 
-                            let metadata = WSMetadata {
-                                id: Some(session_id.to_string()),
-                                is_done: *is_done,
-                                done_reason: finish_reason.clone(),
-                                total_duration: None,
-                                eval_count: None,
-                            };
-
-                            let ws_message_type = WSMessageType::Metadata(metadata);
-
-                            let _ = m
-                                .queue_message(
-                                    WSTopic::Inbox,
-                                    inbox_name_string.clone(),
-                                    text_to_add,
-                                    ws_message_type,
-                                    true,
-                                )
-                                .await;
-                        }
-                    }
+                    let _ = send_ws_update(
+                        ws_manager_trait,
+                        inbox_name.clone(),
+                        session_id,
+                        text_to_add,
+                        part.thought,
+                        *is_done,
+                        finish_reason.clone(),
+                    )
+                    .await;
                 }
 
                 // Handle inline data (images)
@@ -540,40 +518,7 @@ async fn process_function_call(
     function_calls.push(fc.clone());
 
     // Send WebSocket update for function call
-    if let Some(ref manager) = ws_manager_trait {
-        if let Some(ref inbox_name) = inbox_name {
-            let m = manager.lock().await;
-            let inbox_name_string = inbox_name.to_string();
-
-            let tool_metadata = ToolMetadata {
-                tool_name: fc.name.clone(),
-                tool_router_key: fc.tool_router_key.clone(),
-                args: serde_json::to_value(&fc.arguments)
-                    .unwrap_or_default()
-                    .as_object()
-                    .cloned()
-                    .unwrap_or_default(),
-                result: None,
-                status: ToolStatus {
-                    type_: ToolStatusType::Running,
-                    reason: None,
-                },
-                index: fc.index,
-            };
-
-            let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
-
-            let _ = m
-                .queue_message(
-                    WSTopic::Inbox,
-                    inbox_name_string,
-                    serde_json::to_string(&fc).unwrap_or_else(|_| "{}".to_string()),
-                    ws_message_type,
-                    true,
-                )
-                .await;
-        }
-    }
+    let _ = send_tool_ws_update(ws_manager_trait, inbox_name.clone(), &fc).await;
 }
 
 #[cfg(test)]
@@ -622,7 +567,8 @@ mod tests {
         }";
 
         let mut buffer = String::new();
-        let mut response_text = String::new();
+        let mut thinking_content = String::new();
+        let mut regular_content = String::new();
         let mut generated_files = Vec::new();
         let session_id = "test_session_id";
         let ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
@@ -637,7 +583,8 @@ mod tests {
         process_chunk(
             chunk,
             &mut buffer,
-            &mut response_text,
+            &mut thinking_content,
+            &mut regular_content,
             &mut generated_files,
             session_id,
             &ws_manager_trait,
@@ -652,7 +599,7 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(response_text, "The");
+        assert_eq!(regular_content, "The");
         assert!(!is_done);
         assert_eq!(finish_reason, Some("STOP".to_string()));
     }
@@ -701,7 +648,8 @@ mod tests {
         }";
 
         let mut buffer = String::new();
-        let mut response_text = String::new();
+        let mut thinking_content = String::new();
+        let mut regular_content = String::new();
         let mut generated_files = Vec::new();
         let session_id = "test_session_id";
         let ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
@@ -716,7 +664,8 @@ mod tests {
         process_chunk(
             chunk,
             &mut buffer,
-            &mut response_text,
+            &mut thinking_content,
+            &mut regular_content,
             &mut generated_files,
             session_id,
             &ws_manager_trait,
@@ -732,7 +681,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            response_text,
+            regular_content,
             " Roman Empire was a vast and powerful civilization that dominated much of Europe, North Africa"
         );
         assert!(!is_done);
@@ -783,7 +732,8 @@ mod tests {
         }]";
 
         let mut buffer = String::new();
-        let mut response_text = String::new();
+        let mut thinking_content = String::new();
+        let mut regular_content = String::new();
         let mut generated_files = Vec::new();
         let session_id = "test_session_id";
         let ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
@@ -798,7 +748,8 @@ mod tests {
         process_chunk(
             chunk,
             &mut buffer,
-            &mut response_text,
+            &mut thinking_content,
+            &mut regular_content,
             &mut generated_files,
             session_id,
             &ws_manager_trait,
@@ -813,7 +764,7 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(response_text, " in greater detail. \n");
+        assert_eq!(regular_content, " in greater detail. \n");
         assert!(is_done);
         assert_eq!(finish_reason, Some("STOP".to_string()));
     }
@@ -873,7 +824,8 @@ mod tests {
         let chunk3 = br#"]"#;
 
         let mut buffer = String::new();
-        let mut response_text = String::new();
+        let mut thinking_content = String::new();
+        let mut regular_content = String::new();
         let mut generated_files = Vec::new();
         let mut function_calls = Vec::new();
         let session_id = "test_session_id";
@@ -891,7 +843,8 @@ mod tests {
             process_chunk(
                 chunk,
                 &mut buffer,
-                &mut response_text,
+                &mut thinking_content,
+                &mut regular_content,
                 &mut generated_files,
                 session_id,
                 &ws_manager_trait,
@@ -907,7 +860,7 @@ mod tests {
             .unwrap();
         }
 
-        assert_eq!(response_text, "");
+        assert_eq!(regular_content, "");
         assert_eq!(function_calls.len(), 1);
         let fc = &function_calls[0];
         assert_eq!(fc.name, "duckduckgo_search");
@@ -1017,7 +970,8 @@ mod tests {
         }]"#;
 
         let mut buffer = String::new();
-        let mut response_text = String::new();
+        let mut thinking_content = String::new();
+        let mut regular_content = String::new();
         let mut generated_files = Vec::new();
         let mut function_calls = Vec::new();
         let session_id = "test_session_id";
@@ -1035,7 +989,8 @@ mod tests {
             process_chunk(
                 chunk,
                 &mut buffer,
-                &mut response_text,
+                &mut thinking_content,
+                &mut regular_content,
                 &mut generated_files,
                 session_id,
                 &ws_manager_trait,
@@ -1051,12 +1006,11 @@ mod tests {
             .unwrap();
         }
 
-        // Verify the response contains properly formatted thinking tags
-        assert!(response_text.starts_with("<think>"));
-        assert!(response_text.contains("**Clarifying Limitations**"));
-        assert!(response_text.contains("**Highlighting Constraints**"));
-        assert!(response_text.contains("</think>As an AI, I don't have real-time access"));
-        assert!(response_text.contains("Major news organizations"));
+        // Verify the response contains thinking and regular content
+        assert!(thinking_content.contains("**Clarifying Limitations**"));
+        assert!(thinking_content.contains("**Highlighting Constraints**"));
+        assert!(regular_content.contains("As an AI, I don't have real-time access"));
+        assert!(regular_content.contains("Major news organizations"));
         assert!(thinking_started);
         assert!(!in_thinking); // Should not be in thinking mode at the end
         assert_eq!(finish_reason, Some("STOP".to_string()));
@@ -1074,7 +1028,8 @@ mod tests {
         }]"#;
 
         let mut buffer = String::new();
-        let mut response_text = String::new();
+        let mut thinking_content = String::new();
+        let mut regular_content = String::new();
         let mut generated_files = Vec::new();
         let session_id = "test_session_id";
         let ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
@@ -1089,7 +1044,8 @@ mod tests {
         let result = process_chunk(
             chunk,
             &mut buffer,
-            &mut response_text,
+            &mut thinking_content,
+            &mut regular_content,
             &mut generated_files,
             session_id,
             &ws_manager_trait,
@@ -1156,7 +1112,8 @@ mod tests {
         }";
 
         let mut buffer = String::new();
-        let mut response_text = String::new();
+        let mut thinking_content = String::new();
+        let mut regular_content = String::new();
         let mut generated_files = Vec::new();
         let session_id = "test_session_id";
         let ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
@@ -1188,7 +1145,8 @@ mod tests {
         process_chunk(
             chunk,
             &mut buffer,
-            &mut response_text,
+            &mut thinking_content,
+            &mut regular_content,
             &mut generated_files,
             session_id,
             &ws_manager_trait,
@@ -1210,6 +1168,6 @@ mod tests {
         let found = generated_files
             .iter()
             .any(|f| f.path.to_string_lossy().contains("generated_image_test_session_id_"));
-        assert!(found, "Expected a generated file with 'generated_image_test_session_id_' format.");
+        assert!(found, "Expected a generated file starting with 'generated_image_test_session_id_'");
     }
 }
