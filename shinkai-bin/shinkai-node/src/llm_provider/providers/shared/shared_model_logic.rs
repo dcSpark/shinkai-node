@@ -209,3 +209,65 @@ pub async fn send_ws_update(
     }
     Ok(())
 }
+
+/// Send a tool WebSocket update message through the provided manager
+pub async fn send_tool_ws_update(
+    ws_manager_trait: &Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    inbox_name: Option<InboxName>,
+    function_call: &crate::llm_provider::execution::chains::inference_chain_trait::FunctionCall,
+) -> Result<(), LLMProviderError> {
+    send_tool_ws_update_with_status(ws_manager_trait, inbox_name, function_call, None, None).await
+}
+
+/// Send a tool WebSocket update message through the provided manager with custom status and result
+pub async fn send_tool_ws_update_with_status(
+    ws_manager_trait: &Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    inbox_name: Option<InboxName>,
+    function_call: &crate::llm_provider::execution::chains::inference_chain_trait::FunctionCall,
+    result: Option<serde_json::Value>,
+    status_type: Option<shinkai_message_primitives::schemas::ws_types::ToolStatusType>,
+) -> Result<(), LLMProviderError> {
+    use shinkai_message_primitives::schemas::ws_types::{ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WidgetMetadata};
+    
+    if let Some(ref manager) = ws_manager_trait {
+        if let Some(inbox_name) = inbox_name {
+            let m = manager.lock().await;
+            let inbox_name_string = inbox_name.to_string();
+
+            let function_call_json = serde_json::to_value(function_call).unwrap_or_else(|_| serde_json::json!({}));
+
+            let tool_metadata = ToolMetadata {
+                tool_name: function_call.name.clone(),
+                tool_router_key: function_call.tool_router_key.clone(),
+                args: function_call_json.as_object().cloned().unwrap_or_default(),
+                result,
+                status: ToolStatus {
+                    type_: status_type.unwrap_or(ToolStatusType::Running),
+                    reason: None,
+                },
+                index: function_call.index,
+            };
+
+            let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
+
+            shinkai_log(
+                ShinkaiLogOption::JobExecution,
+                ShinkaiLogLevel::Debug,
+                format!("Websocket content (function_call): {}", 
+                    serde_json::to_string(function_call).unwrap_or_else(|_| "{}".to_string())
+                ).as_str(),
+            );
+
+            let _ = m
+                .queue_message(
+                    WSTopic::Inbox,
+                    inbox_name_string,
+                    serde_json::to_string(function_call).unwrap_or_else(|_| "{}".to_string()),
+                    ws_message_type,
+                    true,
+                )
+                .await;
+        }
+    }
+    Ok(())
+}

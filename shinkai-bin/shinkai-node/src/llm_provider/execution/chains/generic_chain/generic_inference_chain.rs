@@ -7,6 +7,7 @@ use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use crate::llm_provider::job_callback_manager::JobCallbackManager;
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::llm_stopper::LLMStopper;
+use crate::llm_provider::providers::shared::shared_model_logic::send_tool_ws_update_with_status;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 use crate::managers::tool_router::{ToolCallFunctionResponse, ToolRouter};
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
@@ -23,10 +24,7 @@ use shinkai_message_primitives::schemas::job::{Job, JobLike};
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
 use shinkai_message_primitives::schemas::shinkai_fs::ShinkaiFileChunkCollection;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::schemas::ws_types::{
-    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSUpdateHandler, WidgetMetadata,
-};
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
+use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
@@ -527,13 +525,13 @@ impl GenericInferenceChain {
             ShinkaiLogLevel::Info,
             &format!("start_generic_inference_chain> image files: {:?}", image_files.keys()),
         );
-        
+
         shinkai_log(
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Info,
             &format!("start_generic_inference_chain> video files: {:?}", video_files.keys()),
         );
-        
+
         shinkai_log(
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Info,
@@ -779,14 +777,17 @@ impl GenericInferenceChain {
 
         // If tools are allowed and web search is enabled, include the web search tool
         let tools_allowed = job_config.as_ref().and_then(|config| config.use_tools).unwrap_or(false);
-        let web_search_enabled = job_config.as_ref().and_then(|config| config.web_search_enabled).unwrap_or(false);
+        let web_search_enabled = job_config
+            .as_ref()
+            .and_then(|config| config.web_search_enabled)
+            .unwrap_or(false);
         if tools_allowed && web_search_enabled {
             // Check if web search tool is not already in the tools list
             let web_search_tool_key = "local:::__official_shinkai:::web_search";
-            let has_web_search = tools.iter().any(|tool| {
-                tool.tool_router_key().to_string_without_version() == web_search_tool_key
-            });
-            
+            let has_web_search = tools
+                .iter()
+                .any(|tool| tool.tool_router_key().to_string_without_version() == web_search_tool_key);
+
             if !has_web_search {
                 // Add the web search tool
                 if let Some(tool_router) = &tool_router {
@@ -885,8 +886,11 @@ impl GenericInferenceChain {
         let custom_system_prompt = {
             // Check if tools are allowed and web search is enabled by job config (defaults to false if not specified)
             let tools_allowed = job_config.as_ref().and_then(|config| config.use_tools).unwrap_or(false);
-            let web_search_enabled = job_config.as_ref().and_then(|config| config.web_search_enabled).unwrap_or(false);
-            
+            let web_search_enabled = job_config
+                .as_ref()
+                .and_then(|config| config.web_search_enabled)
+                .unwrap_or(false);
+
             if tools_allowed && web_search_enabled {
                 let today = chrono::Utc::now().format("%B %d, %Y").to_string();
                 let web_search_instructions = format!(
@@ -899,7 +903,7 @@ impl GenericInferenceChain {
                     - Accuracy: If the cost of a small mistake or outdated information is high (e.g., using an outdated version of a software library or not knowing the date of the next game for a sports team), then use the web search tool.",
                     today
                 );
-                
+
                 match custom_system_prompt {
                     Some(existing_prompt) => Some(format!("{} {}", existing_prompt, web_search_instructions)),
                     None => Some(web_search_instructions),
@@ -1226,9 +1230,9 @@ impl GenericInferenceChain {
                         ProviderOrAgent::LLMProvider(provider) => provider.model.clone(),
                         ProviderOrAgent::Agent(agent) => {
                             // For agents, we need to get the underlying LLM provider's model
-                            let llm_provider = db
-                                .get_llm_provider(&agent.llm_provider_id, &agent.full_identity_name)
-                                .map_err(|_e| LLMProviderError::AgentNotFound(agent.llm_provider_id.clone()))?;
+                            let llm_provider =
+                                db.get_llm_provider(&agent.llm_provider_id, &agent.full_identity_name)
+                                    .map_err(|_e| LLMProviderError::AgentNotFound(agent.llm_provider_id.clone()))?;
                             match llm_provider {
                                 Some(provider) => provider.model,
                                 None => return Err(LLMProviderError::AgentNotFound(agent.llm_provider_id.clone())),
@@ -1332,56 +1336,39 @@ impl GenericInferenceChain {
         function_response: &ToolCallFunctionResponse,
         tool_router_key: String,
     ) {
-        if let Some(ref manager) = ws_manager_trait {
-            if let Some(job_id) = job_id {
-                // Derive inbox name from job_id
-                let inbox_name_result = InboxName::get_job_inbox_name_from_params(job_id.clone());
-                let inbox_name_string = match inbox_name_result {
-                    Ok(inbox_name) => inbox_name.to_string(),
-                    Err(e) => {
-                        // Log the error and exit the function
-                        shinkai_log(
-                            ShinkaiLogOption::JobExecution,
-                            ShinkaiLogLevel::Error,
-                            &format!("Failed to create inbox name from job_id {}: {}", job_id, e),
-                        );
-                        return;
-                    }
-                };
+        if let Some(job_id) = job_id {
+            // Derive inbox name from job_id
+            let inbox_name = match InboxName::get_job_inbox_name_from_params(job_id.clone()) {
+                Ok(inbox_name) => inbox_name,
+                Err(e) => {
+                    // Log the error and exit the function
+                    shinkai_log(
+                        ShinkaiLogOption::JobExecution,
+                        ShinkaiLogLevel::Error,
+                        &format!("Failed to create inbox name from job_id {}: {}", job_id, e),
+                    );
+                    return;
+                }
+            };
 
-                let m = manager.lock().await;
+            // Prepare result from function response
+            let result = serde_json::from_str(&function_response.response)
+                .map(Some)
+                .unwrap_or_else(|_| Some(serde_json::Value::String(function_response.response.clone())));
 
-                // Prepare ToolMetadata with result and Completed status
-                let tool_metadata = ToolMetadata {
-                    tool_name: function_response.function_call.name.clone(),
-                    tool_router_key: Some(tool_router_key),
-                    args: serde_json::to_value(&function_response.function_call)
-                        .unwrap_or_else(|_| serde_json::json!({}))
-                        .as_object()
-                        .cloned()
-                        .unwrap_or_default(),
-                    result: serde_json::from_str(&function_response.response)
-                        .map(Some)
-                        .unwrap_or_else(|_| Some(serde_json::Value::String(function_response.response.clone()))),
-                    status: ToolStatus {
-                        type_: ToolStatusType::Complete,
-                        reason: None,
-                    },
-                    index: function_response.function_call.index,
-                };
+            // Update the function_call with the tool_router_key
+            let mut updated_function_call = function_response.function_call.clone();
+            updated_function_call.tool_router_key = Some(tool_router_key);
 
-                let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
-
-                let _ = m
-                    .queue_message(
-                        WSTopic::Inbox,
-                        inbox_name_string,
-                        serde_json::to_string(&function_response).unwrap_or_else(|_| "{}".to_string()),
-                        ws_message_type,
-                        true,
-                    )
-                    .await;
-            }
+            // Send the completed tool update
+            let _ = send_tool_ws_update_with_status(
+                ws_manager_trait,
+                Some(inbox_name),
+                &updated_function_call,
+                result,
+                Some(shinkai_message_primitives::schemas::ws_types::ToolStatusType::Complete),
+            )
+            .await;
         }
     }
 

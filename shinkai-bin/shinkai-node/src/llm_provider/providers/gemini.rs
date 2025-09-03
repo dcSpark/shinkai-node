@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use super::super::error::LLMProviderError;
 use super::shared::gemini_api::gemini_prepare_messages;
-use super::shared::shared_model_logic::{save_image_file, send_ws_update};
+use super::shared::shared_model_logic::{save_image_file, send_ws_update, send_tool_ws_update};
 use super::LLMService;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
 use crate::llm_provider::llm_stopper::LLMStopper;
@@ -18,9 +18,8 @@ use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{Gemini, LLMProviderInterface};
 use shinkai_message_primitives::schemas::prompts::Prompt;
 use shinkai_message_primitives::schemas::ws_types::{
-    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSUpdateHandler, WidgetMetadata
+    WSUpdateHandler
 };
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_sqlite::SqliteManager;
@@ -519,42 +518,7 @@ async fn process_function_call(
     function_calls.push(fc.clone());
 
     // Send WebSocket update for function call
-    let tool_metadata = ToolMetadata {
-        tool_name: fc.name.clone(),
-        tool_router_key: fc.tool_router_key.clone(),
-        args: serde_json::to_value(&fc.arguments)
-            .unwrap_or_default()
-            .as_object()
-            .cloned()
-            .unwrap_or_default(),
-        result: None,
-        status: ToolStatus {
-            type_: ToolStatusType::Running,
-            reason: None,
-        },
-        index: fc.index,
-    };
-
-    // For tool calls, we use a special Widget websocket message type
-    // We'll create a custom approach for this since send_ws_update is for Metadata messages
-    if let Some(ref manager) = ws_manager_trait {
-        if let Some(ref inbox_name) = inbox_name {
-            let m = manager.lock().await;
-            let inbox_name_string = inbox_name.to_string();
-            
-            let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
-
-            let _ = m
-                .queue_message(
-                    WSTopic::Inbox,
-                    inbox_name_string,
-                    serde_json::to_string(&fc).unwrap_or_else(|_| "{}".to_string()),
-                    ws_message_type,
-                    true,
-                )
-                .await;
-        }
-    }
+    let _ = send_tool_ws_update(ws_manager_trait, inbox_name.clone(), &fc).await;
 }
 
 #[cfg(test)]

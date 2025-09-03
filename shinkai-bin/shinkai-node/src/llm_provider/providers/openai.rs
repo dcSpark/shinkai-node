@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use super::super::error::LLMProviderError;
 use super::shared::openai_api::{openai_prepare_messages, MessageContent, OpenAIResponse};
-use super::shared::shared_model_logic::send_ws_update;
+use super::shared::shared_model_logic::{send_ws_update, send_tool_ws_update};
 use super::LLMService;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
 use crate::llm_provider::llm_stopper::LLMStopper;
@@ -19,9 +19,8 @@ use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI};
 use shinkai_message_primitives::schemas::prompts::Prompt;
 use shinkai_message_primitives::schemas::ws_types::{
-    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSUpdateHandler, WidgetMetadata,
+    WSUpdateHandler,
 };
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_sqlite::SqliteManager;
 use tokio::sync::Mutex;
@@ -518,28 +517,25 @@ pub async fn parse_openai_stream_chunk(
 
                         if let Some(delta) = choice.get("delta") {
                             // Handle reasoning_content
-                            // Only skip processing if reasoning_content is null/undefined, empty strings are valid
-                            if let Some(reasoning_value) = delta.get("reasoning_content") {
-                                if let Some(reasoning) = reasoning_value.as_str() {
-                                    // First reasoning delta, set reasoning_started to true
-                                    if !partial_fc.reasoning_started {
-                                        partial_fc.reasoning_started = true;
-                                    }
+                            if let Some(reasoning) = delta.get("reasoning_content").and_then(|c| c.as_str()) {
+                                // First reasoning delta, set reasoning_started to true
+                                if !partial_fc.reasoning_started {
+                                    partial_fc.reasoning_started = true;
+                                }
 
-                                    reasoning_content.push_str(reasoning);
+                                reasoning_content.push_str(reasoning);
 
-                                    if let Some(inbox_name) = inbox_name.as_ref() {
-                                        send_ws_update(
-                                            ws_manager_trait,
-                                            Some(inbox_name.clone()),
-                                            session_id,
-                                            reasoning.to_string(),
-                                            true,
-                                            false,
-                                            None,
-                                        )
-                                        .await?;
-                                    }
+                                if let Some(inbox_name) = inbox_name.as_ref() {
+                                    send_ws_update(
+                                        ws_manager_trait,
+                                        Some(inbox_name.clone()),
+                                        session_id,
+                                        reasoning.to_string(),
+                                        true,
+                                        false,
+                                        None,
+                                    )
+                                    .await?;
                                 }
                             }
 
@@ -1228,46 +1224,8 @@ pub async fn handle_non_streaming_response(
                         eprintln!("Response String: {:?}", response_string);
 
                         // Updated WS message handling for tooling
-                        if let Some(ref manager) = ws_manager_trait {
-                            if let Some(ref inbox_name) = inbox_name {
-                                if let Some(ref function_call) = function_call {
-                                    let m = manager.lock().await;
-                                    let inbox_name_string = inbox_name.to_string();
-
-                                    // Serialize FunctionCall to JSON value
-                                    let function_call_json = serde_json::to_value(function_call)
-                                        .unwrap_or_else(|_| serde_json::json!({}));
-
-                                    // Prepare ToolMetadata
-                                    let tool_metadata = ToolMetadata {
-                                        tool_name: function_call.name.clone(),
-                                        tool_router_key: function_call.tool_router_key.clone(),
-                                        args: function_call_json
-                                            .as_object()
-                                            .cloned()
-                                            .unwrap_or_default(),
-                                        result: None,
-                                        status: ToolStatus {
-                                            type_: ToolStatusType::Running,
-                                            reason: None,
-                                        },
-                                        index: function_call.index,
-                                    };
-
-                                    let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
-
-                                    let _ = m
-                                        .queue_message(
-                                            WSTopic::Inbox,
-                                            inbox_name_string,
-                                            serde_json::to_string(&function_call)
-                                                .unwrap_or_else(|_| "{}".to_string()),
-                                            ws_message_type,
-                                            true,
-                                        )
-                                        .await;
-                                }
-                            }
+                        if let Some(ref function_call) = function_call {
+                            let _ = send_tool_ws_update(&ws_manager_trait, inbox_name.clone(), function_call).await;
                         }
 
                         return Ok(LLMInferenceResponse::new(
@@ -1343,50 +1301,7 @@ pub fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&J
     }
 }
 
-async fn send_tool_ws_update(
-    ws_manager_trait: &Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-    inbox_name: Option<InboxName>,
-    function_call: &FunctionCall,
-) -> Result<(), LLMProviderError> {
-    if let Some(ref manager) = ws_manager_trait {
-        if let Some(inbox_name) = inbox_name {
-            let m = manager.lock().await;
-            let inbox_name_string = inbox_name.to_string();
 
-            let function_call_json = serde_json::to_value(function_call).unwrap_or_else(|_| serde_json::json!({}));
-
-            let tool_metadata = ToolMetadata {
-                tool_name: function_call.name.clone(),
-                tool_router_key: function_call.tool_router_key.clone(),
-                args: function_call_json.as_object().cloned().unwrap_or_default(),
-                result: None,
-                status: ToolStatus {
-                    type_: ToolStatusType::Running,
-                    reason: None,
-                },
-                index: function_call.index,
-            };
-
-            let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
-
-            eprintln!(
-                "Websocket content (function_call): {}",
-                serde_json::to_string(function_call).unwrap_or_else(|_| "{}".to_string())
-            );
-
-            let _ = m
-                .queue_message(
-                    WSTopic::Inbox,
-                    inbox_name_string,
-                    serde_json::to_string(function_call).unwrap_or_else(|_| "{}".to_string()),
-                    ws_message_type,
-                    true,
-                )
-                .await;
-        }
-    }
-    Ok(())
-}
 
 pub fn extract_and_remove_arguments(json_str: &str) -> (Option<String>, String) {
     // Find the start of arguments value - check both function_call and tool_calls prefixes

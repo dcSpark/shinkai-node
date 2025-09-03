@@ -4,7 +4,7 @@ use crate::llm_provider::providers::llm_cancellable_request::make_cancellable_re
 use crate::llm_provider::providers::shared::ollama_api::{
     ollama_conversation_prepare_messages_with_tooling, OllamaAPIStreamingResponse
 };
-use crate::llm_provider::providers::shared::shared_model_logic::send_ws_update;
+use crate::llm_provider::providers::shared::shared_model_logic::{send_ws_update, send_tool_ws_update};
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
 
 use super::super::error::LLMProviderError;
@@ -20,9 +20,8 @@ use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, Ollama};
 use shinkai_message_primitives::schemas::prompts::Prompt;
 use shinkai_message_primitives::schemas::ws_types::{
-    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSUpdateHandler, WidgetMetadata
+    WSUpdateHandler
 };
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_sqlite::SqliteManager;
 use std::env;
@@ -407,40 +406,7 @@ async fn process_stream(
                                     format!("Tool Call Detected: Name: {}, Arguments: {:?}", name, arguments).as_str(),
                                 );
 
-                                if let Some(ref manager) = ws_manager_trait {
-                                    if let Some(ref inbox_name) = inbox_name {
-                                        let m = manager.lock().await;
-                                        let inbox_name_string = inbox_name.to_string();
-                                        let function_call_json = serde_json::to_value(&function_call)
-                                            .unwrap_or_else(|_| serde_json::json!({}));
-
-                                        let tool_metadata = ToolMetadata {
-                                            tool_name: name.clone(),
-                                            tool_router_key: None,
-                                            args: function_call_json.as_object().cloned().unwrap_or_default(),
-                                            result: None,
-                                            status: ToolStatus {
-                                                type_: ToolStatusType::Running,
-                                                reason: None,
-                                            },
-                                            index: function_call.index,
-                                        };
-
-                                        let ws_message_type =
-                                            WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
-
-                                        let _ = m
-                                            .queue_message(
-                                                WSTopic::Inbox,
-                                                inbox_name_string,
-                                                serde_json::to_string(&function_call)
-                                                    .unwrap_or_else(|_| "Error serializing tool call".to_string()),
-                                                ws_message_type,
-                                                true,
-                                            )
-                                            .await;
-                                    }
-                                }
+                                let _ = send_tool_ws_update(&ws_manager_trait, inbox_name.clone(), &function_call).await;
                             }
                         }
 
@@ -612,39 +578,7 @@ async fn handle_non_streaming_response(
 
                                             function_calls.push(function_call.clone());
 
-                                            if let Some(ref manager) = ws_manager_trait {
-                                                if let Some(ref inbox_name) = inbox_name {
-                                                    let m = manager.lock().await;
-                                                    let inbox_name_string = inbox_name.to_string();
-                                                    let function_call_json = serde_json::to_value(&function_call)
-                                                        .unwrap_or_else(|_| serde_json::json!({}));
-
-                                                    let tool_metadata = ToolMetadata {
-                                                        tool_name: name.to_string(),
-                                                        tool_router_key: None,
-                                                        args: function_call_json.as_object().cloned().unwrap_or_default(),
-                                                        result: None,
-                                                        status: ToolStatus {
-                                                            type_: ToolStatusType::Running,
-                                                            reason: None,
-                                                        },
-                                                        index: function_call.index,
-                                                    };
-
-                                                    let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
-
-                                                    let _ = m
-                                                        .queue_message(
-                                                            WSTopic::Inbox,
-                                                            inbox_name_string,
-                                                            serde_json::to_string(&function_call)
-                                                                .unwrap_or_else(|_| "{}".to_string()),
-                                                            ws_message_type,
-                                                            true,
-                                                        )
-                                                        .await;
-                                                }
-                                            }
+                                            let _ = send_tool_ws_update(&ws_manager_trait, inbox_name.clone(), &function_call).await;
                                         }
                                     }
                                 }
