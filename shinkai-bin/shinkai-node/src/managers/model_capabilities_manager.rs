@@ -1153,8 +1153,8 @@ impl ModelCapabilitiesManager {
             }
             LLMProviderInterface::Groq(groq) => {
                 groq.model_type.starts_with("deepseek-r1-distill-llama-70b")
-                    || groq.model_type.starts_with("qwen-qwq-32b")
-                    || groq.model_type.starts_with("magistral")
+                    || groq.model_type.starts_with("qwen/qwen3-32b")
+                    || groq.model_type.starts_with("openai/gpt-oss")
             }
             LLMProviderInterface::DeepSeek(deepseek) => deepseek.model_type.starts_with("deepseek-reasoner"),
             LLMProviderInterface::Claude(claude) => {

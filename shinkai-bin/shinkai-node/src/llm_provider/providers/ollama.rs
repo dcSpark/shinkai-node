@@ -347,7 +347,6 @@ async fn process_stream(
                             // close the thinking tags
                             if thinking_started && !thinking_ended {
                                 thinking_ended = true;
-                                // Send closing </think> tag via WebSocket
                                 let _ = send_ws_update(
                                     &ws_manager_trait,
                                     inbox_name.clone(),
@@ -453,7 +452,6 @@ async fn process_stream(
 
     // If we ended with thinking content but no regular content, send closing tag
     if thinking_started && !thinking_ended && !thinking_content.is_empty() {
-        // Send closing </think> tag via WebSocket
         let _ = send_ws_update(
             &ws_manager_trait,
             inbox_name.clone(),
