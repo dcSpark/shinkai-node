@@ -20,27 +20,48 @@ fn simple_job_message_test() {
     {
         eprintln!("\n\nSetting up mock OpenAI server");
         let _m = server
-            .mock("POST", "/v1/chat/completions")
+            .mock("POST", "/v1/responses")
             .match_header("authorization", "Bearer mockapikey")
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(
                 r#"{
-                            "id": "chatcmpl-123",
-                            "object": "chat.completion",
-                            "created": 1677652288,
-                            "choices": [{
-                                "index": 0,
-                                "message": {
-                                    "role": "assistant",
-                                    "content": "This is a test response from the mock server"
+                            "id": "resp_test123",
+                            "object": "response",
+                            "created_at": 1677652288,
+                            "status": "completed",
+                            "background": false,
+                            "error": null,
+                            "model": "gpt-4-turbo",
+                            "output": [
+                                {
+                                    "id": "rs_test123",
+                                    "type": "reasoning",
+                                    "summary": [
+                                        {
+                                            "type": "summary_text",
+                                            "text": "The user sent a test message, so I should respond appropriately."
+                                        }
+                                    ]
                                 },
-                                "finish_reason": "stop"
-                            }],
+                                {
+                                    "id": "msg_test123",
+                                    "type": "message",
+                                    "status": "completed",
+                                    "content": [
+                                        {
+                                            "type": "output_text",
+                                            "annotations": [],
+                                            "text": "This is a test response from the mock server"
+                                        }
+                                    ],
+                                    "role": "assistant"
+                                }
+                            ],
                             "usage": {
-                                "prompt_tokens": 9,
-                                "completion_tokens": 12,
-                                "total_tokens": 21
+                                "input_tokens": 12,
+                                "output_tokens": 24,
+                                "total_tokens": 36
                             }
                         }"#,
             )

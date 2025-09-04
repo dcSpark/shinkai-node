@@ -19,6 +19,7 @@ use shinkai_sqlite::SqliteManager;
 use tokio::sync::Mutex;
 use futures::StreamExt;
 use std::collections::HashMap;
+use uuid::Uuid;
 
 // Note: This is an initial implementation of OpenAI's new Responses API.
 // It intentionally focuses on non-streaming responses first for stability.
@@ -61,6 +62,8 @@ pub async fn call_api(
     db: Arc<SqliteManager>,
     tracing_message_id: Option<String>,
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
+    // Generate a per-request session ID so websocket chunks can be grouped by clients
+    let session_id = Uuid::new_v4().to_string();
     if let Some(base_url) = url {
         if let Some(key) = api_key {
             // Use the Responses API endpoint
@@ -162,6 +165,7 @@ pub async fn call_api(
                     inbox_name,
                     ws_manager_trait,
                     _llm_stopper,
+                    session_id,
                 )
                 .await
             } else {
@@ -172,6 +176,7 @@ pub async fn call_api(
                     key.to_string(),
                     inbox_name,
                     ws_manager_trait,
+                    session_id,
                 )
                 .await
             }
@@ -190,6 +195,7 @@ async fn handle_non_streaming_response_responses(
     api_key: String,
     inbox_name: Option<InboxName>,
     ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    session_id: String,
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
     let res = client
         .post(url)
@@ -314,12 +320,11 @@ async fn handle_non_streaming_response_responses(
         if let Some(last_function_call) = function_calls.last() {
             let _ = send_tool_ws_update(&ws_manager_trait, Some(inbox_name.clone()), last_function_call).await;
         }
-        
-        // Responses API does not use session ids here; reuse empty session
+        // Send final message with the per-request session id
         let _ = send_ws_update(
             &ws_manager_trait,
             Some(inbox_name.clone()),
-            "",
+            &session_id,
             response_text.clone(),
             false,
             function_calls.is_empty(),
@@ -346,6 +351,7 @@ async fn handle_streaming_response_responses(
     inbox_name: Option<InboxName>,
     ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     llm_stopper: Arc<crate::llm_provider::llm_stopper::LLMStopper>,
+    session_id: String,
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
     let res = client
         .post(url)
@@ -394,7 +400,7 @@ async fn handle_streaming_response_responses(
                 super::shared::shared_model_logic::send_ws_update(
                     &ws_manager_trait,
                     Some(inbox_name.clone()),
-                    "",
+                    &session_id,
                     response_text.clone(),
                     false,
                     true,
@@ -442,7 +448,7 @@ async fn handle_streaming_response_responses(
                                         super::shared::shared_model_logic::send_ws_update(
                                             &ws_manager_trait,
                                             Some(inbox.clone()),
-                                            "",
+                                            &session_id,
                                             delta.to_string(),
                                             false,
                                             false,
@@ -459,7 +465,7 @@ async fn handle_streaming_response_responses(
                                 super::shared::shared_model_logic::send_ws_update(
                                     &ws_manager_trait,
                                     Some(inbox.clone()),
-                                    "",
+                                    &session_id,
                                     "".to_string(),
                                     true,
                                     false,
@@ -476,7 +482,7 @@ async fn handle_streaming_response_responses(
                                         super::shared::shared_model_logic::send_ws_update(
                                             &ws_manager_trait,
                                             Some(inbox.clone()),
-                                            "",
+                                            &session_id,
                                             delta.to_string(),
                                             true,
                                             false,
@@ -495,7 +501,7 @@ async fn handle_streaming_response_responses(
                                 super::shared::shared_model_logic::send_ws_update(
                                     &ws_manager_trait,
                                     Some(inbox.clone()),
-                                    "",
+                                    &session_id,
                                     "".to_string(),
                                     false,
                                     false,
@@ -733,7 +739,7 @@ async fn handle_streaming_response_responses(
                                 super::shared::shared_model_logic::send_ws_update(
                                     &ws_manager_trait,
                                     Some(inbox.clone()),
-                                    "",
+                                    &session_id,
                                     "".to_string(),
                                     false,
                                     true,
@@ -1307,4 +1313,3 @@ mod tests {
         assert_eq!(extracted_id, None);
     }
 }
-
