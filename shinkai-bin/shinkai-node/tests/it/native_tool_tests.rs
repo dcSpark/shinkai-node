@@ -80,26 +80,47 @@ fn native_tool_test_knowledge() {
 
         // Agent pre-creation
         let _m = server
-            .mock("POST", "/v1/chat/completions")
+            .mock("POST", "/v1/responses")
             .match_header("authorization", "Bearer mockapikey")
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(
                 r#"{
-            "id": "chatcmpl-123",
-            "object": "chat.completion",
-            "created": 1677652288,
-            "choices": [{
-                "index": 0,
-                "message": {
-                    "role": "assistant",
-                    "content": "The Roman Empire is very interesting"
+            "id": "resp_test123",
+            "object": "response",
+            "created_at": 1677652288,
+            "status": "completed",
+            "background": false,
+            "error": null,
+            "model": "gpt-3.5-turbo-1106",
+            "output": [
+                {
+                    "id": "rs_test123",
+                    "type": "reasoning",
+                    "summary": [
+                        {
+                            "type": "summary_text",
+                            "text": "The user is asking about history, so I should provide an informative response about the Roman Empire."
+                        }
+                    ]
                 },
-                "finish_reason": "stop"
-            }],
+                {
+                    "id": "msg_test123",
+                    "type": "message",
+                    "status": "completed",
+                    "content": [
+                        {
+                            "type": "output_text",
+                            "annotations": [],
+                            "text": "The Roman Empire is very interesting"
+                        }
+                    ],
+                    "role": "assistant"
+                }
+            ],
             "usage": {
-                "prompt_tokens": 9,
-                "completion_tokens": 12,
+                "input_tokens": 9,
+                "output_tokens": 12,
                 "total_tokens": 21
             }
         }"#,

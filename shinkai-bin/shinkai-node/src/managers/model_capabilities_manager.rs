@@ -1139,10 +1139,8 @@ impl ModelCapabilitiesManager {
         match model {
             LLMProviderInterface::OpenAI(openai) => {
                 openai.model_type.starts_with("o1")
-                    || openai.model_type.starts_with("o2")
                     || openai.model_type.starts_with("o3")
                     || openai.model_type.starts_with("o4")
-                    || openai.model_type.starts_with("o5")
                     || (openai.model_type.starts_with("gpt-5") && openai.model_type != "gpt-5-chat-latest")
             }
             LLMProviderInterface::Ollama(ollama) => {

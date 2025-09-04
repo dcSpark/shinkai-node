@@ -112,26 +112,47 @@ fn job_branchs_retries_tests() {
                 .unwrap();
 
                 let _m = server
-                    .mock("POST", "/v1/chat/completions")
+                    .mock("POST", "/v1/responses")
                     .match_header("authorization", "Bearer mockapikey")
                     .with_status(200)
                     .with_header("content-type", "application/json")
                     .with_body(
                         r#"{
-                    "id": "chatcmpl-123",
-                    "object": "chat.completion",
-                    "created": 1677652288,
-                    "choices": [{
-                        "index": 0,
-                        "message": {
-                            "role": "assistant",
-                            "content": "Hello there, how may I assist you today?"
+                    "id": "resp_test123",
+                    "object": "response",
+                    "created_at": 1677652288,
+                    "status": "completed",
+                    "background": false,
+                    "error": null,
+                    "model": "gpt-4-1106-preview",
+                    "output": [
+                        {
+                            "id": "rs_test123",
+                            "type": "reasoning",
+                            "summary": [
+                                {
+                                    "type": "summary_text",
+                                    "text": "The user is greeting me, so I should respond politely and offer assistance."
+                                }
+                            ]
                         },
-                        "finish_reason": "stop"
-                    }],
+                        {
+                            "id": "msg_test123",
+                            "type": "message",
+                            "status": "completed",
+                            "content": [
+                                {
+                                    "type": "output_text",
+                                    "annotations": [],
+                                    "text": "Hello there, how may I assist you today?"
+                                }
+                            ],
+                            "role": "assistant"
+                        }
+                    ],
                     "usage": {
-                        "prompt_tokens": 9,
-                        "completion_tokens": 12,
+                        "input_tokens": 9,
+                        "output_tokens": 12,
                         "total_tokens": 21
                     }
                 }"#,
