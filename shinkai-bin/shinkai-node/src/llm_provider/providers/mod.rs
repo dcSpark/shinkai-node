@@ -23,6 +23,7 @@ pub mod llm_cancellable_request;
 pub mod local_regex;
 pub mod ollama;
 pub mod openai;
+pub mod openai_responses;
 pub mod openai_tests;
 pub mod openrouter;
 pub mod shared;
