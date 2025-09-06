@@ -901,9 +901,9 @@ impl ModelCapabilitiesManager {
                 match groq.model_type.as_str() {
                     model_type if model_type.starts_with("groq/compound") => 8_192,
                     model_type if model_type.starts_with("groq/compound-mini") => 8_192,
-                    model_type if model_type.starts_with("llama-3.1-8b-instant") => 131_072,
+                    model_type if model_type.starts_with("llama-3.1-8b-instant") => 8_192,
                     model_type if model_type.starts_with("llama-3.3-70b-versatile") => 32_768,
-                    model_type if model_type.starts_with("meta-llama/llama-guard-4-12b") => 1_024,
+                    model_type if model_type.starts_with("meta-llama/llama-guard-4-12b") => 128,
                     model_type if model_type.starts_with("openai/gpt-oss") => 65_536,
                     model_type if model_type.starts_with("meta-llama/llama-4-maverick-17b-128e-instruct") => 8_192,
                     model_type if model_type.starts_with("meta-llama/llama-4-scout-17b-16e-instruct") => 8_192,
