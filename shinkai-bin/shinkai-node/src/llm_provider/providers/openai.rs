@@ -444,7 +444,7 @@ pub async fn parse_openai_stream_chunk(
                 finalize_function_call_sync(partial_fc, function_calls, tools);
             }
             if let Some(inbox_name) = inbox_name.as_ref() {
-                send_ws_update(
+                let _ = send_ws_update(
                     ws_manager_trait,
                     Some(inbox_name.clone()),
                     session_id,
@@ -453,7 +453,7 @@ pub async fn parse_openai_stream_chunk(
                     function_calls.is_empty(),
                     None,
                 )
-                .await?;
+                .await;
             }
             continue;
         }
@@ -526,7 +526,7 @@ pub async fn parse_openai_stream_chunk(
                                 reasoning_content.push_str(reasoning);
 
                                 if let Some(inbox_name) = inbox_name.as_ref() {
-                                    send_ws_update(
+                                    let _ = send_ws_update(
                                         ws_manager_trait,
                                         Some(inbox_name.clone()),
                                         session_id,
@@ -535,7 +535,7 @@ pub async fn parse_openai_stream_chunk(
                                         false,
                                         None,
                                     )
-                                    .await?;
+                                    .await;
                                 }
                             }
 
@@ -547,7 +547,7 @@ pub async fn parse_openai_stream_chunk(
                                     }
 
                                     if let Some(inbox_name) = inbox_name.as_ref() {
-                                        send_ws_update(
+                                        let _ = send_ws_update(
                                             ws_manager_trait,
                                             Some(inbox_name.clone()),
                                             session_id,
@@ -556,7 +556,7 @@ pub async fn parse_openai_stream_chunk(
                                             false,
                                             None,
                                         )
-                                        .await?;
+                                        .await;
                                     }
                                 }
                             }
@@ -567,7 +567,7 @@ pub async fn parse_openai_stream_chunk(
 
                                 // Send WS update for the new content
                                 if let Some(inbox_name) = inbox_name.as_ref() {
-                                    send_ws_update(
+                                    let _ = send_ws_update(
                                         ws_manager_trait,
                                         Some(inbox_name.clone()),
                                         session_id,
@@ -577,7 +577,7 @@ pub async fn parse_openai_stream_chunk(
                                         false,
                                         None,
                                     )
-                                    .await?;
+                                    .await;
                                 }
                             }
 
@@ -680,7 +680,7 @@ pub async fn parse_openai_stream_chunk(
                             // Close reasoning tag if it was started but not closed
                             if partial_fc.reasoning_started {
                                 if let Some(inbox_name) = inbox_name.as_ref() {
-                                    send_ws_update(
+                                    let _ = send_ws_update(
                                         ws_manager_trait,
                                         Some(inbox_name.clone()),
                                         session_id,
@@ -689,7 +689,7 @@ pub async fn parse_openai_stream_chunk(
                                         false,
                                         None,
                                     )
-                                    .await?;
+                                    .await;
                                 }
                                 partial_fc.reasoning_started = false;
                             }
@@ -891,7 +891,7 @@ pub async fn handle_streaming_response(
 
                 // Send WS message indicating the job is done
 
-                send_ws_update(
+                let _ = send_ws_update(
                     &ws_manager_trait,
                     Some(inbox_name.clone()),
                     &session_id,
@@ -900,7 +900,7 @@ pub async fn handle_streaming_response(
                     true,
                     Some("Stopped by user request".to_string()),
                 )
-                .await?;
+                .await;
 
                 // Process complete messages in the buffer
                 if let Ok(Some(_err)) = parse_openai_stream_chunk(
