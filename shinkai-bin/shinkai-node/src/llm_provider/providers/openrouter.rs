@@ -282,7 +282,7 @@ async fn handle_streaming_response(
                                         .unwrap_or(false);
 
                                     // Send WebSocket update with incremental content (like OpenAI)
-                                    send_ws_update(
+                                    let _ = send_ws_update(
                                         &ws_manager_trait,
                                         inbox_name.clone(),
                                         &session_id,
@@ -290,7 +290,7 @@ async fn handle_streaming_response(
                                         false, // is_reasoning
                                         is_finished, // is_done
                                         None, // done_reason
-                                    ).await.ok(); // Ignore errors for now
+                                    ).await;
 
                                     if is_finished {
                                         is_done_sent = true;
@@ -337,7 +337,7 @@ async fn handle_streaming_response(
                                 .unwrap_or(false);
 
                             // Send WebSocket update with incremental content
-                            send_ws_update(
+                            let _ = send_ws_update(
                                 &ws_manager_trait,
                                 inbox_name.clone(),
                                 &session_id,
@@ -345,7 +345,7 @@ async fn handle_streaming_response(
                                 false, // is_reasoning
                                 is_finished, // is_done
                                 None, // done_reason
-                            ).await.ok(); // Ignore errors for now
+                            ).await;
 
                             if is_finished {
                                 is_done_sent = true;
@@ -375,7 +375,7 @@ async fn handle_streaming_response(
 
     // If no WS message with is_done: true was sent, send a final message
     if !is_done_sent {
-        send_ws_update(
+        let _ = send_ws_update(
             &ws_manager_trait,
             inbox_name.clone(),
             &session_id,
@@ -383,7 +383,7 @@ async fn handle_streaming_response(
             false, // is_reasoning
             true, // is_done
             None, // done_reason
-        ).await.ok();
+        ).await;
     }
 
     Ok(LLMInferenceResponse::new(

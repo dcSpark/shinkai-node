@@ -1180,6 +1180,11 @@ impl ModelCapabilitiesManager {
                     || gemini.model_type == "gemini-2.5-flash"
                     || gemini.model_type == "gemini-2.5-pro"
                     || gemini.model_type == "gemini-2.0-flash-exp"
+            },
+            LLMProviderInterface::ShinkaiBackend(shinkai_backend) => {
+                shinkai_backend.model_type().starts_with("FREE_TEXT_INFERENCE")
+                    || shinkai_backend.model_type().starts_with("STANDARD_TEXT_INFERENCE")
+                    || shinkai_backend.model_type().starts_with("PREMIUM_TEXT_INFERENCE")
             }
             _ => false,
         }

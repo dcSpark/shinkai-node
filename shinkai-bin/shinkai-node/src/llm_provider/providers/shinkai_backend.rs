@@ -128,6 +128,8 @@ impl LLMService for ShinkaiBackend {
                 "messages": messages_json,
                 "max_completion_tokens": result.remaining_output_tokens,
                 "stream": is_stream,
+                "reasoning_effort": config.as_ref().and_then(|c| c.reasoning_effort.clone()).unwrap_or("medium".to_string()),
+                "thinking": config.as_ref().and_then(|c| c.thinking).unwrap_or(false),
             })
         } else {
             json!({
