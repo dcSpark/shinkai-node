@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use crate::llm_provider::llm_stopper::LLMStopper;
+use crate::llm_provider::providers::shared::openai_api::openai_prepare_messages;
 use crate::managers::galxe_quests::generate_proof;
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
 use rusqlite::params;
@@ -16,7 +17,6 @@ use super::super::error::LLMProviderError;
 use super::openai::{
     add_options_to_payload, handle_non_streaming_response, handle_streaming_response, truncate_image_url_in_payload
 };
-use super::shared::openai_api_deprecated::openai_prepare_messages_deprecated;
 use super::LLMService;
 use async_trait::async_trait;
 use reqwest::Client;
@@ -60,7 +60,7 @@ impl LLMService for ShinkaiBackend {
 
         let key: String = api_key.map_or_else(|| "NO_KEY".to_string(), |k| k.clone());
 
-        let result = openai_prepare_messages_deprecated(&model, prompt)?;
+        let result = openai_prepare_messages(&model, prompt)?;
 
         // Check if model_type is not supported and log a warning
         if !matches!(
@@ -162,7 +162,7 @@ impl LLMService for ShinkaiBackend {
 
         // Conditionally add functions to the payload if tools_json is not empty
         if !tools_json.is_empty() {
-            payload["functions"] = serde_json::Value::Array(tools_json.clone());
+            payload["tools"] = serde_json::Value::Array(tools_json.clone());
         }
 
         // Only add options to payload for non-reasoning models
