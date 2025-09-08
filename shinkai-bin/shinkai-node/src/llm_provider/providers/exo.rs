@@ -2,6 +2,7 @@ use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::llm_provider::providers::shared::ollama_api::ollama_prepare_messages;
+use crate::llm_provider::providers::shared::shared_model_logic::send_ws_update;
 use crate::managers::model_capabilities_manager::PromptResultEnum;
 
 use super::ollama::truncate_image_content_in_payload;
@@ -17,10 +18,7 @@ use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{Exo, LLMProviderInterface};
 use shinkai_message_primitives::schemas::prompts::Prompt;
-use shinkai_message_primitives::schemas::ws_types::WSMessageType;
-use shinkai_message_primitives::schemas::ws_types::WSMetadata;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_sqlite::SqliteManager;
 use std::env;
@@ -160,34 +158,16 @@ impl LLMService for Exo {
                                 if let Some(choice) = data.choices.get(0) {
                                     response_text.push_str(&choice.delta.content);
 
-                                    // Note: this is the code for enabling WS
-                                    if let Some(ref manager) = ws_manager_trait {
-                                        if let Some(ref inbox_name) = inbox_name {
-                                            let m = manager.lock().await;
-                                            let inbox_name_string = inbox_name.to_string();
-
-                                            let metadata = WSMetadata {
-                                                id: Some(session_id.clone()),
-                                                is_reasoning: false,
-                                                is_done: choice.finish_reason.is_some(),
-                                                done_reason: choice.finish_reason.clone(),
-                                                total_duration: None, // Not available in the new format
-                                                eval_count: None,     // Not available in the new format
-                                            };
-
-                                            let ws_message_type = WSMessageType::Metadata(metadata);
-
-                                            let _ = m
-                                                .queue_message(
-                                                    WSTopic::Inbox,
-                                                    inbox_name_string,
-                                                    choice.delta.content.clone(),
-                                                    ws_message_type,
-                                                    true,
-                                                )
-                                                .await;
-                                        }
-                                    }
+                                    // Send WebSocket update using shared function
+                                    let _ = send_ws_update(
+                                        &ws_manager_trait,
+                                        inbox_name.clone(),
+                                        &session_id,
+                                        choice.delta.content.clone(),
+                                        false, // is_reasoning
+                                        choice.finish_reason.is_some(), // is_done
+                                        choice.finish_reason.clone(), // done_reason
+                                    ).await;
                                 }
                             }
                             Err(_e) => {
