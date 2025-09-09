@@ -124,11 +124,10 @@ pub async fn call_api(
                     "llm_payload",
                     &payload_log,
                 ) {
-                    eprintln!("failed to add payload trace: {:?}", e);
+                    // ignore tracing failures
                 }
             }
 
-            eprintln!("Call API Body: {}", serde_json::to_string_pretty(&payload).unwrap());
 
             if is_stream {
                 handle_streaming_response_responses(
@@ -197,8 +196,6 @@ async fn handle_non_streaming_response_responses(
     }
 
     let response_json: serde_json::Value = res.json().await?;
-
-    eprintln!("Response JSON: {}", serde_json::to_string_pretty(&response_json).unwrap());
 
     // Only extract from output.content[].text where type="output_text" - no fallbacks
     // 1) Text content
@@ -408,9 +405,6 @@ async fn handle_streaming_response_responses(
                 }
 
                 if let Some(ev) = event_type {
-                    // Debug: log all events to understand what we're receiving  
-                    eprintln!("DEBUG Streaming event: '{}' with data: '{}'", ev, data_buf.chars().take(200).collect::<String>());
-                    
                     // handle event
                     match ev.as_str() {
                         // Text deltas
@@ -550,7 +544,6 @@ async fn handle_streaming_response_responses(
                                     .or_else(|| v.get("id").and_then(|s| s.as_str()).map(|s| s.to_string())) {
                                     let name = v.get("name").and_then(|s| s.as_str()).map(|s| s.to_string())
                                         .or_else(|| v.get("function").and_then(|f| f.get("name")).and_then(|s| s.as_str()).map(|s| s.to_string()));
-                                    eprintln!("DEBUG function_call.created: id={}, name={:?}", id, name);
                                     tools_map.entry(id).or_insert(ToolAccum { name, arguments: String::new(), call_type: Some("function".to_string()) });
                                 }
                             }
@@ -567,10 +560,7 @@ async fn handle_streaming_response_responses(
                                     }
                                     // delta may be in {"delta":{"arguments":"..."}}
                                     if let Some(delta) = v.get("delta") {
-                                        if let Some(args) = delta.get("arguments").and_then(|a| a.as_str()) {
-                                            eprintln!("DEBUG function_call.delta: id={}, args_delta='{}'", id, args);
-                                            entry.arguments.push_str(args);
-                                        }
+                                        if let Some(args) = delta.get("arguments").and_then(|a| a.as_str()) { entry.arguments.push_str(args); }
                                     }
                                 }
                             }
@@ -583,12 +573,7 @@ async fn handle_streaming_response_responses(
                                     .or_else(|| v.get("id").and_then(|s| s.as_str())) {
                                     let entry = tools_map.entry(id.to_string()).or_insert(ToolAccum { name: None, arguments: String::new(), call_type: Some("function".to_string()) });
                                     // OpenAI Responses API puts the delta directly in the "delta" field
-                                    if let Some(delta) = v.get("delta").and_then(|d| d.as_str()) {
-                                        eprintln!("DEBUG function_call_arguments.delta: id={}, delta='{}'", id, delta);
-                                        entry.arguments.push_str(delta);
-                                    } else {
-                                        eprintln!("DEBUG function_call_arguments.delta: id={}, no delta found in data: '{}'", id, data_buf.chars().take(200).collect::<String>());
-                                    }
+                                    if let Some(delta) = v.get("delta").and_then(|d| d.as_str()) { entry.arguments.push_str(delta); }
                                 }
                             }
                         }
@@ -598,7 +583,6 @@ async fn handle_streaming_response_responses(
                                 if let Some(id) = v.get("item_id").and_then(|s| s.as_str())
                                     .or_else(|| v.get("call_id").and_then(|s| s.as_str()))
                                     .or_else(|| v.get("id").and_then(|s| s.as_str())) {
-                                    eprintln!("DEBUG function_call_arguments.done: id={}, tools_map contains: {:?}", id, tools_map.get(id));
                                     
                                     // Get the complete arguments from the event (fallback to accumulated)
                                     let final_arguments = v.get("arguments").and_then(|a| a.as_str())
@@ -607,7 +591,6 @@ async fn handle_streaming_response_responses(
                                         .unwrap_or_default();
                                     
                                     if let Some(acc) = tools_map.remove(id) {
-                                        eprintln!("DEBUG function_call_arguments.done: removed from tools_map, name={:?}, final_args='{}'", acc.name, final_arguments);
                                         if let Some(name) = acc.name {
                                             let args_map = serde_json::from_str::<serde_json::Value>(&final_arguments)
                                                 .ok()
@@ -622,19 +605,13 @@ async fn handle_streaming_response_responses(
                                                 id: Some(id.to_string()),
                                                 call_type: acc.call_type.or(Some("function".to_string())),
                                             });
-                                            eprintln!("DEBUG function_call_arguments.done: added to function_calls, total count now: {}", function_calls.len());
-                                            
                                             // Send WebSocket update for this function call
                                             if let Some(ref inbox) = inbox_name {
                                                 if let Some(last) = function_calls.last() {
                                                     let _ = super::shared::shared_model_logic::send_tool_ws_update(&ws_manager_trait, Some(inbox.clone()), last).await;
                                                 }
                                             }
-                                        } else {
-                                            eprintln!("DEBUG function_call_arguments.done: WARNING - acc.name is None!");
                                         }
-                                    } else {
-                                        eprintln!("DEBUG function_call_arguments.done: WARNING - id '{}' not found in tools_map!", id);
                                     }
                                 }
                             }
@@ -643,9 +620,7 @@ async fn handle_streaming_response_responses(
                             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&data_buf) {
                                 if let Some(id) = v.get("call_id").and_then(|s| s.as_str())
                                     .or_else(|| v.get("id").and_then(|s| s.as_str())) {
-                                    eprintln!("DEBUG function_call.done: id={}, tools_map contains: {:?}", id, tools_map.get(id));
                                     if let Some(acc) = tools_map.remove(id) {
-                                        eprintln!("DEBUG function_call.done: removed from tools_map, name={:?}, args='{}'", acc.name, acc.arguments);
                                         if let Some(name) = acc.name {
                                             let args_map = serde_json::from_str::<serde_json::Value>(&acc.arguments)
                                                 .ok()
@@ -660,12 +635,7 @@ async fn handle_streaming_response_responses(
                                                 id: Some(id.to_string()),
                                                 call_type: acc.call_type.or(Some("function".to_string())),
                                             });
-                                            eprintln!("DEBUG function_call.done: added to function_calls, total count now: {}", function_calls.len());
-                                        } else {
-                                            eprintln!("DEBUG function_call.done: WARNING - acc.name is None!");
                                         }
-                                    } else {
-                                        eprintln!("DEBUG function_call.done: WARNING - id '{}' not found in tools_map!", id);
                                     }
                                     if let Some(ref inbox) = inbox_name {
                                         if let Some(last) = function_calls.last() {
@@ -679,10 +649,8 @@ async fn handle_streaming_response_responses(
                         "response.completed" => {
                             // finalize any remaining tool calls
                             let ids: Vec<String> = tools_map.keys().cloned().collect();
-                            eprintln!("DEBUG response.completed: finalizing {} remaining tool calls", ids.len());
                             for id in ids {
                                 if let Some(acc) = tools_map.remove(&id) {
-                                    eprintln!("DEBUG response.completed: finalizing tool call id={}, name={:?}, args='{}'", id, acc.name, acc.arguments);
                                     if let Some(name) = acc.name {
                                         let args_map = serde_json::from_str::<serde_json::Value>(&acc.arguments)
                                             .ok()
@@ -697,7 +665,6 @@ async fn handle_streaming_response_responses(
                                             id: Some(id.to_string()),
                                             call_type: acc.call_type.or(Some("function".to_string())),
                                         });
-                                        eprintln!("DEBUG response.completed: added to function_calls, total count now: {}", function_calls.len());
                                     }
                                 }
                             }
@@ -739,7 +706,6 @@ async fn handle_streaming_response_responses(
                                             let name = item.get("name").and_then(|n| n.as_str()).map(|s| s.to_string())
                                                 .or_else(|| item.get("function_name").and_then(|n| n.as_str()).map(|s| s.to_string()))
                                                 .or_else(|| item.get("function").and_then(|f| f.get("name")).and_then(|n| n.as_str()).map(|s| s.to_string()));
-                                            eprintln!("DEBUG output_item.added (function_call): id={}, name={:?}, full_item={}", id, name, serde_json::to_string(&item).unwrap_or_default());
                                             tools_map.entry(id.to_string()).or_insert(ToolAccum { 
                                                 name, 
                                                 arguments: String::new(), 
@@ -760,14 +726,11 @@ async fn handle_streaming_response_responses(
                                             let name = item.get("name").and_then(|n| n.as_str()).map(|s| s.to_string())
                                                 .or_else(|| item.get("function_name").and_then(|n| n.as_str()).map(|s| s.to_string()))
                                                 .or_else(|| item.get("function").and_then(|f| f.get("name")).and_then(|n| n.as_str()).map(|s| s.to_string()));
-                                            eprintln!("DEBUG output_item.done (function_call): id={}, name={:?}, full_item={}", id, name, serde_json::to_string(&item).unwrap_or_default());
-                                            
                                             // Update the tools_map entry with the function name if we found it
                                             if let Some(name) = name {
                                                 if let Some(entry) = tools_map.get_mut(id) {
                                                     if entry.name.is_none() {
                                                         entry.name = Some(name);
-                                                        eprintln!("DEBUG output_item.done: updated function name for id {}", id);
                                                     }
                                                 }
                                             }
@@ -776,10 +739,7 @@ async fn handle_streaming_response_responses(
                                 }
                             }
                         }
-                        _ => {
-                            // Log unmatched events to see what we're missing
-                            eprintln!("DEBUG Unmatched streaming event: '{}' with data: '{}'", ev, data_buf.chars().take(100).collect::<String>());
-                        }
+                        _ => {}
                     }
                 }
             } else {
@@ -788,14 +748,7 @@ async fn handle_streaming_response_responses(
         }
     }
 
-    // Debug: log final accumulated data
-    eprintln!("DEBUG Final streaming result - response_text: '{}', reasoning_text: '{}', function_calls count: {}", 
-              response_text.chars().take(100).collect::<String>(), 
-              reasoning_text.chars().take(100).collect::<String>(), 
-              function_calls.len());
-    if !function_calls.is_empty() {
-        eprintln!("DEBUG Function calls: {:?}", function_calls);
-    }
+    // End of stream
 
     Ok(LLMInferenceResponse::new(
         response_text,
