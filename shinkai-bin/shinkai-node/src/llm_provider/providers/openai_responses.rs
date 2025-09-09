@@ -21,32 +21,6 @@ use futures::StreamExt;
 use std::collections::HashMap;
 use uuid::Uuid;
 
-// Note: This is an initial implementation of OpenAI's new Responses API.
-// It intentionally focuses on non-streaming responses first for stability.
-
-pub fn truncate_image_url_in_payload(payload: &mut JsonValue) {
-    if let Some(messages) = payload.get_mut("input") {
-        if let Some(array) = messages.as_array_mut() {
-            for message in array {
-                if let Some(content) = message.get_mut("content") {
-                    if let Some(array) = content.as_array_mut() {
-                        for item in array {
-                            if let Some(image_url) = item.get_mut("image_url") {
-                                if let Some(url) = image_url.get_mut("url") {
-                                    if let Some(str_url) = url.as_str() {
-                                        let truncated_url = format!("{}...", &str_url[0..20.min(str_url.len())]);
-                                        *url = JsonValue::String(truncated_url);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
 #[allow(clippy::too_many_arguments)]
 pub async fn call_api(
     openai: &OpenAI,
@@ -902,23 +876,121 @@ fn add_options_to_payload_responses(payload: &mut serde_json::Value, config: Opt
     }
 }
 
+pub fn truncate_image_url_in_payload(payload: &mut JsonValue) {
+    if let Some(messages) = payload.get_mut("input") {
+        if let Some(array) = messages.as_array_mut() {
+            for message in array {
+                if let Some(content) = message.get_mut("content") {
+                    if let Some(array) = content.as_array_mut() {
+                        for item in array {
+                            if let Some(image_url) = item.get_mut("image_url") {
+                                if let Some(url) = image_url.get_mut("url") {
+                                    if let Some(str_url) = url.as_str() {
+                                        let truncated_url = format!("{}...", &str_url[0..20.min(str_url.len())]);
+                                        *url = JsonValue::String(truncated_url);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 fn transform_input_messages_for_responses(messages_json: serde_json::Value) -> serde_json::Value {
     // Expected input: Array of chat-style messages: [{role, content, images?, tool_calls? ...}]
     // Output: Array of Responses messages: [{role, content: [ {type: 'input_text'|'input_image'|...} ] }]
+    use std::collections::{HashMap, HashSet};
     let mut out: Vec<serde_json::Value> = Vec::new();
+    // Track assistant-emitted tool calls by id so we can pair them with outputs
+    let mut call_map: HashMap<String, (String, String)> = HashMap::new(); // id -> (name, args)
+    let mut emitted_call_ids: HashSet<String> = HashSet::new();
     if let Some(arr) = messages_json.as_array() {
         for msg in arr {
             let role = msg.get("role").and_then(|r| r.as_str()).unwrap_or("");
-            // Skip legacy 'function' role; transform 'tool' role to 'user' for Responses API
+            // Skip legacy 'function' role
             if role == "function" { continue; }
-            
-            // Responses API only supports: 'assistant', 'system', 'developer', 'user'
-            let normalized_role = if role == "tool" { "user" } else { role };
+
+            // Convert tool role messages into function_call_output items
+            if role == "tool" {
+                if let Some(call_id) = msg.get("tool_call_id").and_then(|v| v.as_str()) {
+                    // Build output string from message content
+                    let mut output_text = String::new();
+                    if let Some(content) = msg.get("content") {
+                        match content {
+                            serde_json::Value::String(s) => {
+                                output_text = s.clone();
+                            }
+                            serde_json::Value::Array(items) => {
+                                for item in items {
+                                    if let Some(itype) = item.get("type").and_then(|t| t.as_str()) {
+                                        match itype {
+                                            "text" | "input_text" | "output_text" => {
+                                                if let Some(t) = item.get("text").and_then(|t| t.as_str()) {
+                                                    if !output_text.is_empty() { output_text.push_str("\n"); }
+                                                    output_text.push_str(t);
+                                                }
+                                            }
+                                            _ => {}
+                                        }
+                                    } else if let Some(t) = item.get("text").and_then(|t| t.as_str()) {
+                                        if !output_text.is_empty() { output_text.push_str("\n"); }
+                                        output_text.push_str(t);
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    // Emit the corresponding function_call (if captured) immediately before the output
+                    if let Some((name, args)) = call_map.get(call_id).cloned() {
+                        out.push(json!({
+                            "type": "function_call",
+                            "call_id": call_id,
+                            "name": name,
+                            "arguments": args,
+                            "status": "completed"
+                        }));
+                        emitted_call_ids.insert(call_id.to_string());
+                    }
+
+                    out.push(json!({
+                        "type": "function_call_output",
+                        "call_id": call_id,
+                        "output": output_text,
+                    }));
+                    continue;
+                }
+                // If no tool_call_id, fall through and treat as a regular message
+            }
+
+            // Capture assistant tool calls for later emission paired with their outputs
+            if role == "assistant" {
+                if let Some(tcs) = msg.get("tool_calls").and_then(|tc| tc.as_array()) {
+                    for tc in tcs {
+                        if let (Some(id), Some(func)) = (
+                            tc.get("id").and_then(|i| i.as_str()),
+                            tc.get("function")
+                        ) {
+                            if let (Some(name), Some(args)) = (
+                                func.get("name").and_then(|n| n.as_str()),
+                                func.get("arguments").and_then(|a| a.as_str())
+                            ) {
+                                call_map.insert(id.to_string(), (name.to_string(), args.to_string()));
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Responses API message roles
+            let normalized_role = role;
 
             let content = msg.get("content");
             if content.is_none() || content == Some(&serde_json::Value::Null) {
-                // Invalid for Responses; skip
+                // No assistant text to emit; function_call will be emitted when tool output arrives
                 continue;
             }
 
@@ -976,33 +1048,23 @@ fn transform_input_messages_for_responses(messages_json: serde_json::Value) -> s
             new_msg.insert("role".into(), json!(normalized_role));
             new_msg.insert("content".into(), serde_json::Value::Array(content_blocks));
 
+            // For non-tool messages, just push the message
+
             out.push(serde_json::Value::Object(new_msg));
 
-            // Handle tool_calls for assistant messages - convert to function_call items
-            if role == "assistant" {
-                if let Some(tool_calls) = msg.get("tool_calls").and_then(|tc| tc.as_array()) {
-                    for tool_call in tool_calls {
-                        if let (Some(id), Some(func)) = (
-                            tool_call.get("id").and_then(|i| i.as_str()),
-                            tool_call.get("function")
-                        ) {
-                            if let (Some(name), Some(args)) = (
-                                func.get("name").and_then(|n| n.as_str()),
-                                func.get("arguments").and_then(|a| a.as_str())
-                            ) {
-                                let function_call_item = json!({
-                                    "type": "function_call",
-                                    "call_id": id,
-                                    "name": name,
-                                    "arguments": args,
-                                    "status": "completed"
-                                });
-                                out.push(function_call_item);
-                            }
-                        }
-                    }
-                }
-            }
+            // function_calls will be emitted when their outputs arrive
+        }
+    }
+    // Emit any function_calls that never received outputs (fallback)
+    for (id, (name, args)) in call_map.into_iter() {
+        if !emitted_call_ids.contains(&id) {
+            out.push(json!({
+                "type": "function_call",
+                "call_id": id,
+                "name": name,
+                "arguments": args,
+                "status": "completed"
+            }));
         }
     }
     serde_json::Value::Array(out)
@@ -1177,7 +1239,7 @@ mod tests {
     }
 
     #[test]
-    fn test_transform_tool_role_to_user() {
+    fn test_transform_tool_to_function_call_output() {
         use super::transform_input_messages_for_responses;
         
         let messages_json = json!([
@@ -1207,19 +1269,11 @@ mod tests {
         let user_message = &result_array[0];
         assert_eq!(user_message.get("role").unwrap(), "user");
         
-        // Check second message (should be transformed from "tool" to "user")
-        let tool_message = &result_array[1];
-        assert_eq!(tool_message.get("role").unwrap(), "user"); // Should be "user", not "tool"
-        
-        // Verify tool_call_id is NOT preserved (not supported by Responses API)
-        assert!(tool_message.get("tool_call_id").is_none());
-        
-        // Verify content is properly transformed
-        let content = tool_message.get("content").unwrap().as_array().unwrap();
-        assert_eq!(content.len(), 1);
-        let text_block = &content[0];
-        assert_eq!(text_block.get("type").unwrap(), "input_text"); // Should be "input_text" since role is now "user"
-        assert_eq!(text_block.get("text").unwrap(), "Tool execution failed with error");
+        // Check second item: function_call_output
+        let fco = &result_array[1];
+        assert_eq!(fco.get("type").and_then(|v| v.as_str()), Some("function_call_output"));
+        assert_eq!(fco.get("call_id").and_then(|v| v.as_str()), Some("call_123"));
+        assert_eq!(fco.get("output").and_then(|v| v.as_str()), Some("Tool execution failed with error"));
     }
 
     #[test]
@@ -1255,7 +1309,7 @@ mod tests {
         let result = transform_input_messages_for_responses(messages_json);
         let result_array = result.as_array().unwrap();
         
-        // Should have: user message, assistant message, function_call item, tool response (as user)
+        // Should have: user message, assistant message, function_call item, function_call_output
         assert_eq!(result_array.len(), 4);
         
         // First: user message
@@ -1271,11 +1325,10 @@ mod tests {
         assert_eq!(function_call.get("name").and_then(|n| n.as_str()), Some("youtube_transcript_extractor_2_0"));
         assert_eq!(function_call.get("status").and_then(|s| s.as_str()), Some("completed"));
         
-        // Fourth: tool response transformed to user role
-        assert_eq!(result_array[3].get("role").and_then(|r| r.as_str()), Some("user"));
-        let tool_content = &result_array[3]["content"].as_array().unwrap()[0];
-        assert_eq!(tool_content.get("type").and_then(|t| t.as_str()), Some("input_text"));
-        assert_eq!(tool_content.get("text").and_then(|t| t.as_str()), Some("Transcript extracted successfully"));
+        // Fourth: function_call_output item
+        assert_eq!(result_array[3].get("type").and_then(|t| t.as_str()), Some("function_call_output"));
+        assert_eq!(result_array[3].get("call_id").and_then(|v| v.as_str()), Some("call_123456"));
+        assert_eq!(result_array[3].get("output").and_then(|t| t.as_str()), Some("Transcript extracted successfully"));
     }
 
     #[test]
