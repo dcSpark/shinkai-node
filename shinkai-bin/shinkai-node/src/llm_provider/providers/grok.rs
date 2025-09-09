@@ -4,7 +4,7 @@ use std::sync::Arc;
 use super::super::error::LLMProviderError;
 use super::shared::openai_api::openai_prepare_messages;
 use super::shared::openai_api_deprecated::{MessageContent, OpenAIResponse};
-use super::shared::shared_model_logic::send_tool_ws_update;
+use super::shared::shared_model_logic::{send_tool_ws_update, send_ws_update};
 use super::LLMService;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
 use crate::llm_provider::llm_stopper::LLMStopper;
@@ -19,10 +19,7 @@ use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{Grok, LLMProviderInterface};
 use shinkai_message_primitives::schemas::prompts::Prompt;
-use shinkai_message_primitives::schemas::ws_types::{
-    WSMessageType, WSMetadata, WSUpdateHandler
-};
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
+use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_sqlite::SqliteManager;
 use tokio::sync::Mutex;
@@ -284,33 +281,15 @@ async fn handle_streaming_response(
                     if message.starts_with("data: ") {
                         let data = &message[6..]; // Skip "data: "
                         if data == "[DONE]" {
-                            if let Some(ref manager) = ws_manager_trait {
-                                if let Some(ref inbox_name) = inbox_name {
-                                    let m = manager.lock().await;
-                                    let inbox_name_string = inbox_name.to_string();
-
-                                    let metadata = WSMetadata {
-                                        id: Some(session_id.clone()),
-                                        is_reasoning: false,
-                                        is_done: function_calls.is_empty(),
-                                        done_reason: Some("streaming completed".to_string()),
-                                        total_duration: None,
-                                        eval_count: None,
-                                    };
-
-                                    let ws_message_type = WSMessageType::Metadata(metadata);
-
-                                    let _ = m
-                                        .queue_message(
-                                            WSTopic::Inbox,
-                                            inbox_name_string,
-                                            response_text.clone(),
-                                            ws_message_type,
-                                            true,
-                                        )
-                                        .await;
-                                }
-                            }
+                            let _ = send_ws_update(
+                                &ws_manager_trait,
+                                inbox_name.clone(),
+                                &session_id,
+                                response_text.clone(),
+                                false, // is_reasoning
+                                function_calls.is_empty(), // is_done
+                                Some("streaming completed".to_string()), // done_reason
+                            ).await;
                             break;
                         } else {
                             match serde_json::from_str::<JsonValue>(data) {
@@ -393,45 +372,26 @@ async fn handle_streaming_response(
                                                     let response_text_chunk = content.as_str().unwrap_or("");
                                                     response_text.push_str(response_text_chunk);
 
-                                                    // Handle WebSocket updates
-                                                    if let Some(ref manager) = ws_manager_trait {
-                                                        if let Some(ref inbox_name) = inbox_name {
-                                                            let m = manager.lock().await;
-                                                            let inbox_name_string = inbox_name.to_string();
+                                                    // Handle WebSocket updates using shared function
+                                                    let is_done = function_calls.is_empty()
+                                                        && data_json
+                                                            .get("done")
+                                                            .and_then(|d| d.as_bool())
+                                                            .unwrap_or(false);
+                                                    let done_reason = data_json
+                                                        .get("done_reason")
+                                                        .and_then(|d| d.as_str())
+                                                        .map(|s| s.to_string());
 
-                                                            let metadata = WSMetadata {
-                                                                id: Some(session_id.clone()),
-                                                                is_reasoning: false,
-                                                                is_done: function_calls.is_empty()
-                                                                    && data_json
-                                                                        .get("done")
-                                                                        .and_then(|d| d.as_bool())
-                                                                        .unwrap_or(false),
-                                                                done_reason: data_json
-                                                                    .get("done_reason")
-                                                                    .and_then(|d| d.as_str())
-                                                                    .map(|s| s.to_string()),
-                                                                total_duration: data_json
-                                                                    .get("total_duration")
-                                                                    .and_then(|d| d.as_u64()),
-                                                                eval_count: data_json
-                                                                    .get("eval_count")
-                                                                    .and_then(|c| c.as_u64()),
-                                                            };
-
-                                                            let ws_message_type = WSMessageType::Metadata(metadata);
-
-                                                            let _ = m
-                                                                .queue_message(
-                                                                    WSTopic::Inbox,
-                                                                    inbox_name_string,
-                                                                    response_text_chunk.to_string(),
-                                                                    ws_message_type,
-                                                                    true,
-                                                                )
-                                                                .await;
-                                                        }
-                                                    }
+                                                    let _ = send_ws_update(
+                                                        &ws_manager_trait,
+                                                        inbox_name.clone(),
+                                                        &session_id,
+                                                        response_text_chunk.to_string(),
+                                                        false, // is_reasoning
+                                                        is_done,
+                                                        done_reason,
+                                                    ).await;
                                                 }
                                             }
                                         }
@@ -462,34 +422,16 @@ async fn handle_streaming_response(
         }
     }
 
-    // Send final WS message to indicate completion
-    if let Some(ref manager) = ws_manager_trait {
-        if let Some(ref inbox_name) = inbox_name {
-            let m = manager.lock().await;
-            let inbox_name_string = inbox_name.to_string();
-
-            let metadata = WSMetadata {
-                id: Some(session_id.clone()),
-                is_reasoning: false,
-                is_done: function_calls.is_empty(),
-                done_reason: Some("finished".to_string()),
-                total_duration: None,
-                eval_count: None,
-            };
-
-            let ws_message_type = WSMessageType::Metadata(metadata);
-
-            let _ = m
-                .queue_message(
-                    WSTopic::Inbox,
-                    inbox_name_string,
-                    response_text.clone(),
-                    ws_message_type,
-                    true,
-                )
-                .await;
-        }
-    }
+    // Send final WS message to indicate completion using shared function
+    let _ = send_ws_update(
+        &ws_manager_trait,
+        inbox_name.clone(),
+        &session_id,
+        response_text.clone(),
+        false, // is_reasoning
+        function_calls.is_empty(), // is_done
+        Some("finished".to_string()), // done_reason
+    ).await;
 
     Ok(LLMInferenceResponse::new(
         response_text,
@@ -508,9 +450,10 @@ async fn handle_non_streaming_response(
     api_key: String,
     inbox_name: Option<InboxName>,
     llm_stopper: Arc<LLMStopper>,
-    _ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     tools: Option<Vec<JsonValue>>,
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
+    let session_id = uuid::Uuid::new_v4().to_string();
     let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(500));
     let response_fut = client
         .post(url)
@@ -531,6 +474,17 @@ async fn handle_non_streaming_response(
                             "Grok job stopped by user request",
                         );
                         llm_stopper.reset(&inbox_name.to_string());
+
+                        // Send final WebSocket update for stopped job
+                        let _ = send_ws_update(
+                            &ws_manager_trait,
+                            Some(inbox_name.clone()),
+                            &session_id,
+                            "".to_string(),
+                            false, // is_reasoning
+                            true, // is_done
+                            Some("stopped by user".to_string()), // done_reason
+                        ).await;
 
                         return Ok(LLMInferenceResponse::new("".to_string(), None, json!({}), Vec::new(), Vec::new(), None));
                     }
@@ -625,6 +579,17 @@ async fn handle_non_streaming_response(
 
                             calls
                         }).collect();
+
+                        // Send final WebSocket update for non-streaming completion
+                        let _ = send_ws_update(
+                            &ws_manager_trait,
+                            inbox_name.clone(),
+                            &session_id,
+                            response_string.clone(),
+                            false, // is_reasoning
+                            true, // is_done
+                            Some("finished".to_string()), // done_reason
+                        ).await;
 
                         return Ok(LLMInferenceResponse::new(
                             response_string,

@@ -911,7 +911,7 @@ impl Node {
                     ),
                     tools: vec![tool_key.clone()], // Only tool is the newly created one
                     debug_mode: false,
-                    config: None,
+                    config: Some(JobConfig::default()),
                     cron_tasks: None,
                     scope: MinimalJobScope::default(),
                     tools_config_override: None,

@@ -781,22 +781,29 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("llama3") || model_type.starts_with("llava-llama3") => 8_000,
             model_type if model_type.starts_with("claude") => 200_000,
             // Groq Production Models
-            model_type if model_type.starts_with("gemma2-9b-it") => 8_192,
+            model_type if model_type.starts_with("groq/compound") => 131_072,
+            model_type if model_type.starts_with("groq/compound-mini") => 131_072,            
+            model_type if model_type.starts_with("llama-3.1-8b-instant") => 131_072,
+            model_type if model_type.starts_with("llama-3.3-70b-versatile") => 131_072,
             model_type if model_type.starts_with("meta-llama/llama-guard-4-12b") => 131_072,
-            model_type if model_type.starts_with("llama-3.3-70b-versatile") => 128_000,
-            model_type if model_type.starts_with("llama-3.1-8b-instant") => 128_000,
-            model_type if model_type.starts_with("llama3-70b-8192") => 8_192,
-            model_type if model_type.starts_with("llama3-8b-8192") => 8_192,
+            model_type if model_type.starts_with("openai/gpt-oss") => 128_000,
             // Groq Preview Models
-            model_type if model_type.starts_with("allam-2-7b") => 4_096,
-            model_type if model_type.starts_with("deepseek-r1-distill-llama-70b") => 128_000,
             model_type if model_type.starts_with("meta-llama/llama-4-maverick-17b-128e-instruct") => 131_072,
             model_type if model_type.starts_with("meta-llama/llama-4-scout-17b-16e-instruct") => 131_072,
             model_type if model_type.starts_with("meta-llama/llama-prompt-guard-2-22m") => 512,
             model_type if model_type.starts_with("meta-llama/llama-prompt-guard-2-86m") => 512,
-            model_type if model_type.starts_with("mistral-saba-24b") => 32_000,
-            model_type if model_type.starts_with("qwen-qwq-32b") => 128_000,
+            model_type if model_type.starts_with("moonshotai/kimi-k2-instruct") => 131_072,
+            model_type if model_type.starts_with("playai-tts") => 8_192,
+            model_type if model_type.starts_with("playai-tts-arabic") => 8_192,
+            model_type if model_type.starts_with("qwen/qwen3-32b") => 131_072,
             // Legacy Groq models (keeping for backward compatibility)
+            model_type if model_type.starts_with("deepseek-r1-distill-llama-70b") => 131_072,
+            model_type if model_type.starts_with("mistral-saba-24b") => 32_000,
+            model_type if model_type.starts_with("qwen-qwq-32b") => 128_000,            
+            model_type if model_type.starts_with("allam-2-7b") => 4_096,            
+            model_type if model_type.starts_with("gemma2-9b-it") => 8_192,
+            model_type if model_type.starts_with("llama3-70b-8192") => 8_192,
+            model_type if model_type.starts_with("llama3-8b-8192") => 8_192,            
             model_type if model_type.starts_with("llama-guard-3-8b") => 8_192,
             model_type if model_type.starts_with("mixtral-8x7b-32768") => 32_768,
             model_type if model_type.starts_with("llama-3.3-70b-specdec") => 8_192,
@@ -891,20 +898,23 @@ impl ModelCapabilitiesManager {
             }
             LLMProviderInterface::Groq(groq) => {
                 // Groq model-specific max output tokens based on official documentation
-                if groq.model_type.starts_with("meta-llama/llama-guard-4-12b") {
-                    128
-                } else if groq.model_type.starts_with("llama-3.3-70b-versatile") {
-                    32_768
-                } else if groq.model_type.starts_with("llama-3.1-8b-instant") {
-                    8_192
-                } else if groq
-                    .model_type
-                    .starts_with("meta-llama/llama-4-maverick-17b-128e-instruct")
-                    || groq.model_type.starts_with("meta-llama/llama-4-scout-17b-16e-instruct")
-                {
-                    8_192
-                } else {
-                    4096 // Default for other Groq models
+                match groq.model_type.as_str() {
+                    model_type if model_type.starts_with("groq/compound") => 8_192,
+                    model_type if model_type.starts_with("groq/compound-mini") => 8_192,
+                    model_type if model_type.starts_with("llama-3.1-8b-instant") => 8_192,
+                    model_type if model_type.starts_with("llama-3.3-70b-versatile") => 32_768,
+                    model_type if model_type.starts_with("meta-llama/llama-guard-4-12b") => 128,
+                    model_type if model_type.starts_with("openai/gpt-oss") => 65_536,
+                    model_type if model_type.starts_with("meta-llama/llama-4-maverick-17b-128e-instruct") => 8_192,
+                    model_type if model_type.starts_with("meta-llama/llama-4-scout-17b-16e-instruct") => 8_192,
+                    model_type if model_type.starts_with("meta-llama/llama-prompt-guard-2-22m") => 512,
+                    model_type if model_type.starts_with("meta-llama/llama-prompt-guard-2-86m") => 512,
+                    model_type if model_type.starts_with("moonshotai/kimi-k2-instruct") => 16_384,
+                    model_type if model_type.starts_with("playai-tts") => 8_192,
+                    model_type if model_type.starts_with("playai-tts-arabic") => 8_192,
+                    model_type if model_type.starts_with("qwen/qwen3-32b") => 40_960,
+                    model_type if model_type.starts_with("deepseek-r1-distill-llama-70b") => 131_072,
+                    _ => 4096,
                 }
             }
             LLMProviderInterface::Grok(grok) => {
@@ -1168,6 +1178,11 @@ impl ModelCapabilitiesManager {
                     || gemini.model_type == "gemini-2.5-flash"
                     || gemini.model_type == "gemini-2.5-pro"
                     || gemini.model_type == "gemini-2.0-flash-exp"
+            },
+            LLMProviderInterface::ShinkaiBackend(shinkai_backend) => {
+                shinkai_backend.model_type().starts_with("FREE_TEXT_INFERENCE")
+                    || shinkai_backend.model_type().starts_with("STANDARD_TEXT_INFERENCE")
+                    || shinkai_backend.model_type().starts_with("PREMIUM_TEXT_INFERENCE")
             }
             _ => false,
         }

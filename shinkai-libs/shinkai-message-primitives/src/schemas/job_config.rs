@@ -62,6 +62,24 @@ impl JobConfig {
             web_search_enabled: None,
         }
     }
+
+    pub fn default() -> JobConfig {
+        JobConfig {
+            custom_system_prompt: None,
+            custom_prompt: None,
+            max_tokens: None,
+            seed: None,
+            other_model_params: None,
+            temperature: Some(0.8),
+            top_k: Some(40),
+            top_p: Some(0.9),
+            stream: Some(true),
+            use_tools: Some(true),
+            thinking: None,
+            reasoning_effort: None,
+            web_search_enabled: None,
+        }
+    }
 }
 
 #[cfg(test)]

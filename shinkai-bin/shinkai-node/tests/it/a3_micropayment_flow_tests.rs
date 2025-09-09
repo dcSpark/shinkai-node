@@ -125,9 +125,6 @@ fn micropayment_flow_test() {
     std::env::set_var("IS_TESTING", "1");
     std::env::set_var("ADD_TESTING_NETWORK_ECHO", "true");
     std::env::set_var("ADD_TESTING_EXTERNAL_NETWORK_ECHO", "true");
-    std::env::set_var("X402_PAY_TO", "0x1Ae4cAa1be596f94f03a63203E1Dc5fD2856edd1");
-    std::env::set_var("X402_PRIVATE_KEY", "0x2a5cd0fff014d6277bf35dda98e2ad8d8d9187c796fb85ff13f1e0ec771c3425");
-    std::env::set_var("RESTORE_WALLET_MNEMONICS_NODE2", "scout nation glad ignore large coral basic police budget vital protect chaos");
 
     setup();
     let rt = Runtime::new().unwrap();
