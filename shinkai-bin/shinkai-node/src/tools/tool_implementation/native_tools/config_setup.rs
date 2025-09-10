@@ -388,7 +388,7 @@ mod tests {
             },
             true,
         );
-        initial_tool.set_embedding(vec![0.0; 384]);
+        initial_tool.set_embedding(vec![0.0; EmbeddingModelType::default().vector_dimensions().unwrap()]);
         initial_tool
     }
 

@@ -1491,9 +1491,9 @@ impl SqliteManager {
         Ok(embedding_function.request_embeddings(prompt).await?)
     }
 
-    // Utility function to generate a vector of length 384 filled with a specified value
+    // Utility function to generate a vector filled with a specified value, using the default embedding model's dimensions
     pub fn generate_vector_for_testing(value: f32) -> Vec<f32> {
-        vec![value; 384]
+        vec![value; EmbeddingModelType::default().vector_dimensions().unwrap()]
     }
 
     pub fn get_needs_global_reset(
