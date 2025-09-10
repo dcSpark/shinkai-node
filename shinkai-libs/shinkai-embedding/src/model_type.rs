@@ -127,7 +127,7 @@ mod tests {
     fn test_parse_snowflake_arctic_embed_xs() {
         let model_str = "snowflake-arctic-embed:xs";
         let parsed_model = OllamaTextEmbeddingsInference::from_string(model_str);
-        assert_eq!(parsed_model, Ok(OllamaTextEmbeddingsInference::EmbeddingGemma300M));
+        assert_eq!(parsed_model, Ok(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM));
     }
 
     #[test]
@@ -151,7 +151,7 @@ mod tests {
         assert_eq!(
             parsed_model,
             Ok(EmbeddingModelType::OllamaTextEmbeddingsInference(
-                OllamaTextEmbeddingsInference::EmbeddingGemma300M
+                OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM
             ))
         );
     }

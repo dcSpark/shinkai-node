@@ -1227,12 +1227,17 @@ impl SqliteManager {
     // New method to get the embedding model type
     pub fn get_default_embedding_model(&self) -> Result<EmbeddingModelType, SqliteManagerError> {
         let conn = self.get_connection()?;
-        Ok(
-            conn.query_row("SELECT model_type FROM embedding_model_type LIMIT 1;", [], |row| {
-                let model_type_str: String = row.get(0)?;
-                EmbeddingModelType::from_string(&model_type_str).map_err(|_| rusqlite::Error::InvalidQuery)
-            })?,
-        )
+        conn.query_row("SELECT model_type FROM embedding_model_type LIMIT 1;", [], |row| {
+            let model_type_str: String = row.get(0)?;
+            EmbeddingModelType::from_string(&model_type_str).map_err(|_| rusqlite::Error::InvalidQuery)
+        })
+        .map_err(|e| {
+            if e == rusqlite::Error::QueryReturnedNoRows {
+                SqliteManagerError::DataNotFound
+            } else {
+                SqliteManagerError::DatabaseError(e)
+            }
+        })
     }
 
     // Check if embeddings migration is needed by comparing current model with stored model
