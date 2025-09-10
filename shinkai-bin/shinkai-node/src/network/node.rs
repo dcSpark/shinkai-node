@@ -443,7 +443,25 @@ impl Node {
             callback_manager.update_cron_manager(cron_manager.clone());
         }
 
+        // Perform embedding migration if needed (BEFORE updating DB with current model)
+        {
+            let current_model = {
+                let default_model_guard = self.default_embedding_model.lock().await;
+                default_model_guard.clone()
+            };
+            
+            if let Err(e) = self.db.migrate_embeddings_to_new_model(&self.embedding_generator, &current_model).await {
+                shinkai_log(
+                    ShinkaiLogOption::Node,
+                    ShinkaiLogLevel::Error,
+                    &format!("Embedding migration failed: {e:?}"),
+                );
+                // Note: We continue even if migration fails to allow the node to start
+            }
+        }
+        
         self.initialize_embedding_models().await?;
+        
         {
             // Starting the WebSocket server
             if let (Some(ws_manager), Some(ws_address)) = (&self.ws_manager, self.ws_address) {

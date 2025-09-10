@@ -535,9 +535,7 @@ mod tests {
         let temp_file = NamedTempFile::new().unwrap();
         let db_path = std::path::PathBuf::from(temp_file.path());
         let api_url = String::new();
-        let model_type = EmbeddingModelType::OllamaTextEmbeddingsInference(
-            OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM
-        );
+        let model_type = EmbeddingModelType::default();
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }

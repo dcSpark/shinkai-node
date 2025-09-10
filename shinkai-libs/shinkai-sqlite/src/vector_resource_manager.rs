@@ -709,7 +709,7 @@
 //         let db_path = PathBuf::from(temp_file.path());
 //         let api_url = String::new();
 //         let model_type =
-//             EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
+//             EmbeddingModelType::default();
 
 //         SqliteManager::new(db_path, api_url, model_type).unwrap()
 //     }

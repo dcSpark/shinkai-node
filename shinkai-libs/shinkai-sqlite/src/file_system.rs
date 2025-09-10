@@ -57,9 +57,10 @@ impl SqliteManager {
         )?;
 
         // Create our new virtual table for chunk embeddings using sqlite-vec
+        // Using 768 dimensions as default for EmbeddingGemma300M - will be recreated during migration if needed
         conn.execute(
             "CREATE VIRTUAL TABLE IF NOT EXISTS chunk_vec USING vec0(
-                embedding float[384],
+                embedding float[768],
                 parsed_file_id INTEGER,
                 +chunk_id INTEGER  -- Normal column recognized as chunk_id
             );",
@@ -613,7 +614,7 @@ mod tests {
         let db_path = PathBuf::from(temp_file.path());
         let api_url = String::new();
         let model_type =
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM);
+            EmbeddingModelType::default();
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }

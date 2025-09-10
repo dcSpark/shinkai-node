@@ -175,7 +175,7 @@
 //         let db_path = PathBuf::from(temp_file.path());
 //         let api_url = String::new();
 //         let model_type =
-//             EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
+//             EmbeddingModelType::default();
 
 //         std::env::set_var("NODE_STORAGE_PATH", db_path.parent().unwrap());
 

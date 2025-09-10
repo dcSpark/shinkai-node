@@ -2,7 +2,7 @@ use std::env;
 use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
 
-use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+use shinkai_embedding::model_type::EmbeddingModelType;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
     LLMProviderInterface, SerializedLLMProvider
 };
@@ -169,11 +169,7 @@ pub fn fetch_node_environment() -> NodeEnvironment {
     }
 
     // Fetch the default embedding model
-    let default_embedding_model: EmbeddingModelType = env::var("DEFAULT_EMBEDDING_MODEL")
-        .map(|s| EmbeddingModelType::from_string(&s).expect("Failed to parse DEFAULT_EMBEDDING_MODEL"))
-        .unwrap_or_else(|_| {
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM)
-        });
+    let default_embedding_model: EmbeddingModelType = EmbeddingModelType::default();
 
     // Fetch the supported embedding models
     let supported_embedding_models: Vec<EmbeddingModelType> = env::var("SUPPORTED_EMBEDDING_MODELS")
@@ -183,9 +179,7 @@ pub fn fetch_node_environment() -> NodeEnvironment {
                 .collect()
         })
         .unwrap_or_else(|_| {
-            vec![EmbeddingModelType::OllamaTextEmbeddingsInference(
-                OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM,
-            )]
+            vec![EmbeddingModelType::default()]
         });
 
     // Fetch the API_V2_KEY environment variable
