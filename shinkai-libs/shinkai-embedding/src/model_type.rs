@@ -83,6 +83,8 @@ impl OllamaTextEmbeddingsInference {
         match self {
             Self::JinaEmbeddingsV2BaseEs => 1024,
             Self::EmbeddingGemma300M => 2048,
+            Self::AllMiniLML6v2 => 512,
+            Self::SnowflakeArcticEmbedM => 512,
             _ => 512,
         }
     }
@@ -97,6 +99,7 @@ impl OllamaTextEmbeddingsInference {
     pub fn vector_dimensions(&self) -> Result<usize, ShinkaiEmbeddingError> {
         match self {
             Self::SnowflakeArcticEmbedM => Ok(384),
+            Self::AllMiniLML6v2 => Ok(384),
             Self::JinaEmbeddingsV2BaseEs => Ok(768),
             Self::EmbeddingGemma300M => Ok(768),
             _ => Err(ShinkaiEmbeddingError::UnimplementedModelDimensions(format!(
