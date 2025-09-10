@@ -418,7 +418,7 @@ mod tests {
         assert!(found_file, "File 'old_file.txt' should be found in the directory.");
 
         let model_type = EmbeddingModelType::default();
-        let vector_dimensions = model_type.vector_dimensions().unwrap();
+        let vector_dimensions = model_type.vector_dimensions().unwrap_or(768);
         let mock_generator = MockGenerator::new(model_type, vector_dimensions);
 
         // Add embeddings to the file

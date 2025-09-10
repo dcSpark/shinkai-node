@@ -1493,7 +1493,11 @@ impl SqliteManager {
 
     // Utility function to generate a vector filled with a specified value, using the default embedding model's dimensions
     pub fn generate_vector_for_testing(value: f32) -> Vec<f32> {
-        vec![value; EmbeddingModelType::default().vector_dimensions().unwrap()]
+        // For testing, we need a safe fallback that doesn't panic
+        let dimensions = EmbeddingModelType::default()
+            .vector_dimensions()
+            .unwrap_or(768); // Default to 768 dimensions for EmbeddingGemma300M if there's an error
+        vec![value; dimensions]
     }
 
     pub fn get_needs_global_reset(

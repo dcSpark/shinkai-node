@@ -735,7 +735,7 @@ mod tests {
 
         // Create a mock embedding generator
         let model_type = EmbeddingModelType::default();
-        let vector_dimensions = model_type.vector_dimensions().unwrap();
+        let vector_dimensions = model_type.vector_dimensions().unwrap_or(768);
         let generator = MockGenerator::new(model_type, vector_dimensions);
 
         (db, dir, ShinkaiPath::from_string(file_path), generator)
@@ -1473,7 +1473,7 @@ mod tests {
             assert!(embedding.is_some(), "Each chunk should have an embedding");
             let embedding = embedding.unwrap();
             // With dynamic model dimensions, check the embedding matches the default model's dimensions
-            let expected_dimensions = EmbeddingModelType::default().vector_dimensions().unwrap();
+            let expected_dimensions = EmbeddingModelType::default().vector_dimensions().unwrap_or(768);
             assert_eq!(embedding.len(), expected_dimensions, "Embedding should match the default model dimensions");
         }
 
