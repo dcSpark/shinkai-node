@@ -217,7 +217,7 @@ mod tests {
     use super::*;
     use serial_test::serial;
     use shinkai_embedding::mock_generator::MockGenerator;
-    use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+    use shinkai_embedding::model_type::EmbeddingModelType;
     use shinkai_message_primitives::schemas::shinkai_fs::ShinkaiFileChunk;
     use std::fs::{self, File};
     use std::io::Read;
@@ -417,10 +417,9 @@ mod tests {
 
         assert!(found_file, "File 'old_file.txt' should be found in the directory.");
 
-        let mock_generator = MockGenerator::new(
-            EmbeddingModelType::default(),
-            10,
-        );
+        let model_type = EmbeddingModelType::default();
+        let vector_dimensions = model_type.vector_dimensions().unwrap();
+        let mock_generator = MockGenerator::new(model_type, vector_dimensions);
 
         // Add embeddings to the file
         let _ = ShinkaiFileManager::process_embeddings_for_file(
