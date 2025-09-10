@@ -64,11 +64,7 @@ impl TestConfig {
 }
 
 pub fn default_embedding_model() -> EmbeddingModelType {
-    env::var("DEFAULT_EMBEDDING_MODEL")
-        .map(|s| EmbeddingModelType::from_string(&s).expect("Failed to parse DEFAULT_EMBEDDING_MODEL"))
-        .unwrap_or_else(|_| {
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM)
-        })
+    EmbeddingModelType::default()
 }
 
 pub fn supported_embedding_models() -> Vec<EmbeddingModelType> {
@@ -79,9 +75,7 @@ pub fn supported_embedding_models() -> Vec<EmbeddingModelType> {
                 .collect()
         })
         .unwrap_or_else(|_| {
-            vec![EmbeddingModelType::OllamaTextEmbeddingsInference(
-                OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM,
-            )]
+            vec![EmbeddingModelType::default()]
         })
 }
 

@@ -467,14 +467,16 @@ mod tests {
         let db_path = PathBuf::from(temp_file.path());
         let api_url = String::new();
         let model_type =
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM);
+            EmbeddingModelType::default();
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }
 
-    // Utility function to generate a vector of length 384 filled with a specified value
+    // Utility function to generate a vector filled with a specified value, using the default embedding model's dimensions
     fn generate_vector(value: f32) -> Vec<f32> {
-        vec![value; 384]
+        use shinkai_embedding::model_type::EmbeddingModelType;
+        let dimensions = EmbeddingModelType::default().vector_dimensions().unwrap_or(768);
+        vec![value; dimensions]
     }
 
     #[tokio::test]

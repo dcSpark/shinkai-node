@@ -56,10 +56,12 @@ impl std::fmt::Debug for SqliteManager {
 
 impl SqliteManager {
     // Creates a new SqliteManager with a connection pool to the specified database path
+    // Note: model_type parameter is kept for API compatibility but is no longer used in constructor.
+    // The embedding model is now initialized later during node startup migration phase.
     pub fn new<P: AsRef<Path>>(
         db_path: P,
         api_url: String,
-        model_type: EmbeddingModelType,
+        _model_type: EmbeddingModelType,
     ) -> Result<Self, SqliteManagerError> {
         // Register the sqlite-vec extension
         unsafe {
@@ -139,7 +141,6 @@ impl SqliteManager {
             eprintln!("Error synchronizing Prompts FTS table: {}", e);
         }
 
-        manager.update_default_embedding_model(model_type)?;
         Self::migrate_agents_full_identity_name(&manager)?;
         Ok(manager)
     }
@@ -216,6 +217,7 @@ impl SqliteManager {
         Self::migrate_tools_table(conn)?;
         Self::migrate_invoice_requests_table(conn)?;
         Self::migrate_mcp_servers_table(conn)?;
+        Self::migrate_embedding_model_type_table(conn)?;
         Ok(())
     }
 
@@ -744,12 +746,23 @@ impl SqliteManager {
     // New method to initialize prompt vector and associated information tables
     fn initialize_prompt_vector_tables(conn: &rusqlite::Connection) -> Result<()> {
         // Create a table for prompt vector embeddings
+        // Using dynamic dimensions based on default embedding model
+        let default_model = EmbeddingModelType::default();
+        let vector_dimensions = default_model.vector_dimensions()
+            .map_err(|e| rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(1), 
+                Some(format!("Cannot get vector dimensions: {}", e))
+            ))?;
+        
         conn.execute(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS prompt_vec_items USING vec0(
-                embedding float[384],
-                is_enabled integer,
-                +prompt_id integer
-            )",
+            &format!(
+                "CREATE VIRTUAL TABLE IF NOT EXISTS prompt_vec_items USING vec0(
+                    embedding float[{}],
+                    is_enabled integer,
+                    +prompt_id integer
+                )",
+                vector_dimensions
+            ),
             [],
         )?;
 
@@ -801,13 +814,24 @@ impl SqliteManager {
     // New method to initialize the tools vector table
     fn initialize_tools_vector_table(conn: &rusqlite::Connection) -> Result<()> {
         // Create a table for tool vector embeddings with metadata columns
+        // Using dynamic dimensions based on default embedding model
+        let default_model = EmbeddingModelType::default();
+        let vector_dimensions = default_model.vector_dimensions()
+            .map_err(|e| rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(1), 
+                Some(format!("Cannot get vector dimensions: {}", e))
+            ))?;
+        
         conn.execute(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS shinkai_tools_vec_items USING vec0(
-                embedding float[384],
-                is_enabled integer,
-                is_network integer,
-                +tool_key text
-            )",
+            &format!(
+                "CREATE VIRTUAL TABLE IF NOT EXISTS shinkai_tools_vec_items USING vec0(
+                    embedding float[{}],
+                    is_enabled integer,
+                    is_network integer,
+                    +tool_key text
+                )",
+                vector_dimensions
+            ),
             [],
         )?;
 
@@ -1164,15 +1188,275 @@ impl SqliteManager {
         Ok(())
     }
 
+    fn migrate_embedding_model_type_table(conn: &rusqlite::Connection) -> Result<()> {
+        // Remove the migrated column if it exists (from old implementation)
+        let columns = conn
+            .prepare("PRAGMA table_info(embedding_model_type)")?
+            .query_map([], |row| {
+                let name: String = row.get(1)?;
+                Ok(name)
+            })?
+            .collect::<Result<Vec<String>, _>>()?;
+
+        // If the migrated column exists, we need to recreate the table without it
+        if columns.contains(&"migrated".to_string()) {
+            // Create new table without migrated column
+            conn.execute(
+                "CREATE TABLE embedding_model_type_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    model_type TEXT NOT NULL UNIQUE
+                );",
+                [],
+            )?;
+            
+            // Copy data from old table (excluding migrated column)
+            conn.execute(
+                "INSERT INTO embedding_model_type_new (id, model_type) 
+                 SELECT id, model_type FROM embedding_model_type;",
+                [],
+            )?;
+            
+            // Drop old table and rename new one
+            conn.execute("DROP TABLE embedding_model_type;", [])?;
+            conn.execute("ALTER TABLE embedding_model_type_new RENAME TO embedding_model_type;", [])?;
+        }
+
+        Ok(())
+    }
+
     // New method to get the embedding model type
     pub fn get_default_embedding_model(&self) -> Result<EmbeddingModelType, SqliteManagerError> {
         let conn = self.get_connection()?;
-        Ok(
-            conn.query_row("SELECT model_type FROM embedding_model_type LIMIT 1;", [], |row| {
+        conn.query_row("SELECT model_type FROM embedding_model_type LIMIT 1;", [], |row| {
+            let model_type_str: String = row.get(0)?;
+            EmbeddingModelType::from_string(&model_type_str).map_err(|_| rusqlite::Error::InvalidQuery)
+        })
+        .map_err(|e| {
+            if e == rusqlite::Error::QueryReturnedNoRows {
+                SqliteManagerError::DataNotFound
+            } else {
+                SqliteManagerError::DatabaseError(e)
+            }
+        })
+    }
+
+    // Check if embeddings migration is needed by comparing current model with stored model
+    pub fn is_embedding_migration_needed(&self, current_model: &EmbeddingModelType) -> Result<bool, SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let stored_model_result = conn.query_row(
+            "SELECT model_type FROM embedding_model_type LIMIT 1;",
+            [],
+            |row| {
                 let model_type_str: String = row.get(0)?;
                 EmbeddingModelType::from_string(&model_type_str).map_err(|_| rusqlite::Error::InvalidQuery)
-            })?,
-        )
+            },
+        );
+
+        match stored_model_result {
+            Ok(stored_model) => {
+                // Compare the stored model with the current model
+                Ok(stored_model != *current_model)
+            },
+            Err(rusqlite::Error::QueryReturnedNoRows) => {
+                // No stored model means we need to initialize/migrate
+                Ok(true)
+            },
+            Err(e) => Err(SqliteManagerError::DatabaseError(e)),
+        }
+    }
+
+    // Perform complete embedding migration to new model
+    pub async fn migrate_embeddings_to_new_model(
+        &self,
+        embedding_generator: &dyn shinkai_embedding::embedding_generator::EmbeddingGenerator,
+        new_model_type: &EmbeddingModelType,
+    ) -> Result<(), SqliteManagerError> {
+        use shinkai_message_primitives::schemas::custom_prompt::CustomPrompt;
+        use bytemuck::cast_slice;
+        use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+        
+        shinkai_log(
+            ShinkaiLogOption::Database,
+            ShinkaiLogLevel::Info,
+            &format!("Starting embedding migration to new model: {}", new_model_type),
+        );
+
+        if !self.is_embedding_migration_needed(new_model_type)? {
+            shinkai_log(
+                ShinkaiLogOption::Database,
+                ShinkaiLogLevel::Info,
+                "Embedding migration not needed, skipping",
+            );
+            return Ok(());
+        }
+
+        // Step 1: Drop and recreate vector tables with new dimensions
+        let vector_dimensions = new_model_type.vector_dimensions()
+            .map_err(|e| SqliteManagerError::SerializationError(format!("Cannot get vector dimensions for new model: {}", e)))?;
+        
+        shinkai_log(
+            ShinkaiLogOption::Database,
+            ShinkaiLogLevel::Info,
+            &format!("Recreating vector tables with {} dimensions", vector_dimensions),
+        );
+
+        // Drop and recreate vector tables synchronously (no await points)
+        {
+            let conn = self.get_connection()?;
+            // Drop existing vector tables
+            conn.execute("DROP TABLE IF EXISTS prompt_vec_items;", [])?;
+            conn.execute("DROP TABLE IF EXISTS shinkai_tools_vec_items;", [])?;
+            conn.execute("DROP TABLE IF EXISTS chunk_vec;", [])?;
+
+            // Recreate vector tables with new model's dimensions
+            conn.execute(
+                &format!(
+                    "CREATE VIRTUAL TABLE prompt_vec_items USING vec0(
+                        embedding float[{}],
+                        is_enabled integer,
+                        +prompt_id integer
+                    )",
+                    vector_dimensions
+                ),
+                [],
+            )?;
+
+            conn.execute(
+                &format!(
+                    "CREATE VIRTUAL TABLE shinkai_tools_vec_items USING vec0(
+                        embedding float[{}],
+                        is_enabled integer,
+                        is_network integer,
+                        +tool_key text
+                    )",
+                    vector_dimensions
+                ),
+                [],
+            )?;
+
+            conn.execute(
+                &format!(
+                    "CREATE VIRTUAL TABLE chunk_vec USING vec0(
+                        embedding float[{}],
+                        parsed_file_id INTEGER,
+                        +chunk_id INTEGER
+                    )",
+                    vector_dimensions
+                ),
+                [],
+            )?;
+        }
+
+        // Step 2: Regenerate embeddings for prompts
+        shinkai_log(
+            ShinkaiLogOption::Database,
+            ShinkaiLogLevel::Info,
+            "Regenerating embeddings for prompts",
+        );
+
+        let prompts: Vec<CustomPrompt> = {
+            let conn = self.get_connection()?;
+            let mut stmt = conn.prepare("SELECT id, name, is_system, is_enabled, version, prompt, is_favorite FROM shinkai_prompts")?;
+            let prompt_iter = stmt.query_map([], |row| {
+                Ok(CustomPrompt {
+                    rowid: Some(row.get(0)?),
+                    name: row.get(1)?,
+                    is_system: row.get::<_, i32>(2)? != 0,
+                    is_enabled: row.get::<_, i32>(3)? != 0,
+                    version: row.get(4)?,
+                    prompt: row.get(5)?,
+                    is_favorite: row.get::<_, i32>(6)? != 0,
+                })
+            })?;
+            prompt_iter.collect::<Result<Vec<_>, _>>()?
+        };
+
+        for prompt in prompts {
+            if let Some(id) = prompt.rowid {
+                let embedding = embedding_generator.generate_embedding_default(&prompt.prompt).await
+                    .map_err(|e| SqliteManagerError::SerializationError(format!("Embedding generation failed: {}", e)))?;
+                
+                let conn = self.get_connection()?;
+                conn.execute(
+                    "INSERT INTO prompt_vec_items (prompt_id, embedding, is_enabled) VALUES (?1, ?2, ?3)",
+                    rusqlite::params![id, cast_slice(&embedding), prompt.is_enabled as i32],
+                )?;
+            }
+        }
+
+        // Step 3: Regenerate embeddings for tools
+        shinkai_log(
+            ShinkaiLogOption::Database,
+            ShinkaiLogLevel::Info,
+            "Regenerating embeddings for tools",
+        );
+
+        let tools: Vec<(String, String, bool, bool)> = {
+            let conn = self.get_connection()?;
+            let mut stmt = conn.prepare("SELECT tool_key, embedding_seo, is_enabled, is_network FROM shinkai_tools")?;
+            let tool_iter = stmt.query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?, // tool_key
+                    row.get::<_, String>(1)?, // embedding_seo
+                    row.get::<_, i32>(2)? != 0, // is_enabled
+                    row.get::<_, i32>(3)? != 0, // is_network
+                ))
+            })?;
+            tool_iter.collect::<Result<Vec<_>, _>>()?
+        };
+
+        for (tool_key, embedding_seo, is_enabled, is_network) in tools {
+            let embedding = embedding_generator.generate_embedding_default(&embedding_seo).await
+                .map_err(|e| SqliteManagerError::SerializationError(format!("Tool embedding generation failed: {}", e)))?;
+            
+            let conn = self.get_connection()?;
+            conn.execute(
+                "INSERT INTO shinkai_tools_vec_items (tool_key, embedding, is_enabled, is_network) VALUES (?1, ?2, ?3, ?4)",
+                rusqlite::params![tool_key, cast_slice(&embedding), is_enabled as i32, is_network as i32],
+            )?;
+        }
+
+        // Step 4: Regenerate embeddings for file chunks
+        shinkai_log(
+            ShinkaiLogOption::Database,
+            ShinkaiLogLevel::Info,
+            "Regenerating embeddings for file chunks",
+        );
+
+        let chunks: Vec<(i64, i64, String)> = {
+            let conn = self.get_connection()?;
+            let mut stmt = conn.prepare("SELECT id, parsed_file_id, chunk FROM chunks")?;
+            let chunk_iter = stmt.query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?, // id (chunk_id)
+                    row.get::<_, i64>(1)?, // parsed_file_id
+                    row.get::<_, String>(2)?, // chunk (text content)
+                ))
+            })?;
+            chunk_iter.collect::<Result<Vec<_>, _>>()?
+        };
+
+        for (chunk_id, parsed_file_id, text) in chunks {
+            let embedding = embedding_generator.generate_embedding_default(&text).await
+                .map_err(|e| SqliteManagerError::SerializationError(format!("Chunk embedding generation failed: {}", e)))?;
+            
+            let conn = self.get_connection()?;
+            conn.execute(
+                "INSERT INTO chunk_vec (chunk_id, parsed_file_id, embedding) VALUES (?1, ?2, ?3)",
+                rusqlite::params![chunk_id, parsed_file_id, cast_slice(&embedding)],
+            )?;
+        }
+
+        // Step 5: Update the database with the new model type
+        self.update_default_embedding_model(new_model_type.clone())?;
+
+        shinkai_log(
+            ShinkaiLogOption::Database,
+            ShinkaiLogLevel::Info,
+            "Embedding migration completed successfully",
+        );
+
+        Ok(())
     }
 
     // Returns a connection from the pool
@@ -1207,9 +1491,13 @@ impl SqliteManager {
         Ok(embedding_function.request_embeddings(prompt).await?)
     }
 
-    // Utility function to generate a vector of length 384 filled with a specified value
+    // Utility function to generate a vector filled with a specified value, using the default embedding model's dimensions
     pub fn generate_vector_for_testing(value: f32) -> Vec<f32> {
-        vec![value; 384]
+        // For testing, we need a safe fallback that doesn't panic
+        let dimensions = EmbeddingModelType::default()
+            .vector_dimensions()
+            .unwrap_or(768); // Default to 768 dimensions for EmbeddingGemma300M if there's an error
+        vec![value; dimensions]
     }
 
     pub fn get_needs_global_reset(
@@ -1287,7 +1575,6 @@ impl SqliteManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shinkai_embedding::model_type::OllamaTextEmbeddingsInference;
     use std::path::PathBuf;
     use std::sync::{Arc, RwLock};
     use std::thread;
@@ -1299,7 +1586,7 @@ mod tests {
         let db_path = PathBuf::from(temp_file.path());
         let api_url = String::new();
         let model_type =
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM);
+            EmbeddingModelType::default();
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }

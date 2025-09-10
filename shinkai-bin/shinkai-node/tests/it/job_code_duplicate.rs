@@ -66,11 +66,11 @@ fn tool_duplicate_tests() {
             let tools_ready = wait_for_default_tools(
                 node1_commands_sender.clone(),
                 node1_api_key.clone(),
-                120, // Wait up to 120 seconds
+                300, // Wait up to 300 seconds
             )
             .await
             .expect("Failed to check for default tools");
-            assert!(tools_ready, "Default tools should be ready within 30 seconds");
+            assert!(tools_ready, "Default tools should be ready within 300 seconds");
 
             {
                 // Register an Agent

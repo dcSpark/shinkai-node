@@ -322,7 +322,7 @@ mod tests {
         let db_path = PathBuf::from(temp_file.path());
         let api_url = String::new();
         let model_type =
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM);
+            EmbeddingModelType::default();
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }
@@ -388,7 +388,7 @@ mod tests {
             },
             true,
         );
-        initial_tool.set_embedding(vec![0.0; 384]);
+        initial_tool.set_embedding(vec![0.0; EmbeddingModelType::default().vector_dimensions().unwrap_or(768)]);
         initial_tool
     }
 

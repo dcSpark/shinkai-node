@@ -1002,7 +1002,7 @@ mod tests {
     //     let fs_db_path = format!("db_tests/{}", "vector_fs");
     //     let profile_list = vec![default_test_profile()];
     //     let supported_embedding_models = vec![EmbeddingModelType::OllamaTextEmbeddingsInference(
-    //         OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M,
+    //         OllamaTextEmbeddingsInference::EmbeddingGemma300M,
     //     )];
 
     //     VectorFS::new(
