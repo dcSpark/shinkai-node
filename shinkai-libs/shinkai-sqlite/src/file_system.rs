@@ -57,13 +57,23 @@ impl SqliteManager {
         )?;
 
         // Create our new virtual table for chunk embeddings using sqlite-vec
-        // Using 768 dimensions as default for EmbeddingGemma300M - will be recreated during migration if needed
+        // Using dynamic dimensions based on default embedding model
+        let default_model = shinkai_embedding::model_type::EmbeddingModelType::default();
+        let vector_dimensions = default_model.vector_dimensions()
+            .map_err(|e| rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(1), 
+                Some(format!("Cannot get vector dimensions: {}", e))
+            ))?;
+        
         conn.execute(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS chunk_vec USING vec0(
-                embedding float[768],
-                parsed_file_id INTEGER,
-                +chunk_id INTEGER  -- Normal column recognized as chunk_id
-            );",
+            &format!(
+                "CREATE VIRTUAL TABLE IF NOT EXISTS chunk_vec USING vec0(
+                    embedding float[{}],
+                    parsed_file_id INTEGER,
+                    +chunk_id INTEGER  -- Normal column recognized as chunk_id
+                );",
+                vector_dimensions
+            ),
             [],
         )?;
 
@@ -605,7 +615,7 @@ impl SqliteManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+    use shinkai_embedding::model_type::EmbeddingModelType;
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
 

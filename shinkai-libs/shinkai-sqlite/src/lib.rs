@@ -746,13 +746,23 @@ impl SqliteManager {
     // New method to initialize prompt vector and associated information tables
     fn initialize_prompt_vector_tables(conn: &rusqlite::Connection) -> Result<()> {
         // Create a table for prompt vector embeddings
-        // Using 768 dimensions as default for EmbeddingGemma300M - will be recreated during migration if needed
+        // Using dynamic dimensions based on default embedding model
+        let default_model = EmbeddingModelType::default();
+        let vector_dimensions = default_model.vector_dimensions()
+            .map_err(|e| rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(1), 
+                Some(format!("Cannot get vector dimensions: {}", e))
+            ))?;
+        
         conn.execute(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS prompt_vec_items USING vec0(
-                embedding float[768],
-                is_enabled integer,
-                +prompt_id integer
-            )",
+            &format!(
+                "CREATE VIRTUAL TABLE IF NOT EXISTS prompt_vec_items USING vec0(
+                    embedding float[{}],
+                    is_enabled integer,
+                    +prompt_id integer
+                )",
+                vector_dimensions
+            ),
             [],
         )?;
 
@@ -804,14 +814,24 @@ impl SqliteManager {
     // New method to initialize the tools vector table
     fn initialize_tools_vector_table(conn: &rusqlite::Connection) -> Result<()> {
         // Create a table for tool vector embeddings with metadata columns
-        // Using 768 dimensions as default for EmbeddingGemma300M - will be recreated during migration if needed
+        // Using dynamic dimensions based on default embedding model
+        let default_model = EmbeddingModelType::default();
+        let vector_dimensions = default_model.vector_dimensions()
+            .map_err(|e| rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(1), 
+                Some(format!("Cannot get vector dimensions: {}", e))
+            ))?;
+        
         conn.execute(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS shinkai_tools_vec_items USING vec0(
-                embedding float[768],
-                is_enabled integer,
-                is_network integer,
-                +tool_key text
-            )",
+            &format!(
+                "CREATE VIRTUAL TABLE IF NOT EXISTS shinkai_tools_vec_items USING vec0(
+                    embedding float[{}],
+                    is_enabled integer,
+                    is_network integer,
+                    +tool_key text
+                )",
+                vector_dimensions
+            ),
             [],
         )?;
 
@@ -1546,7 +1566,6 @@ impl SqliteManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shinkai_embedding::model_type::OllamaTextEmbeddingsInference;
     use std::path::PathBuf;
     use std::sync::{Arc, RwLock};
     use std::thread;
