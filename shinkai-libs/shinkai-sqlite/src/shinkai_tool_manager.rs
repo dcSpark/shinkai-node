@@ -16,31 +16,37 @@ impl SqliteManager {
         let model_type = self.get_default_embedding_model()
             .unwrap_or_else(|_| EmbeddingModelType::default());
 
-        let embedding = match tool.get_embedding() {
+        let (updated_tool, embedding) = match tool.get_embedding() {
             Some(existing_embedding) => {
                 // Check if existing embedding has correct dimensions (skip check for custom models)
                 match model_type.vector_dimensions() {
                     Ok(expected_dimensions) => {
                         if existing_embedding.len() == expected_dimensions {
-                            existing_embedding
+                            (tool, existing_embedding)
                         } else {
                             // Dimension mismatch - regenerate with current model
-                            self.generate_embeddings(&tool.format_embedding_string()).await?
+                            let new_embedding = self.generate_embeddings(&tool.format_embedding_string()).await?;
+                            let mut updated_tool = tool;
+                            updated_tool.set_embedding(new_embedding.clone());
+                            (updated_tool, new_embedding)
                         }
                     }
                     Err(_) => {
                         // Unknown dimensions for custom models - use existing embedding
-                        existing_embedding
+                        (tool, existing_embedding)
                     }
                 }
             }
             None => {
                 // No embedding - generate one
-                self.generate_embeddings(&tool.format_embedding_string()).await?
+                let new_embedding = self.generate_embeddings(&tool.format_embedding_string()).await?;
+                let mut updated_tool = tool;
+                updated_tool.set_embedding(new_embedding.clone());
+                (updated_tool, new_embedding)
             }
         };
 
-        self.add_tool_with_vector(tool, embedding)
+        self.add_tool_with_vector(updated_tool, embedding)
     }
 
     pub fn add_tool_with_vector(
@@ -596,31 +602,37 @@ impl SqliteManager {
         let model_type = self.get_default_embedding_model()
             .unwrap_or_else(|_| EmbeddingModelType::default());
 
-        let embedding = match tool.get_embedding() {
+        let (updated_tool, embedding) = match tool.get_embedding() {
             Some(existing_embedding) => {
                 // Check if existing embedding has correct dimensions (skip check for custom models)
                 match model_type.vector_dimensions() {
                     Ok(expected_dimensions) => {
                         if existing_embedding.len() == expected_dimensions {
-                            existing_embedding
+                            (tool, existing_embedding)
                         } else {
                             // Dimension mismatch - regenerate with current model
-                            self.generate_embeddings(&tool.format_embedding_string()).await?
+                            let new_embedding = self.generate_embeddings(&tool.format_embedding_string()).await?;
+                            let mut updated_tool = tool;
+                            updated_tool.set_embedding(new_embedding.clone());
+                            (updated_tool, new_embedding)
                         }
                     }
                     Err(_) => {
                         // Unknown dimensions for custom models - use existing embedding
-                        existing_embedding
+                        (tool, existing_embedding)
                     }
                 }
             }
             None => {
                 // No embedding - generate one
-                self.generate_embeddings(&tool.format_embedding_string()).await?
+                let new_embedding = self.generate_embeddings(&tool.format_embedding_string()).await?;
+                let mut updated_tool = tool;
+                updated_tool.set_embedding(new_embedding.clone());
+                (updated_tool, new_embedding)
             }
         };
 
-        self.update_tool_with_vector(tool, embedding)
+        self.update_tool_with_vector(updated_tool, embedding)
     }
 
     /// Retrieves all ShinkaiToolHeader entries from the shinkai_tools table
