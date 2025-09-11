@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use super::super::error::LLMProviderError;
 use super::shared::openai_api::openai_prepare_messages;
-use super::shared::openai_api_deprecated::{MessageContent, OpenAIResponse};
+use super::shared::openai_api::{MessageContent, OpenAIResponse};
 use super::shared::shared_model_logic::{send_tool_ws_update, send_ws_update};
 use super::LLMService;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
@@ -228,12 +228,12 @@ async fn handle_streaming_response(
             }
             
             // If we got valid JSON but expected streaming, return the response anyway
-            if let Ok(data) = serde_json::from_value::<super::shared::openai_api_deprecated::OpenAIResponse>(response_json.clone()) {
+            if let Ok(data) = serde_json::from_value::<OpenAIResponse>(response_json.clone()) {
                 let response_string: String = data
                     .choices
                     .iter()
                     .filter_map(|choice| match &choice.message.content {
-                        Some(super::shared::openai_api_deprecated::MessageContent::Text(text)) => Some(text.clone()),
+                        Some(MessageContent::Text(text)) => Some(text.clone()),
                         _ => None,
                     })
                     .collect::<Vec<String>>()

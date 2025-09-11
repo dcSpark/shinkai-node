@@ -4,6 +4,5 @@ pub mod gemini_api;
 pub mod groq_api;
 pub mod ollama_api;
 pub mod openai_api;
-pub mod openai_api_deprecated;
 pub mod shared_model_logic;
 pub mod togetherai;
