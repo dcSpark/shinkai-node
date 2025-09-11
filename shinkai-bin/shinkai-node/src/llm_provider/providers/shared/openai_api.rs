@@ -634,7 +634,8 @@ mod tests {
         let model = SerializedLLMProvider::mock_provider_with_reasoning().model;
 
         // Process the prompt
-        let result = openai_prepare_messages(&model, prompt).expect("Failed to prepare messages");
+        let session_id = uuid::Uuid::new_v4().to_string();
+        let result = crate::llm_provider::providers::shared::deepseek_api::deepseek_prepare_messages(&model, prompt, session_id).expect("Failed to prepare messages");
 
         // Extract the messages from the result
         let messages = match &result.messages {
