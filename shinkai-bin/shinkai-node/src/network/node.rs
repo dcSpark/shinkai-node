@@ -443,21 +443,27 @@ impl Node {
             callback_manager.update_cron_manager(cron_manager.clone());
         }
 
-        // Perform embedding migration if needed (BEFORE updating DB with current model)
+        // Perform embedding migration if needed
         {
             let current_model = {
                 let default_model_guard = self.default_embedding_model.lock().await;
                 default_model_guard.clone()
             };
+
+            let db_clone = Arc::clone(&self.db);
+            let embedding_generator_clone = self.embedding_generator.clone();
+            let current_model_clone = current_model.clone();
             
-            if let Err(e) = self.db.migrate_embeddings_to_new_model(&self.embedding_generator, &current_model).await {
-                shinkai_log(
-                    ShinkaiLogOption::Node,
-                    ShinkaiLogLevel::Error,
-                    &format!("Embedding migration failed: {e:?}"),
-                );
-                // Note: We continue even if migration fails to allow the node to start
-            }
+            // Run migration in background without blocking node startup
+            tokio::spawn(async move {
+                if let Err(e) = db_clone.migrate_embeddings_to_new_model(&embedding_generator_clone, &current_model_clone).await {
+                    shinkai_log(
+                        ShinkaiLogOption::Node,
+                        ShinkaiLogLevel::Error,
+                        &format!("Embedding migration failed: {e:?}"),
+                    );
+                }
+            });
         }
         
         self.initialize_embedding_models().await?;
