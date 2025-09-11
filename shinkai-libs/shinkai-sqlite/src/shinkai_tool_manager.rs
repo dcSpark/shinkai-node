@@ -13,7 +13,9 @@ use shinkai_embedding::model_type::EmbeddingModelType;
 impl SqliteManager {
     // Adds a ShinkaiTool entry to the shinkai_tools table
     pub async fn add_tool(&self, tool: ShinkaiTool) -> Result<ShinkaiTool, SqliteManagerError> {
-        let expected_dimensions = EmbeddingModelType::default().vector_dimensions().unwrap_or(768);
+        let model_type = self.get_default_embedding_model()
+            .unwrap_or_else(|_| EmbeddingModelType::default());
+        let expected_dimensions = model_type.vector_dimensions().unwrap_or(768);
         
         let embedding = match tool.get_embedding() {
             Some(existing_embedding) => {
@@ -61,7 +63,9 @@ impl SqliteManager {
         let tool_header = serde_json::to_vec(&tool.to_header()).unwrap();
 
         // Validate embedding dimensions before storing
-        let expected_dimensions = EmbeddingModelType::default().vector_dimensions().unwrap_or(768);
+        let model_type = self.get_default_embedding_model()
+            .unwrap_or_else(|_| EmbeddingModelType::default());
+        let expected_dimensions = model_type.vector_dimensions().unwrap_or(768);
         if embedding.len() != expected_dimensions {
             return Err(SqliteManagerError::SomeError(format!(
                 "Embedding dimension mismatch: expected {} dimensions but received {}",
@@ -168,7 +172,9 @@ impl SqliteManager {
         embedding: Vec<f32>,
     ) -> Result<ShinkaiTool, SqliteManagerError> {
         // Validate embedding dimensions before upgrading
-        let expected_dimensions = EmbeddingModelType::default().vector_dimensions().unwrap_or(768);
+        let model_type = self.get_default_embedding_model()
+            .unwrap_or_else(|_| EmbeddingModelType::default());
+        let expected_dimensions = model_type.vector_dimensions().unwrap_or(768);
         if embedding.len() != expected_dimensions {
             return Err(SqliteManagerError::SomeError(format!(
                 "Embedding dimension mismatch: expected {} dimensions but received {}",
@@ -470,7 +476,9 @@ impl SqliteManager {
         embedding: Vec<f32>,
     ) -> Result<ShinkaiTool, SqliteManagerError> {
         // Validate embedding dimensions before updating
-        let expected_dimensions = EmbeddingModelType::default().vector_dimensions().unwrap_or(768);
+        let model_type = self.get_default_embedding_model()
+            .unwrap_or_else(|_| EmbeddingModelType::default());
+        let expected_dimensions = model_type.vector_dimensions().unwrap_or(768);
         if embedding.len() != expected_dimensions {
             return Err(SqliteManagerError::SomeError(format!(
                 "Embedding dimension mismatch: expected {} dimensions but received {}",
@@ -572,7 +580,9 @@ impl SqliteManager {
 
     /// Updates a ShinkaiTool entry by generating a new embedding if needed
     pub async fn update_tool(&self, tool: ShinkaiTool) -> Result<ShinkaiTool, SqliteManagerError> {
-        let expected_dimensions = EmbeddingModelType::default().vector_dimensions().unwrap_or(768);
+        let model_type = self.get_default_embedding_model()
+            .unwrap_or_else(|_| EmbeddingModelType::default());
+        let expected_dimensions = model_type.vector_dimensions().unwrap_or(768);
         
         let embedding = match tool.get_embedding() {
             Some(existing_embedding) => {
@@ -927,7 +937,9 @@ impl SqliteManager {
         embedding: Vec<f32>,
     ) -> Result<(), SqliteManagerError> {
         // Validate embedding dimensions before updating vector
-        let expected_dimensions = EmbeddingModelType::default().vector_dimensions().unwrap_or(768);
+        let model_type = self.get_default_embedding_model()
+            .unwrap_or_else(|_| EmbeddingModelType::default());
+        let expected_dimensions = model_type.vector_dimensions().unwrap_or(768);
         if embedding.len() != expected_dimensions {
             return Err(SqliteManagerError::SomeError(format!(
                 "Embedding dimension mismatch: expected {} dimensions but received {}",
