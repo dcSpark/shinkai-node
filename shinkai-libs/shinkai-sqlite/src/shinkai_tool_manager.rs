@@ -15,16 +15,23 @@ impl SqliteManager {
     pub async fn add_tool(&self, tool: ShinkaiTool) -> Result<ShinkaiTool, SqliteManagerError> {
         let model_type = self.get_default_embedding_model()
             .unwrap_or_else(|_| EmbeddingModelType::default());
-        let expected_dimensions = model_type.vector_dimensions().unwrap_or(768);
-        
+
         let embedding = match tool.get_embedding() {
             Some(existing_embedding) => {
-                // Check if existing embedding has correct dimensions
-                if existing_embedding.len() == expected_dimensions {
-                    existing_embedding
-                } else {
-                    // Dimension mismatch - regenerate with current model
-                    self.generate_embeddings(&tool.format_embedding_string()).await?
+                // Check if existing embedding has correct dimensions (skip check for custom models)
+                match model_type.vector_dimensions() {
+                    Ok(expected_dimensions) => {
+                        if existing_embedding.len() == expected_dimensions {
+                            existing_embedding
+                        } else {
+                            // Dimension mismatch - regenerate with current model
+                            self.generate_embeddings(&tool.format_embedding_string()).await?
+                        }
+                    }
+                    Err(_) => {
+                        // Unknown dimensions for custom models - use existing embedding
+                        existing_embedding
+                    }
                 }
             }
             None => {
@@ -62,16 +69,18 @@ impl SqliteManager {
         let tool_type = tool.tool_type().to_string();
         let tool_header = serde_json::to_vec(&tool.to_header()).unwrap();
 
-        // Validate embedding dimensions before storing
+        // Validate embedding dimensions before storing (skip check for custom models with unknown dimensions)
         let model_type = self.get_default_embedding_model()
             .unwrap_or_else(|_| EmbeddingModelType::default());
-        let expected_dimensions = model_type.vector_dimensions().unwrap_or(768);
-        if embedding.len() != expected_dimensions {
-            return Err(SqliteManagerError::SomeError(format!(
-                "Embedding dimension mismatch: expected {} dimensions but received {}",
-                expected_dimensions, embedding.len()
-            )));
+        if let Ok(expected_dimensions) = model_type.vector_dimensions() {
+            if embedding.len() != expected_dimensions {
+                return Err(SqliteManagerError::SomeError(format!(
+                    "Embedding dimension mismatch: expected {} dimensions but received {}",
+                    expected_dimensions, embedding.len()
+                )));
+            }
         }
+        // Skip dimension validation for custom models where dimensions are unknown
 
         // Clone the tool to make it mutable
         let mut tool_clone = tool.clone();
@@ -171,16 +180,18 @@ impl SqliteManager {
         new_tool: ShinkaiTool,
         embedding: Vec<f32>,
     ) -> Result<ShinkaiTool, SqliteManagerError> {
-        // Validate embedding dimensions before upgrading
+        // Validate embedding dimensions before upgrading (skip check for custom models with unknown dimensions)
         let model_type = self.get_default_embedding_model()
             .unwrap_or_else(|_| EmbeddingModelType::default());
-        let expected_dimensions = model_type.vector_dimensions().unwrap_or(768);
-        if embedding.len() != expected_dimensions {
-            return Err(SqliteManagerError::SomeError(format!(
-                "Embedding dimension mismatch: expected {} dimensions but received {}",
-                expected_dimensions, embedding.len()
-            )));
+        if let Ok(expected_dimensions) = model_type.vector_dimensions() {
+            if embedding.len() != expected_dimensions {
+                return Err(SqliteManagerError::SomeError(format!(
+                    "Embedding dimension mismatch: expected {} dimensions but received {}",
+                    expected_dimensions, embedding.len()
+                )));
+            }
         }
+        // Skip dimension validation for custom models where dimensions are unknown
 
         // Use the tool_router_key (without version) to locate the old version
         let tool_key = new_tool.tool_router_key().to_string_without_version();
@@ -475,16 +486,18 @@ impl SqliteManager {
         tool: ShinkaiTool,
         embedding: Vec<f32>,
     ) -> Result<ShinkaiTool, SqliteManagerError> {
-        // Validate embedding dimensions before updating
+        // Validate embedding dimensions before updating (skip check for custom models with unknown dimensions)
         let model_type = self.get_default_embedding_model()
             .unwrap_or_else(|_| EmbeddingModelType::default());
-        let expected_dimensions = model_type.vector_dimensions().unwrap_or(768);
-        if embedding.len() != expected_dimensions {
-            return Err(SqliteManagerError::SomeError(format!(
-                "Embedding dimension mismatch: expected {} dimensions but received {}",
-                expected_dimensions, embedding.len()
-            )));
+        if let Ok(expected_dimensions) = model_type.vector_dimensions() {
+            if embedding.len() != expected_dimensions {
+                return Err(SqliteManagerError::SomeError(format!(
+                    "Embedding dimension mismatch: expected {} dimensions but received {}",
+                    expected_dimensions, embedding.len()
+                )));
+            }
         }
+        // Skip dimension validation for custom models where dimensions are unknown
 
         let mut conn = self.get_connection()?;
         let tx = conn.transaction()?;
@@ -582,16 +595,23 @@ impl SqliteManager {
     pub async fn update_tool(&self, tool: ShinkaiTool) -> Result<ShinkaiTool, SqliteManagerError> {
         let model_type = self.get_default_embedding_model()
             .unwrap_or_else(|_| EmbeddingModelType::default());
-        let expected_dimensions = model_type.vector_dimensions().unwrap_or(768);
-        
+
         let embedding = match tool.get_embedding() {
             Some(existing_embedding) => {
-                // Check if existing embedding has correct dimensions
-                if existing_embedding.len() == expected_dimensions {
-                    existing_embedding
-                } else {
-                    // Dimension mismatch - regenerate with current model
-                    self.generate_embeddings(&tool.format_embedding_string()).await?
+                // Check if existing embedding has correct dimensions (skip check for custom models)
+                match model_type.vector_dimensions() {
+                    Ok(expected_dimensions) => {
+                        if existing_embedding.len() == expected_dimensions {
+                            existing_embedding
+                        } else {
+                            // Dimension mismatch - regenerate with current model
+                            self.generate_embeddings(&tool.format_embedding_string()).await?
+                        }
+                    }
+                    Err(_) => {
+                        // Unknown dimensions for custom models - use existing embedding
+                        existing_embedding
+                    }
                 }
             }
             None => {
@@ -936,16 +956,18 @@ impl SqliteManager {
         tool_key: &str,
         embedding: Vec<f32>,
     ) -> Result<(), SqliteManagerError> {
-        // Validate embedding dimensions before updating vector
+        // Validate embedding dimensions before updating vector (skip check for custom models with unknown dimensions)
         let model_type = self.get_default_embedding_model()
             .unwrap_or_else(|_| EmbeddingModelType::default());
-        let expected_dimensions = model_type.vector_dimensions().unwrap_or(768);
-        if embedding.len() != expected_dimensions {
-            return Err(SqliteManagerError::SomeError(format!(
-                "Embedding dimension mismatch: expected {} dimensions but received {}",
-                expected_dimensions, embedding.len()
-            )));
+        if let Ok(expected_dimensions) = model_type.vector_dimensions() {
+            if embedding.len() != expected_dimensions {
+                return Err(SqliteManagerError::SomeError(format!(
+                    "Embedding dimension mismatch: expected {} dimensions but received {}",
+                    expected_dimensions, embedding.len()
+                )));
+            }
         }
+        // Skip dimension validation for custom models where dimensions are unknown
 
         // Get is_enabled and is_network from the main database
         let (is_enabled, is_network): (i32, i32) = tx.query_row(
