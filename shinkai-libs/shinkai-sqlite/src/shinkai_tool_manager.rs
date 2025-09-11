@@ -8,14 +8,27 @@ use shinkai_tools_primitives::tools::mcp_server_tool::MCPServerTool;
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
 use shinkai_tools_primitives::tools::tool_config::{BasicConfig, ToolConfig};
 use std::collections::{HashMap, HashSet};
+use shinkai_embedding::model_type::EmbeddingModelType;
 
 impl SqliteManager {
     // Adds a ShinkaiTool entry to the shinkai_tools table
     pub async fn add_tool(&self, tool: ShinkaiTool) -> Result<ShinkaiTool, SqliteManagerError> {
-        // Generate or retrieve the embedding
+        let expected_dimensions = EmbeddingModelType::default().vector_dimensions().unwrap_or(768);
+        
         let embedding = match tool.get_embedding() {
-            Some(embedding) => embedding,
-            None => self.generate_embeddings(&tool.format_embedding_string()).await?,
+            Some(existing_embedding) => {
+                // Check if existing embedding has correct dimensions
+                if existing_embedding.len() == expected_dimensions {
+                    existing_embedding
+                } else {
+                    // Dimension mismatch - regenerate with current model
+                    self.generate_embeddings(&tool.format_embedding_string()).await?
+                }
+            }
+            None => {
+                // No embedding - generate one
+                self.generate_embeddings(&tool.format_embedding_string()).await?
+            }
         };
 
         self.add_tool_with_vector(tool, embedding)
@@ -46,6 +59,15 @@ impl SqliteManager {
         let tool_seos = tool.format_embedding_string();
         let tool_type = tool.tool_type().to_string();
         let tool_header = serde_json::to_vec(&tool.to_header()).unwrap();
+
+        // Validate embedding dimensions before storing
+        let expected_dimensions = EmbeddingModelType::default().vector_dimensions().unwrap_or(768);
+        if embedding.len() != expected_dimensions {
+            return Err(SqliteManagerError::SomeError(format!(
+                "Embedding dimension mismatch: expected {} dimensions but received {}",
+                expected_dimensions, embedding.len()
+            )));
+        }
 
         // Clone the tool to make it mutable
         let mut tool_clone = tool.clone();
@@ -145,6 +167,15 @@ impl SqliteManager {
         new_tool: ShinkaiTool,
         embedding: Vec<f32>,
     ) -> Result<ShinkaiTool, SqliteManagerError> {
+        // Validate embedding dimensions before upgrading
+        let expected_dimensions = EmbeddingModelType::default().vector_dimensions().unwrap_or(768);
+        if embedding.len() != expected_dimensions {
+            return Err(SqliteManagerError::SomeError(format!(
+                "Embedding dimension mismatch: expected {} dimensions but received {}",
+                expected_dimensions, embedding.len()
+            )));
+        }
+
         // Use the tool_router_key (without version) to locate the old version
         let tool_key = new_tool.tool_router_key().to_string_without_version();
         let old_tool = self.get_tool_by_key(&tool_key)?;
@@ -438,6 +469,15 @@ impl SqliteManager {
         tool: ShinkaiTool,
         embedding: Vec<f32>,
     ) -> Result<ShinkaiTool, SqliteManagerError> {
+        // Validate embedding dimensions before updating
+        let expected_dimensions = EmbeddingModelType::default().vector_dimensions().unwrap_or(768);
+        if embedding.len() != expected_dimensions {
+            return Err(SqliteManagerError::SomeError(format!(
+                "Embedding dimension mismatch: expected {} dimensions but received {}",
+                expected_dimensions, embedding.len()
+            )));
+        }
+
         let mut conn = self.get_connection()?;
         let tx = conn.transaction()?;
 
@@ -530,12 +570,24 @@ impl SqliteManager {
         Ok(tool)
     }
 
-    /// Updates a ShinkaiTool entry by generating a new embedding
+    /// Updates a ShinkaiTool entry by generating a new embedding if needed
     pub async fn update_tool(&self, tool: ShinkaiTool) -> Result<ShinkaiTool, SqliteManagerError> {
-        // Generate or retrieve the embedding
+        let expected_dimensions = EmbeddingModelType::default().vector_dimensions().unwrap_or(768);
+        
         let embedding = match tool.get_embedding() {
-            Some(embedding) => embedding,
-            None => self.generate_embeddings(&tool.format_embedding_string()).await?,
+            Some(existing_embedding) => {
+                // Check if existing embedding has correct dimensions
+                if existing_embedding.len() == expected_dimensions {
+                    existing_embedding
+                } else {
+                    // Dimension mismatch - regenerate with current model
+                    self.generate_embeddings(&tool.format_embedding_string()).await?
+                }
+            }
+            None => {
+                // No embedding - generate one
+                self.generate_embeddings(&tool.format_embedding_string()).await?
+            }
         };
 
         self.update_tool_with_vector(tool, embedding)
@@ -874,6 +926,15 @@ impl SqliteManager {
         tool_key: &str,
         embedding: Vec<f32>,
     ) -> Result<(), SqliteManagerError> {
+        // Validate embedding dimensions before updating vector
+        let expected_dimensions = EmbeddingModelType::default().vector_dimensions().unwrap_or(768);
+        if embedding.len() != expected_dimensions {
+            return Err(SqliteManagerError::SomeError(format!(
+                "Embedding dimension mismatch: expected {} dimensions but received {}",
+                expected_dimensions, embedding.len()
+            )));
+        }
+
         // Get is_enabled and is_network from the main database
         let (is_enabled, is_network): (i32, i32) = tx.query_row(
             "SELECT is_enabled, is_network FROM shinkai_tools WHERE tool_key = ?1",
@@ -1132,7 +1193,6 @@ mod tests {
     use super::*;
     use serde_json::json;
     use shinkai_embedding::model_type::EmbeddingModelType;
-    use shinkai_embedding::model_type::OllamaTextEmbeddingsInference;
     use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
     use shinkai_message_primitives::schemas::shinkai_tool_offering::ToolPrice;
     use shinkai_message_primitives::schemas::shinkai_tool_offering::UsageType;
@@ -1148,7 +1208,7 @@ mod tests {
     use shinkai_tools_primitives::tools::tool_types::OperatingSystem;
     use shinkai_tools_primitives::tools::tool_types::RunnerType;
     use shinkai_tools_primitives::tools::tool_types::ToolResult;
-    use std::collections::{HashMap, HashSet};
+    use std::collections::HashMap;
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
 
