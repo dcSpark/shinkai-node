@@ -14,6 +14,7 @@ use crate::network::agent_payments_manager::external_agent_offerings_manager::Ex
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use shinkai_fs::shinkai_file_manager::ShinkaiFileManager;
 use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
+use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 
 use crate::utils::environment::{fetch_node_environment, NodeEnvironment};
 use async_trait::async_trait;
@@ -770,6 +771,44 @@ impl GenericInferenceChain {
                                 )));
                             }
                         }
+
+                        // Append tools from conversation history to provide contextual continuity
+                        let historical_tool_keys = Self::extract_tools_from_conversation_history(&full_job.step_history, 5);
+                        for tool_key in historical_tool_keys {
+                            // Check if this tool is not already in our tools list to avoid duplicates
+                            let tool_already_exists = tools.iter().any(|existing_tool| {
+                                existing_tool.tool_router_key().to_string_without_version() == tool_key
+                            });
+
+                            if !tool_already_exists {
+                                match tool_router.get_tool_by_name(&tool_key).await {
+                                    Ok(Some(tool)) => {
+                                        tools.push(tool);
+                                        shinkai_log(
+                                            ShinkaiLogOption::JobExecution,
+                                            ShinkaiLogLevel::Debug,
+                                            &format!("Added historical tool from conversation: {}", tool_key),
+                                        );
+                                    }
+                                    Ok(None) => {
+                                        // Tool not found - this is okay, it might have been removed
+                                        shinkai_log(
+                                            ShinkaiLogOption::JobExecution,
+                                            ShinkaiLogLevel::Debug,
+                                            &format!("Historical tool not found (may have been removed): {}", tool_key),
+                                        );
+                                    }
+                                    Err(e) => {
+                                        // Log error but don't fail the whole process
+                                        shinkai_log(
+                                            ShinkaiLogOption::JobExecution,
+                                            ShinkaiLogLevel::Debug,
+                                            &format!("Error retrieving historical tool {}: {:?}", tool_key, e),
+                                        );
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1406,5 +1445,50 @@ impl GenericInferenceChain {
         });
 
         Ok(additional_files)
+    }
+
+    /// Extract tool router keys from conversation history
+    /// Returns a list of unique tool router keys that were used in the last N messages
+    fn extract_tools_from_conversation_history(
+        step_history: &[ShinkaiMessage],
+        max_messages: usize
+    ) -> Vec<String> {
+        let mut tool_keys = Vec::new();
+        let mut seen_keys = std::collections::HashSet::new();
+        let mut message_count = 0;
+        
+        for msg in step_history.iter().rev() {
+            if message_count >= max_messages {
+                break;
+            }
+            
+            if let Ok(content) = msg.get_message_content() {
+                if content.trim().is_empty() {
+                    message_count += 1;
+                    continue;
+                }
+
+                // Parse the JSON content to extract tool calls from metadata
+                if let Ok(job_message) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if let Some(metadata) = job_message.get("metadata") {
+                        if let Some(function_calls) = metadata.get("function_calls").and_then(|fc| fc.as_array()) {
+                            for call in function_calls {
+                                if let Some(tool_router_key) = call.get("tool_router_key").and_then(|k| k.as_str()) {
+                                    // Only add if we haven't seen this key before
+                                    if !seen_keys.contains(tool_router_key) {
+                                        seen_keys.insert(tool_router_key.to_string());
+                                        tool_keys.push(tool_router_key.to_string());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            message_count += 1;
+        }
+        
+        tool_keys
     }
 }
