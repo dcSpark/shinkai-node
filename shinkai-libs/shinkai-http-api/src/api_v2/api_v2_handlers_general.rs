@@ -25,7 +25,7 @@ use warp::Filter;
 
 use crate::node_api_router::APIUseRegistrationCodeSuccessResponse;
 use crate::{
-    node_api_router::{APIError, GetPublicKeysResponse}, node_commands::NodeCommand
+    node_api_router::{APIError, GetPublicKeysResponse}, node_commands::{NodeCommand, EmbeddingMigrationRequest}
 };
 
 use super::api_v2_handlers_mcp_servers::{
@@ -138,6 +138,19 @@ pub fn general_routes(
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
         .and_then(scan_ollama_models_handler);
+
+    let trigger_embedding_migration_route = warp::path("embedding_migration")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(trigger_embedding_migration_handler);
+
+    let get_migration_status_route = warp::path("embedding_migration")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and_then(get_migration_status_handler);
 
     let add_ollama_models_route = warp::path("add_ollama_models")
         .and(warp::post())
@@ -301,6 +314,8 @@ pub fn general_routes(
         .or(is_pristine_route)
         .or(shinkai_backend_quota_route)
         .or(scan_ollama_models_route)
+        .or(trigger_embedding_migration_route)
+        .or(get_migration_status_route)
         .or(add_ollama_models_route)
         .or(stop_llm_route)
         .or(add_agent_route)
@@ -799,6 +814,73 @@ pub async fn scan_ollama_models_handler(
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiScanOllamaModels {
+            bearer,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::json(&response)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/embedding_migration",
+    request_body = EmbeddingMigrationRequest,
+    responses(
+        (status = 200, description = "Successfully triggered embedding migration", body = serde_json::Value),
+        (status = 400, description = "Invalid embedding model or model not available", body = APIError),
+        (status = 409, description = "Migration already in progress", body = APIError),
+        (status = 401, description = "Unauthorized", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn trigger_embedding_migration_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: EmbeddingMigrationRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiTriggerEmbeddingMigration {
+            bearer,
+            payload,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::json(&response)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/v2/embedding_migration",
+    responses(
+        (status = 200, description = "Successfully retrieved migration status", body = serde_json::Value),
+        (status = 401, description = "Unauthorized", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn get_migration_status_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiGetMigrationStatus {
             bearer,
             res: res_sender,
         })
@@ -1617,6 +1699,8 @@ pub async fn docker_status_handler(sender: Sender<NodeCommand>) -> Result<impl w
         is_pristine_handler,
         shinkai_backend_quota_handler,
         scan_ollama_models_handler,
+        trigger_embedding_migration_handler,
+        get_migration_status_handler,
         add_ollama_models_handler,
         stop_llm_handler,
         add_agent_handler,

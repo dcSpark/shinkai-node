@@ -140,7 +140,11 @@ impl Node {
                 let full_identity = self.node_name.clone();
                 let signing_secret_key = self.identity_secret_key.clone();
                 let node_env = fetch_node_environment();
-                let embedding_generator = Arc::new(self.embedding_generator.clone());
+                let embedding_generator_ref = Arc::clone(&self.embedding_generator);
+                let embedding_generator = Arc::new({
+                    let generator_guard = embedding_generator_ref.lock().await;
+                    generator_guard.clone()
+                });
                 tokio::spawn(async move {
                     let _ = Node::v2_api_import_agent_url(
                         db_clone,
@@ -159,7 +163,11 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 let node_env = fetch_node_environment();
                 let full_identity = self.node_name.clone();
-                let embedding_generator = Arc::new(self.embedding_generator.clone());
+                let embedding_generator_ref = Arc::clone(&self.embedding_generator);
+                let embedding_generator = Arc::new({
+                    let generator_guard = embedding_generator_ref.lock().await;
+                    generator_guard.clone()
+                });
                 tokio::spawn(async move {
                     let _ = Node::v2_api_import_agent_zip(
                         db_clone,
@@ -233,7 +241,11 @@ impl Node {
                 let node_name_clone = self.node_name.clone();
                 let encryption_secret_key_clone = self.encryption_secret_key.clone();
                 let first_device_needs_registration_code = self.first_device_needs_registration_code;
-                let embedding_generator_clone = Arc::new(self.embedding_generator.clone());
+                let embedding_generator_ref = Arc::clone(&self.embedding_generator);
+                let embedding_generator_clone = Arc::new({
+                    let generator_guard = embedding_generator_ref.lock().await;
+                    generator_guard.clone()
+                });
                 let encryption_public_key_clone = self.encryption_public_key;
                 let identity_public_key_clone = self.identity_public_key;
                 let identity_secret_key_clone = self.identity_secret_key.clone();
@@ -557,7 +569,11 @@ impl Node {
                 let identity_manager_clone = self.identity_manager.clone();
                 let node_name_clone = self.node_name.clone();
                 let first_device_needs_registration_code = self.first_device_needs_registration_code;
-                let embedding_generator_clone = Arc::new(self.embedding_generator.clone());
+                let embedding_generator_ref = Arc::clone(&self.embedding_generator);
+                let embedding_generator_clone = Arc::new({
+                    let generator_guard = embedding_generator_ref.lock().await;
+                    generator_guard.clone()
+                });
                 let encryption_public_key_clone = self.encryption_public_key;
                 let identity_public_key_clone = self.identity_public_key;
                 let identity_secret_key_clone = self.identity_secret_key.clone();
@@ -872,15 +888,19 @@ impl Node {
 
             NodeCommand::V2ApiSearchItems { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let embedding_generator_clone = self.embedding_generator.clone();
+                let embedding_generator_ref = Arc::clone(&self.embedding_generator);
 
                 let identity_manager_clone = self.identity_manager.clone();
                 tokio::spawn(async move {
+                    let embedding_generator = {
+                        let generator_guard = embedding_generator_ref.lock().await;
+                        generator_guard.clone()
+                    };
                     let _ = Node::v2_search_items(
                         db_clone,
                         identity_manager_clone,
                         payload,
-                        Arc::new(embedding_generator_clone),
+                        Arc::new(embedding_generator),
                         bearer,
                         res,
                     )
@@ -954,12 +974,16 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
 
                 let identity_manager_clone = self.identity_manager.clone();
-                let embedding_generator_clone = self.embedding_generator.clone();
+                let embedding_generator_ref = Arc::clone(&self.embedding_generator);
                 tokio::spawn(async move {
+                    let embedding_generator = {
+                        let generator_guard = embedding_generator_ref.lock().await;
+                        generator_guard.clone()
+                    };
                     let _ = Node::v2_upload_file_to_folder(
                         db_clone,
                         identity_manager_clone,
-                        Arc::new(embedding_generator_clone),
+                        Arc::new(embedding_generator),
                         bearer,
                         filename,
                         file,
@@ -980,12 +1004,16 @@ impl Node {
             } => {
                 let db_clone = Arc::clone(&self.db);
                 let identity_manager_clone = self.identity_manager.clone();
-                let embedding_generator_clone = self.embedding_generator.clone();
+                let embedding_generator_ref = Arc::clone(&self.embedding_generator);
                 tokio::spawn(async move {
+                    let embedding_generator = {
+                        let generator_guard = embedding_generator_ref.lock().await;
+                        generator_guard.clone()
+                    };
                     let _ = Node::v2_upload_file_to_job(
                         db_clone,
                         identity_manager_clone,
-                        Arc::new(embedding_generator_clone),
+                        Arc::new(embedding_generator),
                         bearer,
                         job_id,
                         filename,
@@ -1169,8 +1197,25 @@ impl Node {
             NodeCommand::V2ApiHealthCheck { res } => {
                 let db_clone = Arc::clone(&self.db);
                 let public_https_certificate_clone = self.public_https_certificate.clone();
+                let is_migration_in_progress_clone = Arc::clone(&self.is_migration_in_progress);
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_health_check(db_clone, public_https_certificate_clone, res).await;
+                    let _ = Node::v2_api_health_check(db_clone, public_https_certificate_clone, is_migration_in_progress_clone, res).await;
+                });
+            }
+            NodeCommand::V2ApiTriggerEmbeddingMigration { bearer, payload, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let embedding_generator_clone = Arc::clone(&self.embedding_generator);
+                let default_embedding_model_clone = Arc::clone(&self.default_embedding_model);
+                let is_migration_in_progress_clone = Arc::clone(&self.is_migration_in_progress);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_trigger_embedding_migration(db_clone, embedding_generator_clone, default_embedding_model_clone, is_migration_in_progress_clone, bearer, payload, res).await;
+                });
+            }
+            NodeCommand::V2ApiGetMigrationStatus { bearer, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let is_migration_in_progress_clone = Arc::clone(&self.is_migration_in_progress);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_migration_status(db_clone, is_migration_in_progress_clone, bearer, res).await;
                 });
             }
             NodeCommand::V2ApiScanOllamaModels { bearer, res } => {
@@ -2040,9 +2085,13 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 let node_env = fetch_node_environment();
                 let signing_secret_key = self.identity_secret_key.clone();
-                let embedding_generator = self.embedding_generator.clone();
+                let embedding_generator_ref = Arc::clone(&self.embedding_generator);
                 let full_identity = self.node_name.clone();
                 tokio::spawn(async move {
+                    let embedding_generator = {
+                        let generator_guard = embedding_generator_ref.lock().await;
+                        generator_guard.clone()
+                    };
                     let _ = Node::v2_api_import_tool_url(
                         db_clone,
                         bearer,
@@ -2059,9 +2108,13 @@ impl Node {
             NodeCommand::V2ApiImportToolZip { bearer, file_data, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let node_env = fetch_node_environment();
-                let embedding_generator = self.embedding_generator.clone();
+                let embedding_generator_ref = Arc::clone(&self.embedding_generator);
                 let full_identity = self.node_name.clone();
                 tokio::spawn(async move {
+                    let embedding_generator = {
+                        let generator_guard = embedding_generator_ref.lock().await;
+                        generator_guard.clone()
+                    };
                     let _ = Node::v2_api_import_tool_zip(
                         db_clone,
                         bearer,
