@@ -826,7 +826,8 @@ impl Node {
 
     pub async fn v2_api_trigger_embedding_migration(
         db: Arc<SqliteManager>,
-        embedding_generator: RemoteEmbeddingGenerator,
+        node_embedding_generator: Arc<Mutex<RemoteEmbeddingGenerator>>,
+        node_default_embedding_model: Arc<Mutex<EmbeddingModelType>>,
         is_migration_in_progress: Arc<AtomicBool>,
         bearer: String,
         payload: EmbeddingMigrationRequest,
@@ -864,6 +865,12 @@ impl Node {
             }
         };
 
+        // Get the current embedding generator for use in migration
+        let embedding_generator = {
+            let generator_guard = node_embedding_generator.lock().await;
+            generator_guard.clone()
+        };
+
         // Trigger the migration using the internal helper
         match Self::internal_trigger_embedding_migration(
             Arc::clone(&db),
@@ -872,6 +879,7 @@ impl Node {
             payload.force,
             Arc::clone(&is_migration_in_progress),
             true, // Check Ollama availability for API calls
+            Some((Arc::clone(&node_embedding_generator), Arc::clone(&node_default_embedding_model))), // Pass node references for update
         ).await {
             Ok(_) => {
                 // Migration started successfully
@@ -919,6 +927,7 @@ impl Node {
         force: bool,
         is_migration_in_progress: Arc<AtomicBool>,
         check_ollama_availability: bool,
+        node_state_refs: Option<(Arc<Mutex<RemoteEmbeddingGenerator>>, Arc<Mutex<EmbeddingModelType>>)>,
     ) -> Result<(), String> {
         // Check if model is available in Ollama (if requested)
         if check_ollama_availability {
@@ -962,6 +971,27 @@ impl Node {
                         ShinkaiLogLevel::Info,
                         &format!("Embedding migration to {} completed successfully", target_model_clone),
                     );
+
+                    // Update node's live state after successful migration
+                    if let Some((node_embedding_generator_ref, node_default_model_ref)) = node_state_refs {
+                        // Update the node's embedding generator to use the new model
+                        {
+                            let mut generator_guard = node_embedding_generator_ref.lock().await;
+                            generator_guard.set_model_type(target_model_clone.clone());
+                        }
+
+                        // Update the node's default embedding model
+                        {
+                            let mut model_guard = node_default_model_ref.lock().await;
+                            *model_guard = target_model_clone.clone();
+                        }
+
+                        shinkai_log(
+                            ShinkaiLogOption::Node,
+                            ShinkaiLogLevel::Info,
+                            "Updated node's live embedding generator and default model to match migration",
+                        );
+                    }
                 }
                 Err(e) => {
                     shinkai_log(

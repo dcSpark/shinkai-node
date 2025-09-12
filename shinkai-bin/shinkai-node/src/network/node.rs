@@ -97,7 +97,7 @@ pub struct Node {
     // Cron Manager
     pub cron_manager: Option<Arc<Mutex<CronManager>>>,
     // An EmbeddingGenerator initialized with the Node's default embedding model + server info
-    pub embedding_generator: RemoteEmbeddingGenerator,
+    pub embedding_generator: Arc<Mutex<RemoteEmbeddingGenerator>>,
     // Proxy Address
     pub proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
     // Websocket Manager
@@ -359,7 +359,7 @@ impl Node {
             cron_manager: None,
             first_device_needs_registration_code,
             initial_llm_providers,
-            embedding_generator,
+            embedding_generator: Arc::new(Mutex::new(embedding_generator)),
             proxy_connection_info,
             ws_manager,
             ws_manager_trait,
@@ -400,22 +400,28 @@ impl Node {
             }
         }
 
-        let job_manager = Arc::new(Mutex::new(
-            JobManager::new(
-                db_weak,
-                Arc::clone(&self.identity_manager),
-                clone_signature_secret_key(&self.identity_secret_key),
-                self.node_name.clone(),
-                self.embedding_generator.clone(),
-                self.ws_manager_trait.clone(),
-                self.tool_router.clone(),
-                self.callback_manager.clone(),
-                self.my_agent_payments_manager.clone(),
-                self.ext_agent_payments_manager.clone(),
-                self.llm_stopper.clone(),
-            )
-            .await,
-        ));
+        let job_manager = {
+            let embedding_generator = {
+                let generator_guard = self.embedding_generator.lock().await;
+                generator_guard.clone()
+            };
+            Arc::new(Mutex::new(
+                JobManager::new(
+                    db_weak,
+                    Arc::clone(&self.identity_manager),
+                    clone_signature_secret_key(&self.identity_secret_key),
+                    self.node_name.clone(),
+                    embedding_generator,
+                    self.ws_manager_trait.clone(),
+                    self.tool_router.clone(),
+                    self.callback_manager.clone(),
+                    self.my_agent_payments_manager.clone(),
+                    self.ext_agent_payments_manager.clone(),
+                    self.llm_stopper.clone(),
+                )
+                .await,
+            ))
+        };
         self.job_manager = Some(job_manager.clone());
 
         shinkai_log(
@@ -472,7 +478,10 @@ impl Node {
         // Call ToolRouter initialization in a new task
         if let Some(tool_router) = &self.tool_router {
             let tool_router = tool_router.clone();
-            let generator = self.embedding_generator.clone();
+            let generator = {
+                let generator_guard = self.embedding_generator.lock().await;
+                generator_guard.clone()
+            };
             let reinstall_tools = std::env::var("REINSTALL_TOOLS").unwrap_or_else(|_| "false".to_string()) == "true";
 
             tokio::spawn(async move {
@@ -680,15 +689,19 @@ impl Node {
                         let node_name_clone = self.node_name.clone();
                         let identity_manager_clone = self.identity_manager.clone();
                         let tool_router_clone = self.tool_router.clone();
-                        let embedding_generator_clone = self.embedding_generator.clone();
+                        let embedding_generator_ref = Arc::clone(&self.embedding_generator);
                         // Spawn a new task to handle periodic maintenance
                         tokio::spawn(async move {
+                            let embedding_generator = {
+                                let generator_guard = embedding_generator_ref.lock().await;
+                                generator_guard.clone()
+                            };
                             let _ = Self::handle_periodic_maintenance(
                                 db_clone,
                                 node_name_clone,
                                 identity_manager_clone,
                                 tool_router_clone,
-                                Arc::new(embedding_generator_clone),
+                                Arc::new(embedding_generator),
                             ).await;
                         });
                     },
