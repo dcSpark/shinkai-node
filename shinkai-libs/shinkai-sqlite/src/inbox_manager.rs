@@ -25,7 +25,7 @@ impl SqliteManager {
         let smart_inbox_name = format!("New Inbox: {}", inbox_name);
         let conn = self.get_connection()?;
         conn.execute(
-            "INSERT INTO inboxes (inbox_name, smart_inbox_name, last_modified, is_hidden) VALUES (?1, ?2, ?3, ?4)",
+            "INSERT OR IGNORE INTO inboxes (inbox_name, smart_inbox_name, last_modified, is_hidden) VALUES (?1, ?2, ?3, ?4)",
             params![
                 inbox_name,
                 smart_inbox_name,
@@ -53,9 +53,8 @@ impl SqliteManager {
             return Err(SqliteManagerError::SomeError("Inbox name is empty".to_string()));
         }
 
-        if !self.does_inbox_exist(&inbox_name)? {
-            self.create_empty_inbox(inbox_name.clone(), None)?;
-        }
+        // Create inbox if it doesn't exist (idempotent operation)
+        self.create_empty_inbox(inbox_name.clone(), None)?;
 
         // If this message has a parent, add this message as a child of the parent
         let parent_key = match maybe_parent_message_key {
