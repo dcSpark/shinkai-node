@@ -28,6 +28,12 @@ use crate::{
     api_v2::api_v2_handlers_mcp_servers::{AddMCPServerRequest, DeleteMCPServerResponse, UpdateMCPServerRequest}, node_api_router::{APIUseRegistrationCodeSuccessResponse, SendResponseBody}
 };
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct EmbeddingMigrationRequest {
+    pub embedding_model: String,
+    pub force: bool,
+}
+
 use super::{
     api_v2::api_v2_handlers_general::InitialRegistrationRequest, node_api_router::{APIError, GetPublicKeysResponse, SendResponseBodyData}
 };
@@ -467,6 +473,15 @@ pub enum NodeCommand {
         res: Sender<Result<bool, APIError>>,
     },
     V2ApiHealthCheck {
+        res: Sender<Result<serde_json::Value, APIError>>,
+    },
+    V2ApiTriggerEmbeddingMigration {
+        bearer: String,
+        payload: EmbeddingMigrationRequest,
+        res: Sender<Result<serde_json::Value, APIError>>,
+    },
+    V2ApiGetMigrationStatus {
+        bearer: String,
         res: Sender<Result<serde_json::Value, APIError>>,
     },
     V2ApiDockerStatus {

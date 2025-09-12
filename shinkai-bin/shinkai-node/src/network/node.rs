@@ -46,7 +46,7 @@ use shinkai_sqlite::SqliteManager;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
-use std::{io, net::SocketAddr, time::Duration};
+use std::{io, net::SocketAddr, time::Duration, sync::atomic::AtomicBool};
 use tokio::sync::Mutex;
 use tokio::time::Instant;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
@@ -116,6 +116,8 @@ pub struct Node {
     pub default_embedding_model: Arc<Mutex<EmbeddingModelType>>,
     // Supported embedding models for profiles
     pub supported_embedding_models: Arc<Mutex<Vec<EmbeddingModelType>>>,
+    // Migration status tracking
+    pub is_migration_in_progress: Arc<AtomicBool>,
     // API V2 Key
     #[allow(dead_code)]
     pub api_v2_key: String,
@@ -367,6 +369,7 @@ impl Node {
             tool_router: Some(tool_router),
             default_embedding_model,
             supported_embedding_models,
+            is_migration_in_progress: Arc::new(AtomicBool::new(false)),
             api_v2_key,
             wallet_manager,
             my_agent_payments_manager,
@@ -443,29 +446,7 @@ impl Node {
             callback_manager.update_cron_manager(cron_manager.clone());
         }
 
-        // Perform embedding migration if needed
-        {
-            let current_model = {
-                let default_model_guard = self.default_embedding_model.lock().await;
-                default_model_guard.clone()
-            };
-
-            let db_clone = Arc::clone(&self.db);
-            let embedding_generator_clone = self.embedding_generator.clone();
-            let current_model_clone = current_model.clone();
-            
-            // Run migration in background without blocking node startup
-            tokio::spawn(async move {
-                if let Err(e) = db_clone.migrate_embeddings_to_new_model(&embedding_generator_clone, &current_model_clone).await {
-                    shinkai_log(
-                        ShinkaiLogOption::Node,
-                        ShinkaiLogLevel::Error,
-                        &format!("Embedding migration failed: {e:?}"),
-                    );
-                }
-            });
-        }
-        
+        // Initialize embedding models
         self.initialize_embedding_models().await?;
         
         {

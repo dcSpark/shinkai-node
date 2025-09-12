@@ -1270,6 +1270,7 @@ impl SqliteManager {
         &self,
         embedding_generator: &dyn shinkai_embedding::embedding_generator::EmbeddingGenerator,
         new_model_type: &EmbeddingModelType,
+        force: bool,
     ) -> Result<(), SqliteManagerError> {
         use shinkai_message_primitives::schemas::custom_prompt::CustomPrompt;
         use bytemuck::cast_slice;
@@ -1278,16 +1279,24 @@ impl SqliteManager {
         shinkai_log(
             ShinkaiLogOption::Database,
             ShinkaiLogLevel::Info,
-            &format!("Starting embedding migration to new model: {}", new_model_type),
+            &format!("Starting embedding migration to new model: {} (force: {})", new_model_type, force),
         );
 
-        if !self.is_embedding_migration_needed(new_model_type)? {
+        if !force && !self.is_embedding_migration_needed(new_model_type)? {
             shinkai_log(
                 ShinkaiLogOption::Database,
                 ShinkaiLogLevel::Info,
                 "Embedding migration not needed, skipping",
             );
             return Ok(());
+        }
+
+        if force {
+            shinkai_log(
+                ShinkaiLogOption::Database,
+                ShinkaiLogLevel::Info,
+                "Forcing embedding migration regardless of current state",
+            );
         }
 
         // Step 1: Drop and recreate vector tables with new dimensions

@@ -28,6 +28,7 @@ use shinkai_http_api::node_api_router::APIUseRegistrationCodeSuccessResponse;
 use shinkai_http_api::{
     api_v2::api_v2_handlers_general::InitialRegistrationRequest,
     node_api_router::{APIError, GetPublicKeysResponse},
+    node_commands::EmbeddingMigrationRequest,
 };
 use shinkai_mcp::mcp_methods::{list_tools_via_command, list_tools_via_http, list_tools_via_sse};
 use shinkai_message_primitives::schemas::llm_providers::shinkai_backend::QuotaResponse;
@@ -51,6 +52,7 @@ use shinkai_message_primitives::{
     shinkai_utils::{
         encryption::{encryption_public_key_to_string, EncryptionMethod},
         shinkai_message_builder::ShinkaiMessageBuilder,
+        shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
         signatures::signature_public_key_to_string,
     },
     shinkai_utils::{job_scope::MinimalJobScope, shinkai_time::ShinkaiStringTime},
@@ -69,7 +71,7 @@ use shinkai_tools_primitives::tools::{
 use std::collections::HashMap;
 use std::process::Command;
 use std::time::Instant;
-use std::{env, sync::Arc};
+use std::{env, sync::{Arc, atomic::{AtomicBool, Ordering}}};
 use tokio::sync::Mutex;
 use tokio::time::Duration;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
@@ -783,6 +785,7 @@ impl Node {
     pub async fn v2_api_health_check(
         db: Arc<SqliteManager>,
         public_https_certificate: Option<String>,
+        is_migration_in_progress: Arc<AtomicBool>,
         res: Sender<Result<serde_json::Value, APIError>>,
     ) -> Result<(), NodeError> {
         let public_https_certificate = match public_https_certificate {
@@ -806,6 +809,7 @@ impl Node {
             }
         };
 
+        let is_updating = is_migration_in_progress.load(Ordering::Relaxed);
         let _ = res
             .send(Ok(serde_json::json!({
                 "is_pristine": !db.has_any_profile().unwrap_or(false),
@@ -813,8 +817,193 @@ impl Node {
                 "version": version,
                 "update_requires_reset": needs_global_reset,
                 "docker_status": "not-installed",
+                "updating": is_updating,
+                "ready": !is_updating,
             })))
             .await;
+        Ok(())
+    }
+
+    pub async fn v2_api_trigger_embedding_migration(
+        db: Arc<SqliteManager>,
+        embedding_generator: RemoteEmbeddingGenerator,
+        is_migration_in_progress: Arc<AtomicBool>,
+        bearer: String,
+        payload: EmbeddingMigrationRequest,
+        res: Sender<Result<serde_json::Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Check if migration is already in progress (unless forced)
+        if !payload.force && is_migration_in_progress.load(Ordering::Relaxed) {
+            let _ = res
+                .send(Err(APIError {
+                    code: StatusCode::CONFLICT.as_u16(),
+                    error: "Migration In Progress".to_string(),
+                    message: "Embedding migration is already in progress".to_string(),
+                }))
+                .await;
+            return Ok(());
+        }
+
+        // Parse the requested embedding model
+        let requested_model = match EmbeddingModelType::from_string(&payload.embedding_model) {
+            Ok(model) => model,
+            Err(_) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Invalid Embedding Model".to_string(),
+                        message: format!("Invalid embedding model: {}", payload.embedding_model),
+                    }))
+                    .await;
+                return Ok(());
+            }
+        };
+
+        // Trigger the migration using the internal helper
+        match Self::internal_trigger_embedding_migration(
+            Arc::clone(&db),
+            embedding_generator,
+            requested_model,
+            payload.force,
+            Arc::clone(&is_migration_in_progress),
+            true, // Check Ollama availability for API calls
+        ).await {
+            Ok(_) => {
+                // Migration started successfully
+            }
+            Err(err_msg) => {
+                let (status_code, error_type) = if err_msg.contains("not available in Ollama") {
+                    (StatusCode::BAD_REQUEST, "Model Not Available")
+                } else if err_msg.contains("Cannot connect to Ollama") {
+                    (StatusCode::SERVICE_UNAVAILABLE, "Ollama Unavailable")
+                } else {
+                    (StatusCode::INTERNAL_SERVER_ERROR, "Migration Error")
+                };
+
+                let _ = res
+                    .send(Err(APIError {
+                        code: status_code.as_u16(),
+                        error: error_type.to_string(),
+                        message: err_msg,
+                    }))
+                    .await;
+                return Ok(());
+            }
+        }
+
+        // Send success response immediately (migration runs in background)
+        let _ = res
+            .send(Ok(serde_json::json!({
+                "status": "success",
+                "message": "Embedding migration has been triggered and is running in the background",
+                "migration_in_progress": true,
+                "target_model": payload.embedding_model,
+                "force": payload.force
+            })))
+            .await;
+
+        Ok(())
+    }
+
+    /// Internal helper function for triggering embedding migrations
+    /// Used by both startup migration and API endpoint
+    pub async fn internal_trigger_embedding_migration(
+        db: Arc<SqliteManager>,
+        embedding_generator: RemoteEmbeddingGenerator,
+        target_model: EmbeddingModelType,
+        force: bool,
+        is_migration_in_progress: Arc<AtomicBool>,
+        check_ollama_availability: bool,
+    ) -> Result<(), String> {
+        // Check if model is available in Ollama (if requested)
+        if check_ollama_availability {
+            match Self::internal_scan_ollama_models().await {
+                Ok(available_models) => {
+                    let model_name = target_model.to_string();
+                    let model_available = available_models.iter().any(|model| {
+                        model["name"].as_str()
+                            .map(|name| name == model_name)
+                            .unwrap_or(false)
+                    });
+
+                    if !model_available {
+                        return Err(format!("Embedding model '{}' is not available in Ollama", model_name));
+                    }
+                },
+                Err(_) => {
+                    return Err("Cannot connect to Ollama to verify model availability".to_string());
+                }
+            }
+        }
+
+        // Set migration status to in progress
+        is_migration_in_progress.store(true, Ordering::Relaxed);
+
+        // Create a new embedding generator configured for the target model
+        let mut target_embedding_generator = embedding_generator.clone();
+        target_embedding_generator.set_model_type(target_model.clone());
+
+        // Clone necessary data for the migration task
+        let db_clone = Arc::clone(&db);
+        let target_model_clone = target_model.clone();
+        let migration_status_clone = Arc::clone(&is_migration_in_progress);
+
+        // Spawn migration task
+        tokio::spawn(async move {
+            match db_clone.migrate_embeddings_to_new_model(&target_embedding_generator, &target_model_clone, force).await {
+                Ok(_) => {
+                    shinkai_log(
+                        ShinkaiLogOption::Node,
+                        ShinkaiLogLevel::Info,
+                        &format!("Embedding migration to {} completed successfully", target_model_clone),
+                    );
+                }
+                Err(e) => {
+                    shinkai_log(
+                        ShinkaiLogOption::Node,
+                        ShinkaiLogLevel::Error,
+                        &format!("Embedding migration to {} failed: {e:?}", target_model_clone),
+                    );
+                }
+            }
+            // Set migration status back to false when done
+            migration_status_clone.store(false, Ordering::Relaxed);
+        });
+
+        Ok(())
+    }
+
+    pub async fn v2_api_get_migration_status(
+        db: Arc<SqliteManager>,
+        is_migration_in_progress: Arc<AtomicBool>,
+        bearer: String,
+        res: Sender<Result<serde_json::Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let is_migrating = is_migration_in_progress.load(Ordering::Relaxed);
+        
+        // Get current embedding model for context
+        let current_model = db.get_default_embedding_model()
+            .unwrap_or_else(|_| EmbeddingModelType::default());
+
+        let _ = res
+            .send(Ok(serde_json::json!({
+                "migration_in_progress": is_migrating,
+                "ready": !is_migrating,
+                "current_embedding_model": current_model.to_string(),
+                "status": if is_migrating { "migrating" } else { "ready" }
+            })))
+            .await;
+
         Ok(())
     }
 

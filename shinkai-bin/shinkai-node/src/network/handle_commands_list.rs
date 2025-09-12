@@ -1169,8 +1169,24 @@ impl Node {
             NodeCommand::V2ApiHealthCheck { res } => {
                 let db_clone = Arc::clone(&self.db);
                 let public_https_certificate_clone = self.public_https_certificate.clone();
+                let is_migration_in_progress_clone = Arc::clone(&self.is_migration_in_progress);
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_health_check(db_clone, public_https_certificate_clone, res).await;
+                    let _ = Node::v2_api_health_check(db_clone, public_https_certificate_clone, is_migration_in_progress_clone, res).await;
+                });
+            }
+            NodeCommand::V2ApiTriggerEmbeddingMigration { bearer, payload, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let embedding_generator_clone = self.embedding_generator.clone();
+                let is_migration_in_progress_clone = Arc::clone(&self.is_migration_in_progress);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_trigger_embedding_migration(db_clone, embedding_generator_clone, is_migration_in_progress_clone, bearer, payload, res).await;
+                });
+            }
+            NodeCommand::V2ApiGetMigrationStatus { bearer, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let is_migration_in_progress_clone = Arc::clone(&self.is_migration_in_progress);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_migration_status(db_clone, is_migration_in_progress_clone, bearer, res).await;
                 });
             }
             NodeCommand::V2ApiScanOllamaModels { bearer, res } => {
