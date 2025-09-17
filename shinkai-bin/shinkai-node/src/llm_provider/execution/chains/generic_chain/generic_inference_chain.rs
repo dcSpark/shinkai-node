@@ -821,32 +821,42 @@ impl GenericInferenceChain {
             .and_then(|config| config.web_search_enabled)
             .unwrap_or(false);
         if tools_allowed && web_search_enabled {
-            // Check if web search tool is not already in the tools list
+            // Check if web search related tools are not already in the tools list and add them
             let web_search_tool_key = "local:::__official_shinkai:::web_search";
-            let has_web_search = tools
-                .iter()
-                .any(|tool| tool.tool_router_key().to_string_without_version() == web_search_tool_key);
+            let download_pages_tool_key = "local:::__official_shinkai:::download_pages";
+            let pdf_text_extractor_tool_key = "local:::__official_shinkai:::pdf_text_extractor";
+            
+            let web_search_tools = vec![
+                (web_search_tool_key, "Web search tool"),
+                (download_pages_tool_key, "Download pages tool"),
+                (pdf_text_extractor_tool_key, "PDF text extractor tool"),
+            ];
 
-            if !has_web_search {
-                // Add the web search tool
-                if let Some(tool_router) = &tool_router {
-                    match tool_router.get_tool_by_name(web_search_tool_key).await {
-                        Ok(Some(web_search_tool)) => {
-                            tools.push(web_search_tool);
-                        }
-                        Ok(None) => {
-                            shinkai_log(
-                                ShinkaiLogOption::JobExecution,
-                                ShinkaiLogLevel::Error,
-                                &format!("Web search tool not found: {}", web_search_tool_key),
-                            );
-                        }
-                        Err(e) => {
-                            shinkai_log(
-                                ShinkaiLogOption::JobExecution,
-                                ShinkaiLogLevel::Error,
-                                &format!("Error retrieving web search tool: {:?}", e),
-                            );
+            for (tool_key, tool_description) in web_search_tools {
+                let has_tool = tools
+                    .iter()
+                    .any(|tool| tool.tool_router_key().to_string_without_version() == tool_key);
+
+                if !has_tool {
+                    if let Some(tool_router) = &tool_router {
+                        match tool_router.get_tool_by_name(tool_key).await {
+                            Ok(Some(tool)) => {
+                                tools.push(tool);
+                            }
+                            Ok(None) => {
+                                shinkai_log(
+                                    ShinkaiLogOption::JobExecution,
+                                    ShinkaiLogLevel::Error,
+                                    &format!("{} not found: {}", tool_description, tool_key),
+                                );
+                            }
+                            Err(e) => {
+                                shinkai_log(
+                                    ShinkaiLogOption::JobExecution,
+                                    ShinkaiLogLevel::Error,
+                                    &format!("Error retrieving {}: {:?}", tool_description, e),
+                                );
+                            }
                         }
                     }
                 }
