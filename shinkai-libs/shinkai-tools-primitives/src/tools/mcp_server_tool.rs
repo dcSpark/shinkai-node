@@ -190,7 +190,7 @@ mod tests {
                 name: "@modelcontextprotocol/server-everything".to_string(),
                 r#type: MCPServerType::Command,
                 url: None,
-                command: Some("npx -y @modelcontextprotocol/server-everything".to_string()),
+                command: Some("npx -y @modelcontextprotocol/server-everything@2025.9.12".to_string()),
                 is_enabled: true,
                 env: None,
             },
