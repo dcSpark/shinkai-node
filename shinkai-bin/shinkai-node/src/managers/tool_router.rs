@@ -596,6 +596,7 @@ impl ToolRouter {
         println!("Adding {} Rust tools", rust_tools.len());
         let mut added_count = 0;
         let mut skipped_count = 0;
+        let mut upgraded_count = 0;
 
         for tool in rust_tools {
             let rust_tool = RustTool::new(
@@ -605,26 +606,66 @@ impl ToolRouter {
                 tool.output_arg,
                 None,
                 tool.tool_router_key,
+                tool.version,
             );
 
-            let _ = match self.sqlite_manager.get_tool_by_key(&rust_tool.tool_router_key) {
+            let router_key = rust_tool.tool_router_key.clone();
+            let new_version = IndexableVersion::from_string(&rust_tool.version).map_err(|e| {
+                ToolError::ParseError(format!("Invalid Rust tool version '{}': {}", rust_tool.version, e))
+            })?;
+
+            match self.sqlite_manager.get_tool_header_by_key(&router_key) {
                 Err(SqliteManagerError::ToolNotFound(_)) => {
                     added_count += 1;
                     self.sqlite_manager
                         .add_tool(ShinkaiTool::Rust(rust_tool, true))
                         .await
-                        .map_err(|e| ToolError::DatabaseError(e.to_string()))
+                        .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
                 }
-                Err(e) => Err(ToolError::DatabaseError(e.to_string())),
-                Ok(_db_tool) => {
-                    skipped_count += 1;
-                    continue;
+                Err(e) => return Err(ToolError::DatabaseError(e.to_string())),
+                Ok(header) => {
+                    let current_version = IndexableVersion::from_string(&header.version).map_err(|e| {
+                        ToolError::ParseError(format!(
+                            "Invalid installed Rust tool version '{}': {}",
+                            header.version, e
+                        ))
+                    })?;
+
+                    if new_version > current_version {
+                        match self.sqlite_manager.get_tool_by_key(&router_key) {
+                            Ok(ShinkaiTool::Rust(existing_rust_tool, is_enabled)) => {
+                                let mut upgraded_tool = rust_tool.clone();
+                                if upgraded_tool.mcp_enabled.is_none() {
+                                    upgraded_tool.mcp_enabled = existing_rust_tool.mcp_enabled;
+                                }
+
+                                upgraded_count += 1;
+                                self.sqlite_manager
+                                    .upgrade_tool(ShinkaiTool::Rust(upgraded_tool, is_enabled))
+                                    .await
+                                    .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+                            }
+                            Ok(other_variant) => {
+                                skipped_count += 1;
+                                eprintln!(
+                                    "Expected Rust tool for key '{}' but found {:?}, skipping",
+                                    router_key,
+                                    other_variant.tool_type()
+                                );
+                            }
+                            Err(err) => {
+                                return Err(ToolError::DatabaseError(err.to_string()));
+                            }
+                        }
+                    } else {
+                        skipped_count += 1;
+                    }
                 }
-            }?;
+            }
         }
         println!(
-            "Rust tools installation complete - Added: {}, Skipped: {}",
-            added_count, skipped_count
+            "Rust tools installation complete - Added: {}, Upgraded: {}, Skipped: {}",
+            added_count, upgraded_count, skipped_count
         );
         Ok(())
     }

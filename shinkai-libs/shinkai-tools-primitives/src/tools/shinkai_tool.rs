@@ -402,7 +402,7 @@ impl ShinkaiTool {
     /// Returns the version of the tool
     pub fn version(&self) -> String {
         match self {
-            ShinkaiTool::Rust(_r, _) => "1.0.0".to_string(),
+            ShinkaiTool::Rust(r, _) => r.version.clone(),
             ShinkaiTool::Network(n, _) => n.version.clone(),
             ShinkaiTool::Deno(d, _) => d.version.clone(),
             ShinkaiTool::Python(p, _) => p.version.clone(),

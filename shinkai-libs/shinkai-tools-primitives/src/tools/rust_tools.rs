@@ -27,12 +27,18 @@ impl fmt::Display for RustToolError {
 
 impl std::error::Error for RustToolError {}
 
+fn default_rust_tool_version() -> String {
+    "1.0.0".to_string()
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RustTool {
     pub name: String,
     pub description: String,
     pub input_args: Parameters,
     pub output_arg: ToolOutputArg,
+    #[serde(default = "default_rust_tool_version")]
+    pub version: String,
     pub tool_embedding: Option<Vec<f32>>,
     pub tool_router_key: String,
     pub mcp_enabled: Option<bool>,
@@ -46,12 +52,14 @@ impl RustTool {
         output_arg: ToolOutputArg,
         tool_embedding: Option<Vec<f32>>,
         tool_router_key: String,
+        version: String,
     ) -> Self {
         Self {
             name: utils::clean_string(&name),
             description,
             input_args,
             output_arg,
+            version,
             tool_embedding,
             tool_router_key,
             mcp_enabled: Some(false),
@@ -79,6 +87,7 @@ impl RustTool {
             description: header.description.clone(),
             input_args: header.input_args.clone(),
             output_arg: header.output_arg.clone(),
+            version: header.version.clone(),
             tool_embedding: None, // Assuming no embedding is provided in the header
             tool_router_key: header.tool_router_key.clone(),
             mcp_enabled: header.mcp_enabled,
@@ -106,7 +115,7 @@ impl RustTool {
 
         ToolPlaygroundMetadata {
             name: self.name.clone(),
-            version: "1.0.0".to_string(),
+            version: self.version.clone(),
             homepage: None,
             description: self.description.clone(),
             author: self.author(),
