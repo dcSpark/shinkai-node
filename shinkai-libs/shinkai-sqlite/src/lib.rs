@@ -1425,7 +1425,8 @@ impl SqliteManager {
             )?;
         }
 
-        // Step 4: Regenerate embeddings for file chunks
+        // Step 4: Regenerate embeddings for file chunks with smart truncation
+        // Keep existing chunks but truncate only if new model has smaller context window
         shinkai_log(
             ShinkaiLogOption::Database,
             ShinkaiLogLevel::Info,
@@ -1445,8 +1446,20 @@ impl SqliteManager {
             chunk_iter.collect::<Result<Vec<_>, _>>()?
         };
 
+        let new_model_max_tokens = new_model_type.max_input_token_count();
+        let mut truncated_count = 0;
+        let total_chunks = chunks.len();
+
         for (chunk_id, parsed_file_id, text) in chunks {
-            let embedding = embedding_generator.generate_embedding_default(&text).await
+            // Only truncate if the chunk exceeds new model's token limit
+            let processed_text = if text.chars().count() > new_model_max_tokens {
+                truncated_count += 1;
+                text.chars().take(new_model_max_tokens).collect()
+            } else {
+                text
+            };
+            
+            let embedding = embedding_generator.generate_embedding_default(&processed_text).await
                 .map_err(|e| SqliteManagerError::SerializationError(format!("Chunk embedding generation failed: {}", e)))?;
             
             let conn = self.get_connection()?;
@@ -1456,7 +1469,37 @@ impl SqliteManager {
             )?;
         }
 
-        // Step 5: Update the database with the new model type
+        if truncated_count > 0 {
+            shinkai_log(
+                ShinkaiLogOption::Database,
+                ShinkaiLogLevel::Info,
+                &format!("Truncated {} out of {} chunks to fit new model's {} token limit", 
+                    truncated_count, total_chunks, new_model_max_tokens),
+            );
+        } else {
+            shinkai_log(
+                ShinkaiLogOption::Database,
+                ShinkaiLogLevel::Info,
+                "No chunks needed truncation - all fit within new model's token limit",
+            );
+        }
+
+        // Step 5: Update parsed_files.embedding_model_used column for consistency
+        shinkai_log(
+            ShinkaiLogOption::Database,
+            ShinkaiLogLevel::Info,
+            "Updating parsed_files.embedding_model_used column",
+        );
+
+        {
+            let conn = self.get_connection()?;
+            conn.execute(
+                "UPDATE parsed_files SET embedding_model_used = ?1",
+                rusqlite::params![new_model_type.to_string()],
+            )?;
+        }
+
+        // Step 6: Update the database with the new model type
         self.update_default_embedding_model(new_model_type.clone())?;
 
         shinkai_log(

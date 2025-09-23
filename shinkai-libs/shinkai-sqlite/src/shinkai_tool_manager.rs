@@ -295,6 +295,9 @@ impl SqliteManager {
                 new_python.config = merged_config;
                 (old_config, ShinkaiTool::Python(new_python, is_enabled))
             }
+            (ShinkaiTool::Rust(_old_rust, _), ShinkaiTool::Rust(new_rust, is_enabled)) => {
+                (Vec::new(), ShinkaiTool::Rust(new_rust, is_enabled))
+            }
             _ => return Err(SqliteManagerError::ToolTypeMismatch),
         };
 

@@ -271,3 +271,32 @@ pub async fn send_tool_ws_update_with_status(
     }
     Ok(())
 }
+
+pub fn sanitize_tool_name(name: &str) -> String {
+    let sanitized: String = name
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' || c == '-' {
+                c.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .collect();
+
+    let mut result = if sanitized.is_empty() {
+        "tool".to_string()
+    } else {
+        sanitized.chars().take(64).collect()
+    };
+
+    // Ensure the name starts with a letter or underscore
+    if let Some(first_char) = result.chars().next() {
+        if !first_char.is_alphabetic() && first_char != '_' {
+            result = format!("t_{}", result);
+        }
+    }
+
+    // Ensure length is still within 64 characters after potential prefix
+    result.chars().take(64).collect()
+}

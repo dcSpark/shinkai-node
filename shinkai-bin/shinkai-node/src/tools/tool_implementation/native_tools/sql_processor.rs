@@ -58,13 +58,16 @@ INSERT INTO table_name (field_1, field_3, field_4)
 
 -- Example read:
 SELECT * FROM table_name WHERE field_2 > datetime('now', '-1 day');
-SELECT field_1, field_3 FROM table_name WHERE field_3 > 100 ORDER BY field_2 DESC LIMIT 10;"#
+SELECT field_1, field_3 FROM table_name WHERE field_3 > 100 ORDER BY field_2 DESC LIMIT 10;
+
+-- Changelog:
+- 1.0.1: Fixed parameters to be compliant with JSON schema."#
                     .to_string(),
                 tool_router_key: "local:::__official_shinkai:::shinkai_sqlite_query_executor".to_string(),
                 tool_type: "Rust".to_string(),
                 formatted_tool_summary_for_ui: "Execute SQLite queries".to_string(),
                 author: "@@official.shinkai".to_string(),
-                version: "1.0".to_string(),
+                version: "1.0.1".to_string(),
                 enabled: true,
                 mcp_enabled: Some(false),
                 input_args: {
@@ -311,6 +314,7 @@ mod tests {
             mcp_enabled: sql_processor_tool.tool.mcp_enabled.clone(),
             input_args: sql_processor_tool.tool.input_args.clone(),
             output_arg: sql_processor_tool.tool.output_arg.clone(),
+            version: sql_processor_tool.tool.version.clone(),
             tool_embedding: sql_processor_tool._tool_embedding.clone(),
             tool_router_key: sql_processor_tool.tool.tool_router_key.clone(),
         };
