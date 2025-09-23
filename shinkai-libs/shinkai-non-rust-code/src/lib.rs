@@ -2,7 +2,9 @@ use std::{collections::HashMap, env, path::PathBuf, time::Duration};
 
 use serde_json::Value;
 use shinkai_tools_runner::tools::{
-    code_files::CodeFiles, deno_runner::DenoRunner, deno_runner_options::DenoRunnerOptions, execution_context::ExecutionContext, python_runner::PythonRunner, python_runner_options::PythonRunnerOptions, runner_type::RunnerType
+    code_files::CodeFiles, deno_runner::DenoRunner, deno_runner_options::DenoRunnerOptions,
+    execution_context::ExecutionContext, python_runner::PythonRunner, python_runner_options::PythonRunnerOptions,
+    runner_type::RunnerType,
 };
 pub mod functions;
 mod test_utils;
@@ -60,7 +62,7 @@ fn get_python_runner(
     function_name: &str,
     code: String,
     configurations: Value,
-    mount_files: Vec<PathBuf>
+    mount_files: Vec<PathBuf>,
 ) -> PythonRunner {
     PythonRunner::new(
         CodeFiles {
@@ -101,12 +103,11 @@ impl std::fmt::Display for RunError {
     }
 }
 
-
 pub struct NonRustCodeRunnerFactory {
     function_name: String,
     code: String,
     mount_files: Vec<PathBuf>,
-    runtime: NonRustRuntime
+    runtime: NonRustRuntime,
 }
 
 impl NonRustCodeRunnerFactory {
@@ -214,9 +215,12 @@ mod tests {
         let runner = NonRustCodeRunnerFactory::new("test_function", code, vec![]).create_runner(json!({}));
 
         let result = runner
-            .run::<_, TestOutput>(json!({
-                "name": "World"
-            }), None)
+            .run::<_, TestOutput>(
+                json!({
+                    "name": "World"
+                }),
+                None,
+            )
             .await
             .unwrap();
 

@@ -1,9 +1,9 @@
-use shinkai_message_primitives::schemas::{
-    llm_message::LlmMessage, llm_providers::serialized_llm_provider::LLMProviderInterface, prompts::Prompt
-};
 use super::shared_model_logic::sanitize_tool_name;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use shinkai_message_primitives::schemas::{
+    llm_message::LlmMessage, llm_providers::serialized_llm_provider::LLMProviderInterface, prompts::Prompt,
+};
 
 use crate::llm_provider::error::LLMProviderError;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
@@ -234,7 +234,9 @@ pub fn ollama_conversation_prepare_messages_with_tooling(
 mod tests {
     use serde_json::json;
     use shinkai_message_primitives::schemas::{
-        llm_message::DetailedFunctionCall, llm_providers::serialized_llm_provider::SerializedLLMProvider, subprompts::{SubPrompt, SubPromptAssetType, SubPromptType}
+        llm_message::DetailedFunctionCall,
+        llm_providers::serialized_llm_provider::SerializedLLMProvider,
+        subprompts::{SubPrompt, SubPromptAssetType, SubPromptType},
     };
 
     use super::*;

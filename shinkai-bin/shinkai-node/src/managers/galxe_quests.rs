@@ -1,3 +1,4 @@
+use base64::Engine;
 use blake3::{self, Hasher};
 use chrono::{DateTime, Utc};
 use ed25519_dalek::{Signer, VerifyingKey};
@@ -10,7 +11,6 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::signatures::unsafe_deterministic_signature_keypair;
 use shinkai_sqlite::SqliteManager;
 use std::sync::Arc;
-use base64::Engine;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

@@ -36,7 +36,6 @@ pub fn generate_or_load_keys(secrets_file_path: &str) -> NodeKeys {
             }
         }
 
-
         // Use the values from the file if they exist
         if let (Some(identity_secret_key_string), Some(encryption_secret_key_string)) =
             (map.get("IDENTITY_SECRET_KEY"), map.get("ENCRYPTION_SECRET_KEY"))
@@ -51,15 +50,11 @@ pub fn generate_or_load_keys(secrets_file_path: &str) -> NodeKeys {
 
             // Read the HTTPS certificates if they exist
             let private_https_certificate = match map.get("PRIVATE_HTTPS_CERTIFICATE").cloned() {
-                Some(certificate) if certificate.trim().len() > 0 => {
-                    Some(certificate.replace("\\n", "\n"))
-                },
+                Some(certificate) if certificate.trim().len() > 0 => Some(certificate.replace("\\n", "\n")),
                 _ => None,
             };
             let public_https_certificate = match map.get("PUBLIC_HTTPS_CERTIFICATE").cloned() {
-                Some(certificate) if certificate.trim().len() > 0 => {
-                    Some(certificate.replace("\\n", "\n"))
-                },
+                Some(certificate) if certificate.trim().len() > 0 => Some(certificate.replace("\\n", "\n")),
                 _ => None,
             };
 

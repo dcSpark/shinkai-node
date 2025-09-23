@@ -14,8 +14,8 @@ use ngrok::{
     self,
     config::ForwarderBuilder,
     forwarder::Forwarder,
-    tunnel::{EndpointInfo, HttpTunnel, TunnelCloser, TunnelInfo},
     session::Session,
+    tunnel::{EndpointInfo, HttpTunnel, TunnelCloser, TunnelInfo},
 };
 use shinkai_http_api::node_api_router::APIError;
 use tokio::sync::Mutex;
@@ -46,44 +46,45 @@ impl Node {
         }
 
         match db.read_ngrok_auth_token() {
-            Ok(Some(_)) => {
-                match db.set_ngrok_auth_token(None) {
-                    Ok(_) => {
-                        let response = NgrokStatus {
-                            enabled: false,
-                            tunnel: None,
-                            authtoken: None,
-                        };
-                        let _ = res.send(Ok(serde_json::to_value(response).unwrap())).await;
-                        return Ok(());
-                    }
-                    Err(e) => {
-                        let _ = res.send(Err(APIError::new(
+            Ok(Some(_)) => match db.set_ngrok_auth_token(None) {
+                Ok(_) => {
+                    let response = NgrokStatus {
+                        enabled: false,
+                        tunnel: None,
+                        authtoken: None,
+                    };
+                    let _ = res.send(Ok(serde_json::to_value(response).unwrap())).await;
+                    return Ok(());
+                }
+                Err(e) => {
+                    let _ = res
+                        .send(Err(APIError::new(
                             StatusCode::INTERNAL_SERVER_ERROR,
                             "Failed to update ngrok auth token in DB",
                             &e.to_string(),
                         )))
                         .await;
-                        return Ok(());
-                    }
+                    return Ok(());
                 }
-            }
+            },
             Ok(None) => {
-                let _ = res.send(Err(APIError::new(
-                    StatusCode::BAD_REQUEST,
-                    "There is no ngrok auth token to clear",
-                    "",
-                )))
-                .await;
+                let _ = res
+                    .send(Err(APIError::new(
+                        StatusCode::BAD_REQUEST,
+                        "There is no ngrok auth token to clear",
+                        "",
+                    )))
+                    .await;
                 return Ok(());
             }
             Err(e) => {
-                let _ = res.send(Err(APIError::new(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Failed to read ngrok auth token from DB",
-                    &e.to_string(),
-                )))
-                .await;
+                let _ = res
+                    .send(Err(APIError::new(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Failed to read ngrok auth token from DB",
+                        &e.to_string(),
+                    )))
+                    .await;
                 return Ok(());
             }
         }
@@ -101,12 +102,13 @@ impl Node {
         }
 
         if auth_token.is_empty() {
-            let _ = res.send(Err(APIError::new(
-                StatusCode::BAD_REQUEST,
-                "Auth token is required",
-                "",
-            )))
-            .await;
+            let _ = res
+                .send(Err(APIError::new(
+                    StatusCode::BAD_REQUEST,
+                    "Auth token is required",
+                    "",
+                )))
+                .await;
             return Ok(());
         }
 
@@ -115,22 +117,24 @@ impl Node {
         if let Some(tunnel) = active_tunnel.take() {
             let tunnel_url = tunnel.url().to_string();
 
-            let _ = res.send(Err(APIError::new(
-                StatusCode::BAD_REQUEST,
-                "Ngrok is already enabled",
-                &format!("Ngrok tunnel is already enabled: {}", tunnel_url),
-            )))
-            .await;
+            let _ = res
+                .send(Err(APIError::new(
+                    StatusCode::BAD_REQUEST,
+                    "Ngrok is already enabled",
+                    &format!("Ngrok tunnel is already enabled: {}", tunnel_url),
+                )))
+                .await;
             return Ok(());
         }
 
         if let Err(e) = db.set_ngrok_auth_token(Some(&auth_token)) {
-            let _ = res.send(Err(APIError::new(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to update ngrok auth token in DB",
-                &e.to_string(),
-            )))
-            .await;
+            let _ = res
+                .send(Err(APIError::new(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to update ngrok auth token in DB",
+                    &e.to_string(),
+                )))
+                .await;
             return Ok(());
         }
 
@@ -195,7 +199,10 @@ impl Node {
                         shinkai_message_primitives::shinkai_utils::shinkai_logging::shinkai_log(
                             shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogOption::Node,
                             shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogLevel::Info,
-                            &format!("Failed to read ngrok auth token for status (tunnel already active): {}", e),
+                            &format!(
+                                "Failed to read ngrok auth token for status (tunnel already active): {}",
+                                e
+                            ),
                         );
                         None // If error reading, report as None for status
                     }
@@ -214,18 +221,21 @@ impl Node {
             let auth_token_from_db = match db.read_ngrok_auth_token() {
                 Ok(token_opt) => token_opt,
                 Err(e) => {
-                    let _ = res.send(Err(APIError::new(
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        "Failed to read ngrok auth token from DB before starting tunnel",
-                        &e.to_string(),
-                    ))).await;
+                    let _ = res
+                        .send(Err(APIError::new(
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            "Failed to read ngrok auth token from DB before starting tunnel",
+                            &e.to_string(),
+                        )))
+                        .await;
                     return Ok(());
                 }
             };
 
             // Session Management: Get or create an ngrok session
             let session_for_tunnel_creation: Session;
-            { // Scoped to manage the lock on ACTIVE_NGROK_SESSION
+            {
+                // Scoped to manage the lock on ACTIVE_NGROK_SESSION
                 let active_ngrok_session_guard = ACTIVE_NGROK_SESSION.lock().await;
                 if let Some(cached_session) = active_ngrok_session_guard.as_ref() {
                     shinkai_message_primitives::shinkai_utils::shinkai_logging::shinkai_log(
@@ -246,17 +256,18 @@ impl Node {
                     );
 
                     // An auth token is required to create a new session.
-                    let token_for_new_session = match &auth_token_from_db {
-                        Some(token) => token.clone(),
-                        None => {
-                            let _ = res.send(Err(APIError::new(
+                    let token_for_new_session =
+                        match &auth_token_from_db {
+                            Some(token) => token.clone(),
+                            None => {
+                                let _ = res.send(Err(APIError::new(
                                 StatusCode::BAD_REQUEST,
                                 "Ngrok auth token is required to create a new ngrok session, but no token is set.",
                                 "Please set the ngrok auth token first via the API.",
                             ))).await;
-                            return Ok(());
-                        }
-                    };
+                                return Ok(());
+                            }
+                        };
 
                     let new_session = match ngrok::Session::builder()
                         .authtoken(token_for_new_session)
@@ -265,15 +276,17 @@ impl Node {
                     {
                         Ok(session) => session,
                         Err(e) => {
-                            let _ = res.send(Err(APIError::new(
-                                StatusCode::INTERNAL_SERVER_ERROR,
-                                "Failed to connect to ngrok to establish a new session",
-                                &e.to_string(),
-                            ))).await;
+                            let _ = res
+                                .send(Err(APIError::new(
+                                    StatusCode::INTERNAL_SERVER_ERROR,
+                                    "Failed to connect to ngrok to establish a new session",
+                                    &e.to_string(),
+                                )))
+                                .await;
                             return Ok(());
                         }
                     };
-                    
+
                     // Re-acquire lock to store the new session globally
                     let mut active_ngrok_session_guard_for_storing = ACTIVE_NGROK_SESSION.lock().await;
                     *active_ngrok_session_guard_for_storing = Some(new_session.clone());
@@ -282,14 +295,21 @@ impl Node {
                 }
             } // End of scope for locks on ACTIVE_NGROK_SESSION
 
-            let to_url = match Url::parse(&format!("http://{}:{}", api_listen_address.ip(), api_listen_address.port())) { // TODO: Make port configurable
+            let to_url = match Url::parse(&format!(
+                "http://{}:{}",
+                api_listen_address.ip(),
+                api_listen_address.port()
+            )) {
+                // TODO: Make port configurable
                 Ok(url) => url,
                 Err(e) => {
-                    let _ = res.send(Err(APIError::new(
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        "Failed to parse ngrok target URL",
-                        &e.to_string(),
-                    ))).await;
+                    let _ = res
+                        .send(Err(APIError::new(
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            "Failed to parse ngrok target URL",
+                            &e.to_string(),
+                        )))
+                        .await;
                     return Ok(());
                 }
             };
@@ -302,11 +322,13 @@ impl Node {
             {
                 Ok(tunnel) => tunnel,
                 Err(e) => {
-                    let _ = res.send(Err(APIError::new(
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        "Failed to start ngrok tunnel",
-                        &e.to_string(),
-                    ))).await;
+                    let _ = res
+                        .send(Err(APIError::new(
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            "Failed to start ngrok tunnel",
+                            &e.to_string(),
+                        )))
+                        .await;
                     return Ok(());
                 }
             };
@@ -315,11 +337,7 @@ impl Node {
             shinkai_message_primitives::shinkai_utils::shinkai_logging::shinkai_log(
                 shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogOption::Node,
                 shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogLevel::Info,
-                &format!(
-                    "NGROK Tunnel Started: {} (id: {})",
-                    tunnel_url,
-                    ngrok_tunnel.id()
-                ),
+                &format!("NGROK Tunnel Started: {} (id: {})", tunnel_url, ngrok_tunnel.id()),
             );
 
             // Store the tunnel in the static variable.
@@ -346,11 +364,13 @@ impl Node {
                         &format!("Failed to close ngrok tunnel: {}", e),
                     );
                     // Send error to client
-                    let _ = res.send(Err(APIError::new(
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        "Failed to close ngrok tunnel",
-                        &e.to_string(),
-                    ))).await;
+                    let _ = res
+                        .send(Err(APIError::new(
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            "Failed to close ngrok tunnel",
+                            &e.to_string(),
+                        )))
+                        .await;
                     // The original code proceeded to send a status update.
                     // Depending on desired behavior, one might return early here.
                     // For now, matching original behavior of still sending status.
@@ -369,9 +389,12 @@ impl Node {
                     shinkai_message_primitives::shinkai_utils::shinkai_logging::shinkai_log(
                         shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogOption::Node,
                         shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogLevel::Error,
-                        &format!("Failed to read ngrok auth token from DB for status when disabling: {}", e),
+                        &format!(
+                            "Failed to read ngrok auth token from DB for status when disabling: {}",
+                            e
+                        ),
                     );
-                    None 
+                    None
                 }
             };
             let response = NgrokStatus {

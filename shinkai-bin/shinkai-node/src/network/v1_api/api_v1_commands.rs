@@ -1,9 +1,12 @@
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::managers::tool_router::ToolRouter;
 use crate::{
-    llm_provider::job_manager::JobManager, managers::IdentityManager, network::{
-        node::ProxyConnectionInfo, node_error::NodeError, node_shareable_logic::validate_message_main_logic, Node
-    }, utils::update_global_identity::update_global_identity_name
+    llm_provider::job_manager::JobManager,
+    managers::IdentityManager,
+    network::{
+        node::ProxyConnectionInfo, node_error::NodeError, node_shareable_logic::validate_message_main_logic, Node,
+    },
+    utils::update_global_identity::update_global_identity_name,
 };
 use async_channel::Sender;
 use blake3::Hasher;
@@ -16,7 +19,7 @@ use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_embedding::model_type::EmbeddingModelType;
 use shinkai_http_api::node_api_router::{APIError, APIUseRegistrationCodeSuccessResponse, SendResponseBodyData};
 use shinkai_message_primitives::schemas::identity::{
-    DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity, StandardIdentityType
+    DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity, StandardIdentityType,
 };
 use shinkai_message_primitives::schemas::inbox_permission::InboxPermission;
 use shinkai_message_primitives::schemas::smart_inbox::SmartInbox;
@@ -24,16 +27,25 @@ use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_utils::encryption::encryption_secret_key_to_string;
 use shinkai_message_primitives::{
     schemas::{
-        inbox_name::InboxName, llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::{ShinkaiName, ShinkaiSubidentityType}
-    }, shinkai_message::{
-        shinkai_message::{MessageBody, MessageData, ShinkaiMessage}, shinkai_message_schemas::{
-            APIAddAgentRequest, APIAddOllamaModels, APIChangeJobAgentRequest, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType
-        }
-    }, shinkai_utils::{
+        inbox_name::InboxName,
+        llm_providers::serialized_llm_provider::SerializedLLMProvider,
+        shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
+    },
+    shinkai_message::{
+        shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
+        shinkai_message_schemas::{
+            APIAddAgentRequest, APIAddOllamaModels, APIChangeJobAgentRequest, APIGetMessagesFromInboxRequest,
+            APIReadUpToTimeRequest, IdentityPermissions, MessageSchemaType, RegistrationCodeRequest,
+            RegistrationCodeType,
+        },
+    },
+    shinkai_utils::{
         encryption::{
-            clone_static_secret_key, encryption_public_key_to_string, string_to_encryption_public_key, EncryptionMethod
-        }, shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption}, signatures::{clone_signature_secret_key, signature_public_key_to_string, string_to_signature_public_key}
-    }
+            clone_static_secret_key, encryption_public_key_to_string, string_to_encryption_public_key, EncryptionMethod,
+        },
+        shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
+        signatures::{clone_signature_secret_key, signature_public_key_to_string, string_to_signature_public_key},
+    },
 };
 use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::SqliteManager;
@@ -3073,7 +3085,11 @@ impl Node {
         res: Sender<Result<SendResponseBodyData, APIError>>,
     ) -> Result<(), NodeError> {
         // This command is used to send messages that are already signed and (potentially) encrypted
-        if potentially_encrypted_msg.external_metadata.recipient.starts_with("@@localhost.") {
+        if potentially_encrypted_msg
+            .external_metadata
+            .recipient
+            .starts_with("@@localhost.")
+        {
             let _ = res
                 .send(Err(APIError {
                     code: StatusCode::BAD_REQUEST.as_u16(),
@@ -3237,7 +3253,7 @@ impl Node {
             };
 
             let scheduled_time = msg.external_metadata.scheduled_time;
-            let message_hash = potentially_encrypted_msg.calculate_message_hash_for_pagination();            
+            let message_hash = potentially_encrypted_msg.calculate_message_hash_for_pagination();
 
             let parent_key = if !inbox_name.is_empty() {
                 match db.get_parent_message_hash(&inbox_name, &message_hash) {

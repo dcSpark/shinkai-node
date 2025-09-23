@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use super::super::error::LLMProviderError;
 use super::shared::gemini_api::gemini_prepare_messages;
-use super::shared::shared_model_logic::{save_image_file, send_ws_update, send_tool_ws_update};
+use super::shared::shared_model_logic::{save_image_file, send_tool_ws_update, send_ws_update};
 use super::LLMService;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
 use crate::llm_provider::llm_stopper::LLMStopper;
@@ -17,9 +17,7 @@ use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{Gemini, LLMProviderInterface};
 use shinkai_message_primitives::schemas::prompts::Prompt;
-use shinkai_message_primitives::schemas::ws_types::{
-    WSUpdateHandler
-};
+use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_sqlite::SqliteManager;
@@ -296,7 +294,11 @@ impl LLMService for Gemini {
 
                 Ok(LLMInferenceResponse::new(
                     regular_content,
-                    if thinking_content.is_empty() { None } else { Some(thinking_content) },
+                    if thinking_content.is_empty() {
+                        None
+                    } else {
+                        Some(thinking_content)
+                    },
                     json!({}),
                     function_calls,
                     generated_files,
@@ -390,7 +392,7 @@ async fn process_chunk(
         if *in_thinking {
             *in_thinking = false;
         }
-        
+
         let _ = send_ws_update(
             ws_manager_trait,
             inbox_name.clone(),
@@ -441,7 +443,7 @@ async fn process_gemini_response(
                 // Handle text content
                 if !part.text.is_empty() {
                     let mut text_to_add = String::new();
-                    
+
                     // Handle thinking logic
                     if part.thought {
                         // This is a thought
@@ -1116,13 +1118,14 @@ mod tests {
         let session_id = "test_session_id";
         let ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
         let job_id = "jobid_18b7d629-751f-4b0d-8f14-2ffbeb521106";
-        let inbox_name: Option<InboxName> = Some(InboxName::get_job_inbox_name_from_params(job_id.to_string()).unwrap());
+        let inbox_name: Option<InboxName> =
+            Some(InboxName::get_job_inbox_name_from_params(job_id.to_string()).unwrap());
         let db = setup_test_db().await;
-        
+
         // Create the job in the database so save_and_process_file_with_jobid won't fail
-        use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
         use shinkai_message_primitives::schemas::job_config::JobConfig;
-        
+        use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
+
         let scope = MinimalJobScope::default();
         let config = JobConfig::empty();
         db.create_new_job(
@@ -1161,11 +1164,14 @@ mod tests {
 
         // Verify that the image was successfully processed and saved
         assert_eq!(finish_reason, Some("STOP".to_string()));
-        
+
         // Verify that the image file reference was added to generated_files
         let found = generated_files
             .iter()
             .any(|f| f.path.to_string_lossy().contains("generated_image_test_session_id_"));
-        assert!(found, "Expected a generated file starting with 'generated_image_test_session_id_'");
+        assert!(
+            found,
+            "Expected a generated file starting with 'generated_image_test_session_id_'"
+        );
     }
 }

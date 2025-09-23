@@ -1,9 +1,9 @@
 use clap::{App, Arg};
 use dotenv::dotenv;
+use shinkai_libp2p_relayer::{LibP2PProxy, LibP2PRelayError};
 use shinkai_message_primitives::shinkai_utils::{
     encryption::string_to_encryption_static_key, signatures::string_to_signature_secret_key,
 };
-use shinkai_libp2p_relayer::{LibP2PProxy, LibP2PRelayError};
 use std::env;
 
 #[tokio::main]
@@ -89,12 +89,10 @@ async fn main() -> Result<(), LibP2PRelayError> {
     let node_name = matches.value_of("node_name").unwrap().to_string();
     let max_connections = matches.value_of("max_connections").map(|v| v.parse().unwrap_or(20));
 
-    let identity_secret_key =
-        string_to_signature_secret_key(&identity_secret_key)
-            .map_err(|e| LibP2PRelayError::ConfigurationError(format!("Invalid IDENTITY_SECRET_KEY: {}", e)))?;
-    let encryption_secret_key =
-        string_to_encryption_static_key(&encryption_secret_key)
-            .map_err(|e| LibP2PRelayError::ConfigurationError(format!("Invalid ENCRYPTION_SECRET_KEY: {}", e)))?;
+    let identity_secret_key = string_to_signature_secret_key(&identity_secret_key)
+        .map_err(|e| LibP2PRelayError::ConfigurationError(format!("Invalid IDENTITY_SECRET_KEY: {}", e)))?;
+    let encryption_secret_key = string_to_encryption_static_key(&encryption_secret_key)
+        .map_err(|e| LibP2PRelayError::ConfigurationError(format!("Invalid ENCRYPTION_SECRET_KEY: {}", e)))?;
 
     println!("Initializing LibP2P Relay Server on port {}", port);
 
@@ -113,4 +111,4 @@ async fn main() -> Result<(), LibP2PRelayError> {
     proxy.start().await?;
 
     Ok(())
-} 
+}

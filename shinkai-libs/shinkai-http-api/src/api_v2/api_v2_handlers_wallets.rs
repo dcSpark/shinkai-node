@@ -2,7 +2,10 @@ use async_channel::Sender;
 use serde::Deserialize;
 use serde_json::Value;
 use shinkai_message_primitives::schemas::{
-    coinbase_mpc_config::CoinbaseMPCWalletConfig, wallet_complementary::{WalletRole, WalletSource}, wallet_mixed::{Address, Asset, NetworkProtocolFamilyEnum}, x402_types::Network
+    coinbase_mpc_config::CoinbaseMPCWalletConfig,
+    wallet_complementary::{WalletRole, WalletSource},
+    wallet_mixed::{Address, Asset, NetworkProtocolFamilyEnum},
+    x402_types::Network,
 };
 use utoipa::{OpenApi, ToSchema};
 use warp::Filter;
@@ -321,7 +324,10 @@ pub async fn get_wallet_balance_handler(
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
-        .send(NodeCommand::V2ApiGetWalletBalance { bearer, res: res_sender })
+        .send(NodeCommand::V2ApiGetWalletBalance {
+            bearer,
+            res: res_sender,
+        })
         .await
         .map_err(|_| warp::reject::reject())?;
 

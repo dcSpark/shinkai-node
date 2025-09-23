@@ -2,7 +2,9 @@ use async_channel::Sender;
 use chrono::{DateTime, Utc};
 use reqwest::StatusCode;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile, APIVecFsSearchItems
+    APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem,
+    APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile,
+    APIVecFsSearchItems,
 };
 
 use crate::api_v2::api_v2_handlers_jobs::AddFileToJob;

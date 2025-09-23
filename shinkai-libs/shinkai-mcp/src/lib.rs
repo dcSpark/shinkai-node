@@ -1,4 +1,4 @@
 mod command;
-mod utils;
-pub mod mcp_methods;
 pub mod error;
+pub mod mcp_methods;
+mod utils;

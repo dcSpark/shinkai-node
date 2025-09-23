@@ -5,12 +5,15 @@ use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall
 use crate::llm_provider::job_manager::JobManager;
 use crate::network::node_shareable_logic::ZipFileContents;
 use crate::network::zip_export_import::zip_export_import::{
-    get_agent_from_zip, get_tool_from_zip, import_agent, import_tool
+    get_agent_from_zip, get_tool_from_zip, import_agent, import_tool,
 };
 use crate::network::Node;
 use crate::tools::tool_definitions::definition_generation::{generate_tool_definitions, get_rust_tools};
 use crate::tools::tool_execution::{
-    execute_agent_dynamic::execute_agent_tool, execution_coordinator::override_tool_config, execution_custom::try_to_execute_rust_tool, execution_header_generator::{check_tool, generate_execution_environment}
+    execute_agent_dynamic::execute_agent_tool,
+    execution_coordinator::override_tool_config,
+    execution_custom::try_to_execute_rust_tool,
+    execution_header_generator::{check_tool, generate_execution_environment},
 };
 use crate::utils::environment::{fetch_node_environment, NodeEnvironment};
 use ed25519_dalek::SigningKey;
@@ -23,7 +26,16 @@ use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 use shinkai_message_primitives::schemas::wallet_mixed::AddressBalanceList;
 use shinkai_message_primitives::schemas::x402_types::Network;
 use shinkai_message_primitives::schemas::{
-    indexable_version::IndexableVersion, invoices::{Invoice, InvoiceStatusEnum}, job::JobLike, llm_providers::common_agent_llm_provider::ProviderOrAgent, shinkai_name::ShinkaiName, shinkai_preferences::ShinkaiInternalComms, shinkai_tool_offering::{ToolPrice, UsageType, UsageTypeInquiry}, tool_router_key::ToolRouterKey, ws_types::{PaymentMetadata, WSMessageType, WidgetMetadata}, x402_types::PaymentRequirements
+    indexable_version::IndexableVersion,
+    invoices::{Invoice, InvoiceStatusEnum},
+    job::JobLike,
+    llm_providers::common_agent_llm_provider::ProviderOrAgent,
+    shinkai_name::ShinkaiName,
+    shinkai_preferences::ShinkaiInternalComms,
+    shinkai_tool_offering::{ToolPrice, UsageType, UsageTypeInquiry},
+    tool_router_key::ToolRouterKey,
+    ws_types::{PaymentMetadata, WSMessageType, WidgetMetadata},
+    x402_types::PaymentRequirements,
 };
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{AssociatedUI, WSTopic};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -33,7 +45,13 @@ use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::mcp_server_tool::MCPServerTool;
 use shinkai_tools_primitives::tools::tool_types::ToolResult;
 use shinkai_tools_primitives::tools::{
-    error::ToolError, network_tool::NetworkTool, parameters::Parameters, rust_tools::RustTool, shinkai_tool::{ShinkaiTool, ShinkaiToolHeader}, tool_config::ToolConfig, tool_output_arg::ToolOutputArg
+    error::ToolError,
+    network_tool::NetworkTool,
+    parameters::Parameters,
+    rust_tools::RustTool,
+    shinkai_tool::{ShinkaiTool, ShinkaiToolHeader},
+    tool_config::ToolConfig,
+    tool_output_arg::ToolOutputArg,
 };
 use std::env;
 use std::path::PathBuf;

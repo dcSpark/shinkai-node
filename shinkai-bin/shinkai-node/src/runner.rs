@@ -10,11 +10,12 @@ use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_http_api::node_api_router;
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    encryption_public_key_to_string, encryption_secret_key_to_string
+    encryption_public_key_to_string, encryption_secret_key_to_string,
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::signatures::{
-    clone_signature_secret_key, hash_signature_public_key, signature_public_key_to_string, signature_secret_key_to_string
+    clone_signature_secret_key, hash_signature_public_key, signature_public_key_to_string,
+    signature_secret_key_to_string,
 };
 use std::collections::HashMap;
 use std::error::Error as StdError;
@@ -390,10 +391,7 @@ pub fn print_node_info(node_env: &NodeEnvironment, encryption_pk: &str, signatur
     println!("Node WS address: {:?}", node_env.ws_address);
     println!(
         "Node Relayer address: {}",
-        node_env
-            .proxy_identity
-            .as_deref()
-            .unwrap_or("None")
+        node_env.proxy_identity.as_deref().unwrap_or("None")
     );
     println!("Node Shinkai identity: {}", node_env.global_identity_name);
     println!("Node Main Profile: main (assumption)"); // Assuming "main" as the main profile

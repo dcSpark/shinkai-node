@@ -773,7 +773,8 @@ impl GenericInferenceChain {
                         }
 
                         // Append tools from conversation history to provide contextual continuity
-                        let historical_tool_keys = Self::extract_tools_from_conversation_history(&full_job.step_history, 5);
+                        let historical_tool_keys =
+                            Self::extract_tools_from_conversation_history(&full_job.step_history, 5);
                         for tool_key in historical_tool_keys {
                             // Check if this tool is not already in our tools list to avoid duplicates
                             let tool_already_exists = tools.iter().any(|existing_tool| {
@@ -825,7 +826,7 @@ impl GenericInferenceChain {
             let web_search_tool_key = "local:::__official_shinkai:::web_search";
             let download_pages_tool_key = "local:::__official_shinkai:::download_pages";
             let pdf_text_extractor_tool_key = "local:::__official_shinkai:::pdf_text_extractor";
-            
+
             let web_search_tools = vec![
                 (web_search_tool_key, "Web search tool"),
                 (download_pages_tool_key, "Download pages tool"),
@@ -1476,19 +1477,16 @@ impl GenericInferenceChain {
 
     /// Extract tool router keys from conversation history
     /// Returns a list of unique tool router keys that were used in the last N messages
-    fn extract_tools_from_conversation_history(
-        step_history: &[ShinkaiMessage],
-        max_messages: usize
-    ) -> Vec<String> {
+    fn extract_tools_from_conversation_history(step_history: &[ShinkaiMessage], max_messages: usize) -> Vec<String> {
         let mut tool_keys = Vec::new();
         let mut seen_keys = std::collections::HashSet::new();
         let mut message_count = 0;
-        
+
         for msg in step_history.iter().rev() {
             if message_count >= max_messages {
                 break;
             }
-            
+
             if let Ok(content) = msg.get_message_content() {
                 if content.trim().is_empty() {
                     message_count += 1;
@@ -1512,10 +1510,10 @@ impl GenericInferenceChain {
                     }
                 }
             }
-            
+
             message_count += 1;
         }
-        
+
         tool_keys
     }
 }

@@ -1,4 +1,16 @@
+use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
+use crate::managers::IdentityManager;
+use crate::tools::tool_generation::v2_create_and_send_job_message;
+use crate::tools::tool_implementation::tool_traits::ToolExecutor;
+use crate::utils::environment::fetch_node_environment;
+use crate::{llm_provider::job_manager::JobManager, network::Node};
+use async_trait::async_trait;
+use ed25519_dalek::SigningKey;
+use serde_json::{json, Map, Value};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobCreationInfo;
+use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
 use shinkai_message_primitives::shinkai_utils::utils::count_tokens_from_message_llama3;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::parameters::{Parameters, Property};
@@ -6,25 +18,13 @@ use shinkai_tools_primitives::tools::{
     error::ToolError, shinkai_tool::ShinkaiToolHeader, tool_output_arg::ToolOutputArg,
 };
 use std::fs::File;
+use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
-use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
-use crate::utils::environment::fetch_node_environment;
-use serde_json::{json, Map, Value};
-use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
-use ed25519_dalek::SigningKey;
-use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobCreationInfo;
 use tokio::sync::Mutex;
+use tokio::time::{sleep, Duration};
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
-use crate::managers::IdentityManager;
-use crate::tools::tool_generation::v2_create_and_send_job_message;
-use crate::{llm_provider::job_manager::JobManager, network::Node};
-use async_trait::async_trait;
-use tokio::time::{sleep, Duration};
-use crate::tools::tool_implementation::tool_traits::ToolExecutor;
-use std::io::Write;
 
 pub struct LlmMapReduceProcessorTool {
     pub tool: ShinkaiToolHeader,
@@ -70,11 +70,18 @@ This can be used to process complex requests, text analysis, text matching, text
     }
 }
 
-async fn apply_prompt_over_fragment(prompt: String, bearer: String, llm_provider: String, db: Arc<SqliteManager>, 
-    node_name: ShinkaiName, identity_manager: Arc<Mutex<IdentityManager>>, job_manager: Arc<Mutex<JobManager>>,
-        encryption_secret_key: EncryptionStaticKey, encryption_public_key: EncryptionPublicKey, signing_secret_key: SigningKey) -> Result<String, ToolError> {
-        
-    
+async fn apply_prompt_over_fragment(
+    prompt: String,
+    bearer: String,
+    llm_provider: String,
+    db: Arc<SqliteManager>,
+    node_name: ShinkaiName,
+    identity_manager: Arc<Mutex<IdentityManager>>,
+    job_manager: Arc<Mutex<JobManager>>,
+    encryption_secret_key: EncryptionStaticKey,
+    encryption_public_key: EncryptionPublicKey,
+    signing_secret_key: SigningKey,
+) -> Result<String, ToolError> {
     let response = v2_create_and_send_job_message(
         bearer.clone(),
         JobCreationInfo {
@@ -99,7 +106,7 @@ async fn apply_prompt_over_fragment(prompt: String, bearer: String, llm_provider
     .map_err(|_| ToolError::ExecutionError("Failed to create job".to_string()))?;
     let (res_sender, res_receiver) = async_channel::bounded(1);
     let inbox_name = InboxName::get_job_inbox_name_from_params(response.clone())
-    .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
+        .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
 
     let start_time = std::time::Instant::now();
     let timeout = Duration::from_secs(60 * 5); // 5 minutes timeout
@@ -144,9 +151,16 @@ async fn apply_prompt_over_fragment(prompt: String, bearer: String, llm_provider
     return Ok(chat_message.job_message.content.clone());
 }
 
-fn get_model_context_size(llm_provider: String, db: Arc<SqliteManager>, node_name: ShinkaiName) -> Result<usize, ToolError> {
-    let shinkai_name = ShinkaiName::from_node_and_profile_names(node_name.get_node_name_string(), "main".to_string()).map_err(|_| ToolError::ExecutionError("Failed to create shinkai name".to_string()))?;
-    let llm_provider = db.get_llm_provider(&llm_provider, &shinkai_name).map_err(|_| ToolError::ExecutionError("Failed to get llm provider".to_string()))?;
+fn get_model_context_size(
+    llm_provider: String,
+    db: Arc<SqliteManager>,
+    node_name: ShinkaiName,
+) -> Result<usize, ToolError> {
+    let shinkai_name = ShinkaiName::from_node_and_profile_names(node_name.get_node_name_string(), "main".to_string())
+        .map_err(|_| ToolError::ExecutionError("Failed to create shinkai name".to_string()))?;
+    let llm_provider = db
+        .get_llm_provider(&llm_provider, &shinkai_name)
+        .map_err(|_| ToolError::ExecutionError("Failed to get llm provider".to_string()))?;
     let llm_provider = match llm_provider {
         Some(llm_provider) => llm_provider,
         None => return Err(ToolError::ExecutionError("Failed to get llm provider".to_string())),
@@ -167,27 +181,27 @@ fn get_context_size_for_fragment(data: String) -> usize {
 fn split_text_into_chunks(text: &str, max_context_size: usize) -> Vec<String> {
     let mut chunks = Vec::new();
     let target_size = (max_context_size as f64 * 0.8) as usize;
-    
+
     // Split into words while preserving whitespace
     let words: Vec<&str> = text.split_whitespace().collect();
     let mut start_idx = 0;
-    
+
     // First pass: Build main chunks without overlap
     while start_idx < words.len() {
         let mut current_chunk = String::new();
         let mut current_size = 0;
         let mut words_used = 0;
-        
+
         // Build chunk up to target size
         while start_idx + words_used < words.len() {
             let word = words[start_idx + words_used];
             let size_with_word = current_size + word.len() + if current_chunk.is_empty() { 0 } else { 1 }; // +1 for space
-            
+
             // Stop if we exceed target size, unless it's the first word
             if size_with_word > target_size && !current_chunk.is_empty() {
                 break;
             }
-            
+
             // Add word with space
             if !current_chunk.is_empty() {
                 current_chunk.push(' ');
@@ -196,12 +210,12 @@ fn split_text_into_chunks(text: &str, max_context_size: usize) -> Vec<String> {
             current_size = size_with_word;
             words_used += 1;
         }
-        
+
         // Add chunk if not empty
         if !current_chunk.is_empty() {
             chunks.push(current_chunk);
         }
-        
+
         // Move to next section
         if words_used == 0 {
             // If we couldn't fit even one word, force progress
@@ -210,55 +224,65 @@ fn split_text_into_chunks(text: &str, max_context_size: usize) -> Vec<String> {
             start_idx += words_used;
         }
     }
-    
+
     let overlap_size = (max_context_size as f64 * 0.05) as usize;
 
     // Second pass: Add overlaps from next chunks
     let mut final_chunks = Vec::with_capacity(chunks.len());
     for i in 0..chunks.len() {
         let mut chunk_with_overlap = chunks[i].clone();
-        
+
         // Add overlap from next chunk if available
         if i < chunks.len() - 1 {
             let next_chunk_words: Vec<&str> = chunks[i + 1].split_whitespace().collect();
             let mut overlap = String::new();
             let mut overlap_size_current = 0;
-            
+
             // Add words from next chunk until we hit overlap size
             for word in next_chunk_words.iter() {
                 let size_with_word = overlap_size_current + word.len() + if overlap.is_empty() { 0 } else { 1 };
-                
+
                 // Use the defined overlap_size variable
                 if overlap_size_current >= overlap_size {
                     break;
                 }
-                
+
                 if !overlap.is_empty() {
                     overlap.push(' ');
                 }
                 overlap.push_str(word);
                 overlap_size_current = size_with_word;
             }
-            
+
             // Add overlap to chunk
             if !overlap.is_empty() {
                 chunk_with_overlap.push(' ');
                 chunk_with_overlap.push_str(&overlap);
             }
         }
-        
+
         final_chunks.push(chunk_with_overlap);
     }
-    
+
     final_chunks
 }
 
-async fn map(chunk: String, prompt: String, bearer: String, llm_provider: String, db: Arc<SqliteManager>, 
-    node_name: ShinkaiName, identity_manager: Arc<Mutex<IdentityManager>>, job_manager: Arc<Mutex<JobManager>>,
-        encryption_secret_key: EncryptionStaticKey, encryption_public_key: EncryptionPublicKey, signing_secret_key: SigningKey) -> Result<String, ToolError> {
-
-        // For each fragment, generate structured data using a mapping prompt.
-        let map_prompt = format!(r#"
+async fn map(
+    chunk: String,
+    prompt: String,
+    bearer: String,
+    llm_provider: String,
+    db: Arc<SqliteManager>,
+    node_name: ShinkaiName,
+    identity_manager: Arc<Mutex<IdentityManager>>,
+    job_manager: Arc<Mutex<JobManager>>,
+    encryption_secret_key: EncryptionStaticKey,
+    encryption_public_key: EncryptionPublicKey,
+    signing_secret_key: SigningKey,
+) -> Result<String, ToolError> {
+    // For each fragment, generate structured data using a mapping prompt.
+    let map_prompt = format!(
+        r#"
 <intro>
     * The instructions are given in 4 sections: "intro", "fragment", "query", "rules", defined in tags: <tag></tag>.
     * Given a text "fragment" and a "query", extract relevant information following the specific "rules".
@@ -289,10 +313,8 @@ async fn map(chunk: String, prompt: String, bearer: String, llm_provider: String
     * Given a text "fragment" and a "query", extract relevant information following the "rules".
 </rules>
             "#,
-            
-    chunk, 
-    prompt
-);
+        chunk, prompt
+    );
 
     let result = apply_prompt_over_fragment(
         map_prompt.clone(),
@@ -311,9 +333,19 @@ async fn map(chunk: String, prompt: String, bearer: String, llm_provider: String
     Ok(clean_string(&result))
 }
 
-async fn collapse(mapped_results: String, query: String, bearer: String, llm_provider: String, db: Arc<SqliteManager>, 
-    node_name: ShinkaiName, identity_manager: Arc<Mutex<IdentityManager>>, job_manager: Arc<Mutex<JobManager>>,
-        encryption_secret_key: EncryptionStaticKey, encryption_public_key: EncryptionPublicKey, signing_secret_key: SigningKey) -> Result<String, ToolError> {
+async fn collapse(
+    mapped_results: String,
+    query: String,
+    bearer: String,
+    llm_provider: String,
+    db: Arc<SqliteManager>,
+    node_name: ShinkaiName,
+    identity_manager: Arc<Mutex<IdentityManager>>,
+    job_manager: Arc<Mutex<JobManager>>,
+    encryption_secret_key: EncryptionStaticKey,
+    encryption_public_key: EncryptionPublicKey,
+    signing_secret_key: SigningKey,
+) -> Result<String, ToolError> {
     let collapse_prompt = format!(
         r#"
 <intro>
@@ -374,10 +406,21 @@ async fn collapse(mapped_results: String, query: String, bearer: String, llm_pro
     Ok(clean_string(&result))
 }
 
-async fn reduce(aggregated_maps: String, query: String, bearer: String, llm_provider: String, db: Arc<SqliteManager>, 
-    node_name: ShinkaiName, identity_manager: Arc<Mutex<IdentityManager>>, job_manager: Arc<Mutex<JobManager>>,
-        encryption_secret_key: EncryptionStaticKey, encryption_public_key: EncryptionPublicKey, signing_secret_key: SigningKey) -> Result<String, ToolError> {
-    let reduce_prompt = format!(r#"
+async fn reduce(
+    aggregated_maps: String,
+    query: String,
+    bearer: String,
+    llm_provider: String,
+    db: Arc<SqliteManager>,
+    node_name: ShinkaiName,
+    identity_manager: Arc<Mutex<IdentityManager>>,
+    job_manager: Arc<Mutex<JobManager>>,
+    encryption_secret_key: EncryptionStaticKey,
+    encryption_public_key: EncryptionPublicKey,
+    signing_secret_key: SigningKey,
+) -> Result<String, ToolError> {
+    let reduce_prompt = format!(
+        r#"
 <intro>
     * There are 4 sections: "intro", "mapped_results", "query", "rules", defined in tags: <tag></tag>.
     * Given the following "mapped_results": each in JSON format:
@@ -407,8 +450,7 @@ async fn reduce(aggregated_maps: String, query: String, bearer: String, llm_prov
     * Do not include any other text or comments asides from the JSON Object.
 </rules>
 "#,
-        aggregated_maps,
-        query
+        aggregated_maps, query
     );
     let result = apply_prompt_over_fragment(
         reduce_prompt,
@@ -426,7 +468,6 @@ async fn reduce(aggregated_maps: String, query: String, bearer: String, llm_prov
 
     Ok(clean_string(&result))
 }
-
 
 #[async_trait]
 impl ToolExecutor for LlmMapReduceProcessorTool {
@@ -465,7 +506,6 @@ impl ToolExecutor for LlmMapReduceProcessorTool {
         std::fs::create_dir_all(log_path.clone())
             .map_err(|e| ToolError::ExecutionError(format!("Failed to create directory structure: {}", e)))?;
 
-
         // Get the model's maximum context window size.
         let max_window = get_model_context_size(llm_provider.clone(), db.clone(), node_name.clone())?;
 
@@ -473,14 +513,34 @@ impl ToolExecutor for LlmMapReduceProcessorTool {
         let chunks = split_text_into_chunks(&data, max_window);
 
         println!("chunk count: {:?}", chunks.len());
-        println!("chunk sizes: {:?}", chunks.iter().map(|c| c.len()).collect::<Vec<usize>>());
+        println!(
+            "chunk sizes: {:?}",
+            chunks.iter().map(|c| c.len()).collect::<Vec<usize>>()
+        );
         // --- Map Stage ---
         let mut step = 0;
         let mut map_results = Vec::new();
         for chunk in chunks {
-            let map_result = map(chunk.clone(), prompt.clone(), bearer.clone(), llm_provider.clone(), db.clone(), node_name.clone(), identity_manager.clone(), job_manager.clone(), encryption_secret_key.clone(), encryption_public_key.clone(), signing_secret_key.clone()).await?;
+            let map_result = map(
+                chunk.clone(),
+                prompt.clone(),
+                bearer.clone(),
+                llm_provider.clone(),
+                db.clone(),
+                node_name.clone(),
+                identity_manager.clone(),
+                job_manager.clone(),
+                encryption_secret_key.clone(),
+                encryption_public_key.clone(),
+                signing_secret_key.clone(),
+            )
+            .await?;
             map_results.push(map_result.clone());
-            let _ = write_log(log_path.clone(), format!("step_{}.map.log", step), format!("chunk: {}\nprompt: {}\nmap_result: {}", chunk, prompt, map_result));
+            let _ = write_log(
+                log_path.clone(),
+                format!("step_{}.map.log", step),
+                format!("chunk: {}\nprompt: {}\nmap_result: {}", chunk, prompt, map_result),
+            );
             step += 1;
         }
 
@@ -490,11 +550,32 @@ impl ToolExecutor for LlmMapReduceProcessorTool {
             let mut iteration_result = vec![];
             let map_pairs = split_map_results_into_pairs(map_results);
             for pair in map_pairs {
-                    let collapsed_result = collapse(pair.join("\n"), prompt.clone(), bearer.clone(), llm_provider.clone(), db.clone(), node_name.clone(), identity_manager.clone(), job_manager.clone(), encryption_secret_key.clone(), encryption_public_key.clone(), signing_secret_key.clone()).await?;
-                    iteration_result.push(collapsed_result.clone());
-                    let _ = write_log(log_path.clone(), format!("step_{}.collapse.log", step), format!("pair: {}\nprompt: {}\ncollapsed_result: {}", pair.join("\n"), prompt, collapsed_result));
-                    step += 1;
-                
+                let collapsed_result = collapse(
+                    pair.join("\n"),
+                    prompt.clone(),
+                    bearer.clone(),
+                    llm_provider.clone(),
+                    db.clone(),
+                    node_name.clone(),
+                    identity_manager.clone(),
+                    job_manager.clone(),
+                    encryption_secret_key.clone(),
+                    encryption_public_key.clone(),
+                    signing_secret_key.clone(),
+                )
+                .await?;
+                iteration_result.push(collapsed_result.clone());
+                let _ = write_log(
+                    log_path.clone(),
+                    format!("step_{}.collapse.log", step),
+                    format!(
+                        "pair: {}\nprompt: {}\ncollapsed_result: {}",
+                        pair.join("\n"),
+                        prompt,
+                        collapsed_result
+                    ),
+                );
+                step += 1;
             }
 
             map_results = iteration_result;
@@ -502,8 +583,30 @@ impl ToolExecutor for LlmMapReduceProcessorTool {
 
         // --- Reduce Stage ---
         // Use the collapsed result to generate the final answer.
-        let final_result = reduce(map_results.join("\n"), prompt.clone(), bearer.clone(), llm_provider.clone(), db.clone(), node_name.clone(), identity_manager.clone(), job_manager.clone(), encryption_secret_key.clone(), encryption_public_key.clone(), signing_secret_key.clone()).await?;
-        let _ = write_log(log_path.clone(), format!("step_{}.reduce.log", step), format!("map_results: {}\nprompt: {}\nfinal_result: {}", map_results.join("\n"), prompt, final_result));
+        let final_result = reduce(
+            map_results.join("\n"),
+            prompt.clone(),
+            bearer.clone(),
+            llm_provider.clone(),
+            db.clone(),
+            node_name.clone(),
+            identity_manager.clone(),
+            job_manager.clone(),
+            encryption_secret_key.clone(),
+            encryption_public_key.clone(),
+            signing_secret_key.clone(),
+        )
+        .await?;
+        let _ = write_log(
+            log_path.clone(),
+            format!("step_{}.reduce.log", step),
+            format!(
+                "map_results: {}\nprompt: {}\nfinal_result: {}",
+                map_results.join("\n"),
+                prompt,
+                final_result
+            ),
+        );
 
         Ok(json!({
             "response": final_result
@@ -528,10 +631,10 @@ fn split_map_results_into_pairs(map_results: Vec<String>) -> Vec<Vec<String>> {
     if map_results.len() <= 3 {
         return vec![map_results];
     }
-    
+
     let total_elements = map_results.len();
     let mut current_index = 0;
-    
+
     // Process elements until we reach the point where 3 elements remain
     while current_index < total_elements - 3 {
         map_pairs.push(vec![
@@ -540,13 +643,13 @@ fn split_map_results_into_pairs(map_results: Vec<String>) -> Vec<Vec<String>> {
         ]);
         current_index += 2;
     }
-    
+
     // Add the remaining elements (should be 3) as the final group
     let remaining: Vec<String> = map_results[current_index..].to_vec();
     if !remaining.is_empty() {
         map_pairs.push(remaining);
     }
-    
+
     map_pairs
 }
 
@@ -565,10 +668,10 @@ fn clean_string(input: &str) -> String {
         let end = input[content_start..].rfind("```"); // Changed to rfind to get the last occurrence
         let end = match end {
             Some(e) => e,
-            None => return input.trim().to_string()
+            None => return input.trim().to_string(),
         };
 
-        input[content_start..end+content_start].trim().to_string()
+        input[content_start..end + content_start].trim().to_string()
     } else {
         input.trim().to_string()
     }
@@ -593,11 +696,7 @@ mod tests {
         assert_eq!(pairs[1], vec!["result3", "result4"]);
 
         // Test with three results - should stay as one group
-        let results = vec![
-            "result1".to_string(),
-            "result2".to_string(),
-            "result3".to_string(),
-        ];
+        let results = vec!["result1".to_string(), "result2".to_string(), "result3".to_string()];
         let pairs = split_map_results_into_pairs(results);
         assert_eq!(pairs.len(), 1);
         assert_eq!(pairs[0], vec!["result1", "result2", "result3"]);
@@ -658,14 +757,15 @@ mod tests {
         assert_eq!(chunks[0], short_text);
 
         // Test with text that needs multiple chunks
-        let long_text = format!("{}{}{}",
+        let long_text = format!(
+            "{}{}{}",
             "This is the first section. ".repeat(100),
             "This is the second section. ".repeat(100),
             "This is the third section. ".repeat(100)
         );
         let chunks = split_text_into_chunks(&long_text, 1000);
         assert!(chunks.len() > 1);
-        
+
         // Verify each chunk is within size limits
         for chunk in &chunks {
             assert!(get_context_size_for_fragment(chunk.clone()) <= 1000);
@@ -675,12 +775,12 @@ mod tests {
         if chunks.len() >= 2 {
             let words_in_chunk1: Vec<&str> = chunks[0].split_whitespace().collect();
             let words_in_chunk2: Vec<&str> = chunks[1].split_whitespace().collect();
-            
+
             // Get last few words of first chunk
             let last_words: Vec<&str> = words_in_chunk1.iter().rev().take(5).cloned().collect();
             // Get first few words of second chunk
             let first_words: Vec<&str> = words_in_chunk2.iter().take(5).cloned().collect();
-            
+
             // Check if there's any overlap
             let has_overlap = last_words.iter().any(|&word| first_words.contains(&word));
             assert!(has_overlap, "Chunks should have some overlap");
@@ -776,7 +876,7 @@ Researchers publish projections for interspecies viral sharing, that can lead to
         let tolerance_max = 30; // Allow some variation in overlap size
 
         let chunks = split_text_into_chunks(&paragraph, max_context_size);
-        
+
         // Need at least 2 chunks to test overlap
         assert!(chunks.len() >= 2, "Test needs multiple chunks to verify overlap");
 
@@ -790,8 +890,8 @@ Researchers publish projections for interspecies viral sharing, that can lead to
 
             // Check if overlap is within expected range
             assert!(
-                (overlap_size >= expected_overlap_size - tolerance_min) && 
-                (overlap_size <= expected_overlap_size + tolerance_max),
+                (overlap_size >= expected_overlap_size - tolerance_min)
+                    && (overlap_size <= expected_overlap_size + tolerance_max),
                 "Overlap size {} is not within expected range {} ± {} between chunks {} and {}",
                 overlap_size,
                 expected_overlap_size - tolerance_min,
@@ -808,23 +908,26 @@ Researchers publish projections for interspecies viral sharing, that can lead to
         let text1_char_indices: Vec<(usize, char)> = text1.char_indices().collect();
         let text2_char_indices: Vec<(usize, char)> = text2.char_indices().collect();
         let min_chars = text1_char_indices.len().min(text2_char_indices.len());
-        
+
         // Start with maximum possible overlap and work down
         for overlap_chars in (1..=min_chars).rev() {
             if let (Some((start_idx, _)), Some((_, _))) = (
                 text1_char_indices.get(text1_char_indices.len() - overlap_chars),
-                text2_char_indices.get(overlap_chars - 1)
+                text2_char_indices.get(overlap_chars - 1),
             ) {
                 let suffix = &text1[*start_idx..];
-                let prefix = &text2[..text2_char_indices[overlap_chars - 1].0 + 
-                    text2[text2_char_indices[overlap_chars - 1].0..].chars().next().map_or(0, |c| c.len_utf8())];
-                
+                let prefix = &text2[..text2_char_indices[overlap_chars - 1].0
+                    + text2[text2_char_indices[overlap_chars - 1].0..]
+                        .chars()
+                        .next()
+                        .map_or(0, |c| c.len_utf8())];
+
                 if suffix == prefix {
                     return suffix.to_string();
                 }
             }
         }
-        
+
         String::new()
     }
 
@@ -840,7 +943,7 @@ Researchers publish projections for interspecies viral sharing, that can lead to
 
         for (i, chunk) in chunks.iter().enumerate() {
             let chunk_size = chunk.len();
-            
+
             // Last chunk might be smaller, so we only check upper bound
             if i == chunks.len() - 1 {
                 assert!(
@@ -852,8 +955,7 @@ Researchers publish projections for interspecies viral sharing, that can lead to
             } else {
                 // For other chunks, check if size is within expected range
                 assert!(
-                    (chunk_size >= target_chunk_size - tolerance) && 
-                    (chunk_size <= target_chunk_size + tolerance),
+                    (chunk_size >= target_chunk_size - tolerance) && (chunk_size <= target_chunk_size + tolerance),
                     "Chunk {} size {} is not within target range {} ± {}",
                     i,
                     chunk_size,
@@ -876,7 +978,11 @@ Researchers publish projections for interspecies viral sharing, that can lead to
 
         // Test with multiple sets of backticks - should extract first complete set
         let input = "```json\n{\"first\": true}\n```\n```\n{\"second\": false}\n```";
-        assert_eq!(clean_string(input), "{\"first\": true}\n```\n```\n{\"second\": false}", "test 3");
+        assert_eq!(
+            clean_string(input),
+            "{\"first\": true}\n```\n```\n{\"second\": false}",
+            "test 3"
+        );
 
         // Test with no backticks - should return trimmed string
         let input = "  simple text without backticks  ";
@@ -901,10 +1007,10 @@ Researchers publish projections for interspecies viral sharing, that can lead to
         let text = "Hello 世界!🌍 \u{1F4A9}éèüñ汉字 \u{10437}";
         let max_context_size = 10;
         let chunks = split_text_into_chunks(text, max_context_size);
-        
+
         // Verify chunks are created correctly
         assert!(chunks.len() > 1, "Text should be split into multiple chunks");
-        
+
         // Verify each chunk is valid UTF-8
         for (i, chunk) in chunks.iter().enumerate() {
             assert!(
@@ -913,19 +1019,15 @@ Researchers publish projections for interspecies viral sharing, that can lead to
                 i
             );
         }
-        
+
         // Verify all characters are preserved when joining chunks
         let reconstructed = chunks.join(" ");
-        assert_eq!(
-            reconstructed, 
-            text,
-            "Reconstructed text should match original"
-        );
-        
+        assert_eq!(reconstructed, text, "Reconstructed text should match original");
+
         // Test with emojis at chunk boundaries
         let emoji_text = "🌍🌎🌏".repeat(10);
         let chunks = split_text_into_chunks(&emoji_text, 10);
-        
+
         // Verify emojis aren't split
         for (i, chunk) in chunks.iter().enumerate() {
             assert!(
@@ -934,11 +1036,11 @@ Researchers publish projections for interspecies viral sharing, that can lead to
                 i
             );
         }
-        
+
         // Verify with mixed ASCII and multi-byte characters
         let mixed_text = "Hello世界Hello世界Hello世界";
         let chunks = split_text_into_chunks(mixed_text, 10);
-        
+
         for (i, chunk) in chunks.iter().enumerate() {
             assert!(
                 chunk.chars().all(|c| c.len_utf8() == c.len_utf8()),
@@ -971,18 +1073,18 @@ Section D: Stars twinkle silently above snow-covered peaks while northern lights
         assert!(chunks[1].starts_with("Section B:"));
         assert!(chunks[1].contains("marble halls"));
         assert!(chunks[1].contains("Section C:"));
-        
+
         assert!(chunks[2].starts_with("Section C:"));
         assert!(chunks[2].contains("Emerald leaves"));
         assert!(chunks[2].contains("Section D:"));
-        
+
         assert!(chunks[3].starts_with("Section D:"));
         assert!(chunks[3].contains("Stars twinkle"));
         assert!(!chunks[3].contains("Section A:"));
 
         // Verify that when joined, we can still recover the original text
         let reconstructed = chunks.join(" ");
-        
+
         // Verify that all original lines are preserved
         let original_lines: Vec<&str> = text.lines().collect();
 
@@ -1007,4 +1109,3 @@ Section D: Stars twinkle silently above snow-covered peaks while northern lights
         }
     }
 }
-

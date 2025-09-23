@@ -5,8 +5,8 @@ use crate::network::node_error::NodeError;
 use crate::network::Node;
 
 use async_channel::Sender;
-use dashmap::DashMap;
 use chrono::Utc;
+use dashmap::DashMap;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use log::{error, info};
 use shinkai_fs;
@@ -23,17 +23,22 @@ use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiM
 use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_message_primitives::{
     schemas::{
-        inbox_name::InboxName, llm_providers::serialized_llm_provider::{LLMProviderInterface, Ollama, SerializedLLMProvider}, shinkai_name::ShinkaiName
-    }, shinkai_message::shinkai_message::ShinkaiMessage, shinkai_utils::{
-        shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption}, signatures::clone_signature_secret_key
-    }
+        inbox_name::InboxName,
+        llm_providers::serialized_llm_provider::{LLMProviderInterface, Ollama, SerializedLLMProvider},
+        shinkai_name::ShinkaiName,
+    },
+    shinkai_message::shinkai_message::ShinkaiMessage,
+    shinkai_utils::{
+        shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
+        signatures::clone_signature_secret_key,
+    },
 };
 use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::SqliteManager;
 use std::{io::Error, net::SocketAddr};
 use std::{str::FromStr, sync::Arc};
 use tokio::sync::Mutex;
-use x25519_dalek::{PublicKey as EncryptionPublicKey};
+use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 impl Node {
     pub async fn send_peer_addresses(
@@ -507,7 +512,10 @@ impl Node {
                                 let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
                                     job_id.to_string(),
                                     welcome_message.to_string(),
-                                    Some("We have a helpful assistant for you to use, but first, let's get you set up.".to_string()),
+                                    Some(
+                                        "We have a helpful assistant for you to use, but first, let's get you set up."
+                                            .to_string(),
+                                    ),
                                     vec![],
                                     None,
                                     identity_secret_key_clone,
@@ -567,7 +575,10 @@ impl Node {
         libp2p_manager: Option<Arc<Mutex<crate::network::libp2p_manager::LibP2PManager>>>,
     ) -> Result<(), NodeError> {
         let Some(libp2p_manager) = libp2p_manager else {
-            info!("{} > No libp2p manager available, skipping connectivity check", listen_address);
+            info!(
+                "{} > No libp2p manager available, skipping connectivity check",
+                listen_address
+            );
             return Ok(());
         };
 
@@ -577,12 +588,25 @@ impl Node {
             manager.connected_peers()
         };
 
-        info!("{} > Checking connectivity to {} LibP2P peers", listen_address, connected_peers.len());
+        info!(
+            "{} > Checking connectivity to {} LibP2P peers",
+            listen_address,
+            connected_peers.len()
+        );
 
         if connected_peers.is_empty() {
-            info!("{} > No LibP2P peers connected - nodes may still be discovering each other through relay", listen_address);
-            info!("{} > This is normal when nodes first start - try again in a few seconds for peer discovery", listen_address);
-            info!("{} > If problem persists, check relay connectivity and gossipsub topic subscriptions", listen_address);
+            info!(
+                "{} > No LibP2P peers connected - nodes may still be discovering each other through relay",
+                listen_address
+            );
+            info!(
+                "{} > This is normal when nodes first start - try again in a few seconds for peer discovery",
+                listen_address
+            );
+            info!(
+                "{} > If problem persists, check relay connectivity and gossipsub topic subscriptions",
+                listen_address
+            );
             return Ok(());
         }
 
@@ -600,7 +624,10 @@ impl Node {
                 error!("Failed to send ping event for peer {}: {}", peer_id, e);
                 failed_pings += 1;
             } else {
-                info!("Checking connectivity to LibP2P peer {} - libp2p will automatically ping", peer_id);
+                info!(
+                    "Checking connectivity to LibP2P peer {} - libp2p will automatically ping",
+                    peer_id
+                );
                 successful_pings += 1;
             }
         }

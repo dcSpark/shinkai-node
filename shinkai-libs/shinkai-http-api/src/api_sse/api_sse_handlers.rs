@@ -4,17 +4,20 @@ use futures::StreamExt as FuturesStreamExt;
 use futures::TryStreamExt;
 use rand::random;
 use rmcp::{
-    model::{ClientJsonRpcMessage, InitializeRequestParam, JsonRpcError, RequestId, ServerJsonRpcMessage}, service::serve_directly
+    model::{ClientJsonRpcMessage, InitializeRequestParam, JsonRpcError, RequestId, ServerJsonRpcMessage},
+    service::serve_directly,
 };
 use serde_json::{json, Value};
 use std::pin::Pin;
 use std::{collections::HashMap, convert::Infallible, sync::Arc};
 use tokio::{
-    sync::{mpsc, RwLock}, time::Duration
+    sync::{mpsc, RwLock},
+    time::Duration,
 };
 use tokio_stream::wrappers::ReceiverStream;
 use warp::{
-    http::{Response, StatusCode}, reject, Rejection, Reply
+    http::{Response, StatusCode},
+    reject, Rejection, Reply,
 };
 
 use crate::api_sse::mcp_tools_service::McpToolsService;

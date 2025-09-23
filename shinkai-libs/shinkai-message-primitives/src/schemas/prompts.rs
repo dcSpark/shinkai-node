@@ -6,7 +6,9 @@ use serde_json::Value;
 use crate::shinkai_message::shinkai_message::ShinkaiMessage;
 
 use super::{
-    llm_message::{DetailedFunctionCall, LlmMessage}, shinkai_fs::ShinkaiFileChunkCollection, subprompts::{SubPrompt, SubPromptAssetContent, SubPromptAssetDetail, SubPromptAssetType, SubPromptType}
+    llm_message::{DetailedFunctionCall, LlmMessage},
+    shinkai_fs::ShinkaiFileChunkCollection,
+    subprompts::{SubPrompt, SubPromptAssetContent, SubPromptAssetDetail, SubPromptAssetType, SubPromptType},
 };
 
 #[derive(Debug)]
@@ -106,7 +108,7 @@ impl Prompt {
     /// Detects the asset type based on file extension
     fn detect_asset_type(file_name: &str) -> SubPromptAssetType {
         let file_name_lower = file_name.to_lowercase();
-        
+
         // Check for image extensions
         if file_name_lower.ends_with(".png")
             || file_name_lower.ends_with(".jpg")
@@ -117,7 +119,7 @@ impl Prompt {
         {
             return SubPromptAssetType::Image;
         }
-        
+
         // Check for video extensions
         if file_name_lower.ends_with(".mp4")
             || file_name_lower.ends_with(".mov")
@@ -129,7 +131,7 @@ impl Prompt {
         {
             return SubPromptAssetType::Video;
         }
-        
+
         // Check for audio extensions
         if file_name_lower.ends_with(".mp3")
             || file_name_lower.ends_with(".wav")
@@ -142,7 +144,7 @@ impl Prompt {
         {
             return SubPromptAssetType::Audio;
         }
-        
+
         // Default to Image for unknown types (backward compatibility)
         SubPromptAssetType::Image
     }
@@ -411,17 +413,17 @@ impl Prompt {
                     tiktoken_messages.push(tool_message);
                 }
                 SubPrompt::FunctionCall(_, content, _) => {
-            let mut new_message = LlmMessage {
-                role: Some("assistant".to_string()),
-                content: None,
-                name: None,
-                function_call: None,
-                functions: None,
-                images: None,
-                videos: None,
-                audios: None,
-                tool_calls: None,
-            };
+                    let mut new_message = LlmMessage {
+                        role: Some("assistant".to_string()),
+                        content: None,
+                        name: None,
+                        function_call: None,
+                        functions: None,
+                        images: None,
+                        videos: None,
+                        audios: None,
+                        tool_calls: None,
+                    };
 
                     if let Some(name) = content.get("name").and_then(|n| n.as_str()) {
                         let arguments = content
@@ -445,18 +447,18 @@ impl Prompt {
                     function_calls.push(new_message);
                 }
                 SubPrompt::FunctionCallResponse(_, content, _) => {
-                let mut new_message = LlmMessage {
-                    // OpenAI works using "function" while ollama uses "tool"
-                    role: tool_response_field_name.clone().or(Some("function".to_string())),
-                    content: None,
-                    name: None,
-                    function_call: None,
-                    functions: None,
-                    images: None,
-                    videos: None,
-                    audios: None,
-                    tool_calls: None,
-                };
+                    let mut new_message = LlmMessage {
+                        // OpenAI works using "function" while ollama uses "tool"
+                        role: tool_response_field_name.clone().or(Some("function".to_string())),
+                        content: None,
+                        name: None,
+                        function_call: None,
+                        functions: None,
+                        images: None,
+                        videos: None,
+                        audios: None,
+                        tool_calls: None,
+                    };
 
                     if let Some(function_call) = content.get("function_call") {
                         if let Some(name) = function_call.get("name").and_then(|n| n.as_str()) {

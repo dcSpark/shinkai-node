@@ -3,8 +3,13 @@ use std::sync::Arc;
 use rusqlite::params;
 use shinkai_message_primitives::{
     schemas::{
-        inbox_name::InboxName, job::{ForkedJob, Job, JobLike}, job_config::JobConfig, ws_types::WSUpdateHandler
-    }, shinkai_message::{shinkai_message::ShinkaiMessage, shinkai_message_schemas::AssociatedUI}, shinkai_utils::{job_scope::MinimalJobScope, shinkai_time::ShinkaiStringTime}
+        inbox_name::InboxName,
+        job::{ForkedJob, Job, JobLike},
+        job_config::JobConfig,
+        ws_types::WSUpdateHandler,
+    },
+    shinkai_message::{shinkai_message::ShinkaiMessage, shinkai_message_schemas::AssociatedUI},
+    shinkai_utils::{job_scope::MinimalJobScope, shinkai_time::ShinkaiStringTime},
 };
 use tokio::sync::Mutex;
 
@@ -473,9 +478,13 @@ mod tests {
     use shinkai_message_primitives::schemas::inbox_permission::InboxPermission;
     use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
     use shinkai_message_primitives::{
-        schemas::identity::StandardIdentityType, shinkai_message::shinkai_message_schemas::{IdentityPermissions, JobMessage, MessageSchemaType}, shinkai_utils::{
-            encryption::{unsafe_deterministic_encryption_keypair, EncryptionMethod}, shinkai_message_builder::ShinkaiMessageBuilder, signatures::unsafe_deterministic_signature_keypair
-        }
+        schemas::identity::StandardIdentityType,
+        shinkai_message::shinkai_message_schemas::{IdentityPermissions, JobMessage, MessageSchemaType},
+        shinkai_utils::{
+            encryption::{unsafe_deterministic_encryption_keypair, EncryptionMethod},
+            shinkai_message_builder::ShinkaiMessageBuilder,
+            signatures::unsafe_deterministic_signature_keypair,
+        },
     };
     use std::{collections::HashSet, path::PathBuf, time::Duration};
     use tempfile::NamedTempFile;
@@ -486,8 +495,7 @@ mod tests {
         let temp_file = NamedTempFile::new().unwrap();
         let db_path = PathBuf::from(temp_file.path());
         let api_url = String::new();
-        let model_type =
-            EmbeddingModelType::default();
+        let model_type = EmbeddingModelType::default();
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }

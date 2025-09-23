@@ -84,11 +84,7 @@ impl IdentityManagerTrait for MockIdentityManager {
         }
     }
 
-    async fn get_routing_info(
-        &self,
-        _full_profile_name: &str,
-        _: Option<bool>,
-    ) -> Result<(bool, Vec<String>), String> {
+    async fn get_routing_info(&self, _full_profile_name: &str, _: Option<bool>) -> Result<(bool, Vec<String>), String> {
         if _full_profile_name.to_string() == "@@node1.shinkai/main" {
             Ok((false, vec!["127.0.0.1:9552".to_string()]))
         } else {
@@ -174,8 +170,7 @@ fn setup_test_db() -> SqliteManager {
     let temp_file = NamedTempFile::new().unwrap();
     let db_path = PathBuf::from(temp_file.path());
     let api_url = String::new();
-    let model_type =
-        EmbeddingModelType::default();
+    let model_type = EmbeddingModelType::default();
 
     SqliteManager::new(db_path, api_url, model_type).unwrap()
 }

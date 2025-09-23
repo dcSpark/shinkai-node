@@ -1,5 +1,6 @@
 use crate::{
-    shinkai_fs_error::ShinkaiFsError, simple_parser::{file_parser_helper::ShinkaiFileParser, text_group::TextGroup}
+    shinkai_fs_error::ShinkaiFsError,
+    simple_parser::{file_parser_helper::ShinkaiFileParser, text_group::TextGroup},
 };
 
 use csv::ReaderBuilder;

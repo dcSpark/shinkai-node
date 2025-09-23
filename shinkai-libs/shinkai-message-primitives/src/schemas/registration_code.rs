@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 // Note: there is another declaration of RegistrationCode
 // but re-using it means to import a lot of chained things

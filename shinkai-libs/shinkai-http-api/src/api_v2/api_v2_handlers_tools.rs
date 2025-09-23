@@ -6,11 +6,16 @@ use serde::Deserialize;
 use serde_json::{Map, Value};
 use shinkai_message_primitives::{
     schemas::{
-        shinkai_tools::{CodeLanguage, DynamicToolType}, tool_router_key::ToolRouterKey
-    }, shinkai_message::shinkai_message_schemas::JobMessage
+        shinkai_tools::{CodeLanguage, DynamicToolType},
+        tool_router_key::ToolRouterKey,
+    },
+    shinkai_message::shinkai_message_schemas::JobMessage,
 };
 use shinkai_tools_primitives::tools::{
-    shinkai_tool::ShinkaiToolWithAssets, tool_config::OAuth, tool_playground::ToolPlayground, tool_types::{OperatingSystem, RunnerType}
+    shinkai_tool::ShinkaiToolWithAssets,
+    tool_config::OAuth,
+    tool_playground::ToolPlayground,
+    tool_types::{OperatingSystem, RunnerType},
 };
 use std::collections::HashMap;
 use utoipa::{OpenApi, ToSchema};

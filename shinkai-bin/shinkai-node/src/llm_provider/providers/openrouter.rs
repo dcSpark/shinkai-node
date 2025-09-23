@@ -234,7 +234,14 @@ async fn handle_streaming_response(
                 );
                 llm_stopper.reset(&inbox_name.to_string());
 
-                return Ok(LLMInferenceResponse::new(response_text, None, json!({}), Vec::new(), Vec::new(), None));
+                return Ok(LLMInferenceResponse::new(
+                    response_text,
+                    None,
+                    json!({}),
+                    Vec::new(),
+                    Vec::new(),
+                    None,
+                ));
             }
         }
 
@@ -266,14 +273,17 @@ async fn handle_streaming_response(
                             let data_resp: Result<JsonValue, _> = serde_json::from_str(json_str);
                             match data_resp {
                                 Ok(data) => {
-                                    let new_content = process_streaming_chunk(&data, &mut response_text, &mut function_calls, &tools);
+                                    let new_content =
+                                        process_streaming_chunk(&data, &mut response_text, &mut function_calls, &tools);
 
                                     // Check for finish_reason to determine if stream is done
-                                    let is_finished = data.get("choices")
+                                    let is_finished = data
+                                        .get("choices")
                                         .and_then(|choices| choices.as_array())
                                         .map(|choices_array| {
                                             choices_array.iter().any(|choice| {
-                                                choice.get("finish_reason")
+                                                choice
+                                                    .get("finish_reason")
                                                     .and_then(|fr| fr.as_str())
                                                     .map(|fr| !fr.is_empty())
                                                     .unwrap_or(false)
@@ -287,10 +297,11 @@ async fn handle_streaming_response(
                                         inbox_name.clone(),
                                         &session_id,
                                         new_content, // Send only new content, not entire response
-                                        false, // is_reasoning
+                                        false,       // is_reasoning
                                         is_finished, // is_done
-                                        None, // done_reason
-                                    ).await;
+                                        None,        // done_reason
+                                    )
+                                    .await;
 
                                     if is_finished {
                                         is_done_sent = true;
@@ -321,14 +332,17 @@ async fn handle_streaming_response(
                     match data_resp {
                         Ok(data) => {
                             previous_json_chunk = "".to_string();
-                            let new_content = process_streaming_chunk(&data, &mut response_text, &mut function_calls, &tools);
+                            let new_content =
+                                process_streaming_chunk(&data, &mut response_text, &mut function_calls, &tools);
 
                             // Check for finish_reason to determine if stream is done
-                            let is_finished = data.get("choices")
+                            let is_finished = data
+                                .get("choices")
                                 .and_then(|choices| choices.as_array())
                                 .map(|choices_array| {
                                     choices_array.iter().any(|choice| {
-                                        choice.get("finish_reason")
+                                        choice
+                                            .get("finish_reason")
                                             .and_then(|fr| fr.as_str())
                                             .map(|fr| !fr.is_empty())
                                             .unwrap_or(false)
@@ -342,10 +356,11 @@ async fn handle_streaming_response(
                                 inbox_name.clone(),
                                 &session_id,
                                 new_content, // Send only new content, not entire response
-                                false, // is_reasoning
+                                false,       // is_reasoning
                                 is_finished, // is_done
-                                None, // done_reason
-                            ).await;
+                                None,        // done_reason
+                            )
+                            .await;
 
                             if is_finished {
                                 is_done_sent = true;
@@ -380,10 +395,11 @@ async fn handle_streaming_response(
             inbox_name.clone(),
             &session_id,
             "".to_string(), // Empty content
-            false, // is_reasoning
-            true, // is_done
-            None, // done_reason
-        ).await;
+            false,          // is_reasoning
+            true,           // is_done
+            None,           // done_reason
+        )
+        .await;
     }
 
     Ok(LLMInferenceResponse::new(
@@ -652,8 +668,6 @@ fn process_streaming_chunk(
     }
     new_content
 }
-
-
 
 fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobConfig>) {
     // Helper function to read and parse environment variables

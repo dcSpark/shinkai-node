@@ -8,7 +8,7 @@ use super::LLMService;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::llm_provider::providers::shared::groq_api::groq_prepare_messages;
-use crate::managers::model_capabilities_manager::{PromptResultEnum, ModelCapabilitiesManager};
+use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
 use async_trait::async_trait;
 use futures::StreamExt;
 use reqwest::Client;
@@ -117,9 +117,7 @@ impl LLMService for Groq {
                 // Handle reasoning parameters for supported models, otherwise add regular options
                 if ModelCapabilitiesManager::has_reasoning_capabilities(&model) {
                     // Check thinking parameter from JobConfig
-                    let thinking_enabled = config.as_ref()
-                        .and_then(|c| c.thinking)
-                        .unwrap_or(true); // Default to true if not set
+                    let thinking_enabled = config.as_ref().and_then(|c| c.thinking).unwrap_or(true); // Default to true if not set
 
                     if self.model_type.starts_with("qwen/qwen3") {
                         if thinking_enabled {
@@ -131,9 +129,10 @@ impl LLMService for Groq {
                         }
                     } else if self.model_type.starts_with("openai/gpt-oss") {
                         if thinking_enabled {
-                            payload["reasoning_effort"] = serde_json::json!(config.as_ref()
-                                    .and_then(|c| c.reasoning_effort.clone())
-                                    .unwrap_or_else(|| "medium".to_string()));
+                            payload["reasoning_effort"] = serde_json::json!(config
+                                .as_ref()
+                                .and_then(|c| c.reasoning_effort.clone())
+                                .unwrap_or_else(|| "medium".to_string()));
                             payload["include_reasoning"] = serde_json::json!(true);
                         } else {
                             // Don't set reasoning_effort when thinking is disabled
@@ -281,11 +280,15 @@ async fn handle_streaming_response(
 
                 return Ok(LLMInferenceResponse::new(
                     response_text,
-                    if reasoning_content.is_empty() { None } else { Some(reasoning_content) },
+                    if reasoning_content.is_empty() {
+                        None
+                    } else {
+                        Some(reasoning_content)
+                    },
                     json!({}),
                     Vec::new(),
                     Vec::new(),
-                    None
+                    None,
                 ));
             }
         }
@@ -308,10 +311,11 @@ async fn handle_streaming_response(
                                 inbox_name.clone(),
                                 &session_id,
                                 response_text.clone(),
-                                false, // is_reasoning
-                                function_calls.is_empty(), // is_done
+                                false,                                   // is_reasoning
+                                function_calls.is_empty(),               // is_done
                                 Some("streaming completed".to_string()), // done_reason
-                            ).await;
+                            )
+                            .await;
                             break;
                         } else {
                             match serde_json::from_str::<JsonValue>(data) {
@@ -332,9 +336,10 @@ async fn handle_streaming_response(
                                         for choice in choices.as_array().unwrap_or(&vec![]) {
                                             if let Some(delta) = choice.get("delta") {
                                                 // Handle reasoning content
-                                                if let Some(reasoning) = delta.get("reasoning").and_then(|r| r.as_str()) {
+                                                if let Some(reasoning) = delta.get("reasoning").and_then(|r| r.as_str())
+                                                {
                                                     reasoning_content.push_str(reasoning);
-                                                    
+
                                                     // Send WebSocket update for reasoning content
                                                     if let Some(ref inbox_name) = inbox_name {
                                                         let _ = send_ws_update(
@@ -342,13 +347,14 @@ async fn handle_streaming_response(
                                                             Some(inbox_name.clone()),
                                                             &session_id,
                                                             reasoning.to_string(),
-                                                            true, // is_reasoning
+                                                            true,  // is_reasoning
                                                             false, // is_done
-                                                            None, // done_reason
-                                                        ).await;
+                                                            None,  // done_reason
+                                                        )
+                                                        .await;
                                                     }
                                                 }
-                                                
+
                                                 if let Some(fc) = delta.get("tool_calls") {
                                                     if let Some(tool_calls_array) = fc.as_array() {
                                                         for tool_call in tool_calls_array {
@@ -402,7 +408,12 @@ async fn handle_streaming_response(
                                                                     };
                                                                     function_calls.push(function_call.clone());
 
-                                                                    let _ = send_tool_ws_update(&ws_manager_trait, inbox_name.clone(), &function_call).await;
+                                                                    let _ = send_tool_ws_update(
+                                                                        &ws_manager_trait,
+                                                                        inbox_name.clone(),
+                                                                        &function_call,
+                                                                    )
+                                                                    .await;
                                                                 }
                                                             }
                                                         }
@@ -431,7 +442,8 @@ async fn handle_streaming_response(
                                                         false, // is_reasoning
                                                         is_done,
                                                         done_reason,
-                                                    ).await;
+                                                    )
+                                                    .await;
                                                 }
                                             }
                                         }
@@ -468,14 +480,19 @@ async fn handle_streaming_response(
         inbox_name.clone(),
         &session_id,
         response_text.clone(),
-        false, // is_reasoning
-        function_calls.is_empty(), // is_done
+        false,                        // is_reasoning
+        function_calls.is_empty(),    // is_done
         Some("finished".to_string()), // done_reason
-    ).await;
+    )
+    .await;
 
     Ok(LLMInferenceResponse::new(
         response_text,
-        if reasoning_content.is_empty() { None } else { Some(reasoning_content) },
+        if reasoning_content.is_empty() {
+            None
+        } else {
+            Some(reasoning_content)
+        },
         json!({}),
         function_calls,
         Vec::new(),
@@ -714,7 +731,7 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
                         if !is_reasoning_model {
                             payload["max_completion_tokens"] = value.clone();
                         }
-                    },
+                    }
                     _ => (),
                 };
             }

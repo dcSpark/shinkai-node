@@ -611,7 +611,9 @@ mod tests {
 
         // Process the prompt
         let session_id = uuid::Uuid::new_v4().to_string();
-        let result = crate::llm_provider::providers::shared::deepseek_api::deepseek_prepare_messages(&model, prompt, session_id).expect("Failed to prepare messages");
+        let result =
+            crate::llm_provider::providers::shared::deepseek_api::deepseek_prepare_messages(&model, prompt, session_id)
+                .expect("Failed to prepare messages");
 
         // Extract the messages from the result
         let messages = match &result.messages {

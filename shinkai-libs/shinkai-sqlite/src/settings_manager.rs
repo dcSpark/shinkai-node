@@ -63,7 +63,8 @@ impl SqliteManager {
         let conn = self.get_connection()?;
 
         if let Some(auth_token) = auth_token {
-            let mut stmt = conn.prepare("INSERT OR REPLACE INTO shinkai_settings (key, value) VALUES ('ngrok_auth_token', ?)")?;
+            let mut stmt =
+                conn.prepare("INSERT OR REPLACE INTO shinkai_settings (key, value) VALUES ('ngrok_auth_token', ?)")?;
             stmt.execute([auth_token])?;
         } else {
             let mut stmt = conn.prepare("DELETE FROM shinkai_settings WHERE key = 'ngrok_auth_token'")?;
@@ -94,8 +95,7 @@ mod tests {
         let temp_file = NamedTempFile::new().unwrap();
         let db_path = PathBuf::from(temp_file.path());
         let api_url = String::new();
-        let model_type =
-            EmbeddingModelType::default();
+        let model_type = EmbeddingModelType::default();
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }

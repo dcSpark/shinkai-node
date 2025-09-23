@@ -60,22 +60,29 @@ impl SqliteManager {
     pub fn remove_tool_offering(&self, tool_key: &str) -> Result<(), SqliteManagerError> {
         let mut conn = self.get_connection()?;
         let mut transaction = conn.transaction()?;
-        
+
         // First, nullify references in invoices to prevent constraint violations
-        transaction.execute("UPDATE invoices SET shinkai_offering_key = NULL WHERE shinkai_offering_key = ?1", params![tool_key])?;
-        
+        transaction.execute(
+            "UPDATE invoices SET shinkai_offering_key = NULL WHERE shinkai_offering_key = ?1",
+            params![tool_key],
+        )?;
+
         // Then delete the tool offering
-        transaction.execute("DELETE FROM tool_micropayments_requirements WHERE tool_key = ?1", params![tool_key])?;
-        
+        transaction.execute(
+            "DELETE FROM tool_micropayments_requirements WHERE tool_key = ?1",
+            params![tool_key],
+        )?;
+
         transaction.commit()?;
         Ok(())
     }
 
     pub fn get_all_tool_offerings(&self) -> Result<Vec<ShinkaiToolOffering>, SqliteManagerError> {
         let conn = self.get_connection()?;
-        let mut stmt =
-            conn.prepare("SELECT tool_key, usage_type, meta_description FROM tool_micropayments_requirements
-                               WHERE tool_key LIKE 'local%'")?;
+        let mut stmt = conn.prepare(
+            "SELECT tool_key, usage_type, meta_description FROM tool_micropayments_requirements
+                               WHERE tool_key LIKE 'local%'",
+        )?;
 
         let tool_offerings = stmt.query_map([], |row| {
             let tool_key: String = row.get(0)?;
@@ -106,7 +113,8 @@ mod tests {
     use super::*;
     use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use shinkai_message_primitives::schemas::{
-        shinkai_tool_offering::ToolPrice, x402_types::{Network, PaymentRequirements}
+        shinkai_tool_offering::ToolPrice,
+        x402_types::{Network, PaymentRequirements},
     };
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
@@ -115,8 +123,7 @@ mod tests {
         let temp_file = NamedTempFile::new().unwrap();
         let db_path = PathBuf::from(temp_file.path());
         let api_url = String::new();
-        let model_type =
-            EmbeddingModelType::default();
+        let model_type = EmbeddingModelType::default();
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }
@@ -222,7 +229,10 @@ mod tests {
 
         // Verify insertion
         let retrieved_offering = manager.get_tool_offering("tool_key").unwrap();
-        assert_eq!(retrieved_offering.meta_description, Some("Original description".to_string()));
+        assert_eq!(
+            retrieved_offering.meta_description,
+            Some("Original description".to_string())
+        );
 
         // Update the tool offering with new values
         let updated_tool_offering = ShinkaiToolOffering {
@@ -252,8 +262,11 @@ mod tests {
 
         // Verify update
         let retrieved_updated_offering = manager.get_tool_offering("tool_key").unwrap();
-        assert_eq!(retrieved_updated_offering.meta_description, Some("Updated description".to_string()));
-        
+        assert_eq!(
+            retrieved_updated_offering.meta_description,
+            Some("Updated description".to_string())
+        );
+
         // Verify the usage_type was also updated
         if let UsageType::PerUse(ToolPrice::Payment(ref reqs)) = retrieved_updated_offering.usage_type {
             assert_eq!(reqs[0].max_amount_required, "2000");
@@ -329,15 +342,15 @@ mod tests {
     #[tokio::test]
     async fn test_remove_tool_offering_with_invoices() {
         use chrono::Utc;
+        use rusqlite::params;
         use shinkai_message_primitives::schemas::invoices::{Invoice, InvoiceStatusEnum};
         use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
         use shinkai_message_primitives::schemas::shinkai_tool_offering::UsageTypeInquiry;
         use shinkai_message_primitives::schemas::wallet_mixed::PublicAddress;
-        use rusqlite::params;
-        
+
         let manager = setup_test_db();
         let tool_key = "test_tool_key_with_invoice";
-        
+
         // First, create a tool offering
         let tool_offering = ShinkaiToolOffering {
             tool_key: tool_key.to_string(),
@@ -393,29 +406,33 @@ mod tests {
         // Now try to remove the tool offering - this should succeed with the new implementation
         let remove_result = manager.remove_tool_offering(tool_key);
         println!("Remove tool offering result: {:?}", remove_result);
-        
+
         // The removal should now succeed because we handle foreign key constraints properly
         assert!(remove_result.is_ok(), "Tool offering removal should succeed");
-        
+
         // Verify that the tool offering was actually removed
         let get_result = manager.get_tool_offering(tool_key);
         assert!(get_result.is_err(), "Tool offering should no longer exist");
-        
+
         // Verify that the invoice still exists but with shinkai_offering_key set to NULL
         // Since get_invoice might not handle NULL foreign keys properly, let's check at the database level
         let conn = manager.get_connection().unwrap();
-        let mut stmt = conn.prepare("SELECT invoice_id, shinkai_offering_key FROM invoices WHERE invoice_id = ?1").unwrap();
-        let result: Result<(String, Option<String>), _> = stmt.query_row(params!["test_invoice_id"], |row| {
-            Ok((row.get(0)?, row.get(1)?))
-        });
-        
+        let mut stmt = conn
+            .prepare("SELECT invoice_id, shinkai_offering_key FROM invoices WHERE invoice_id = ?1")
+            .unwrap();
+        let result: Result<(String, Option<String>), _> =
+            stmt.query_row(params!["test_invoice_id"], |row| Ok((row.get(0)?, row.get(1)?)));
+
         match result {
             Ok((invoice_id, offering_key)) => {
                 println!("Invoice still exists: {}", invoice_id);
                 assert_eq!(invoice_id, "test_invoice_id");
-                assert!(offering_key.is_none(), "shinkai_offering_key should be NULL after tool offering removal");
+                assert!(
+                    offering_key.is_none(),
+                    "shinkai_offering_key should be NULL after tool offering removal"
+                );
                 println!("Verified: shinkai_offering_key is NULL as expected");
-            },
+            }
             Err(err) => {
                 panic!("Invoice should still exist after tool offering removal: {:?}", err);
             }

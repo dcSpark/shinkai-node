@@ -6,7 +6,8 @@ use serde_json::{self, Value};
 
 use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use shinkai_message_primitives::schemas::{
-    indexable_version::IndexableVersion, shinkai_tool_offering::{ShinkaiToolOffering, UsageType}
+    indexable_version::IndexableVersion,
+    shinkai_tool_offering::{ShinkaiToolOffering, UsageType},
 };
 
 use super::agent_tool_wrapper::AgentToolWrapper;
@@ -14,7 +15,8 @@ use super::tool_config::OAuth;
 use super::tool_playground::{SqlQuery, SqlTable, ToolPlaygroundMetadata};
 use super::tool_types::{OperatingSystem, RunnerType};
 use super::{
-    deno_tools::DenoTool, mcp_server_tool::MCPServerTool, network_tool::NetworkTool, parameters::Parameters, python_tools::PythonTool, tool_config::ToolConfig, tool_output_arg::ToolOutputArg
+    deno_tools::DenoTool, mcp_server_tool::MCPServerTool, network_tool::NetworkTool, parameters::Parameters,
+    python_tools::PythonTool, tool_config::ToolConfig, tool_output_arg::ToolOutputArg,
 };
 
 pub type IsEnabled = bool;
@@ -95,16 +97,9 @@ impl ShinkaiTool {
     pub fn tool_router_key(&self) -> ToolRouterKey {
         match self {
             ShinkaiTool::Rust(r, _) => ToolRouterKey::new("local".to_string(), r.author(), r.name.clone(), None),
-            ShinkaiTool::Network(n, _) => {
-                ToolRouterKey::from_string(&n.tool_router_key).unwrap_or_else(|_| {
-                    ToolRouterKey::new(
-                        n.provider.to_string(),
-                        n.author.to_string(),
-                        n.name.clone(),
-                        None,
-                    )
-                })
-            }
+            ShinkaiTool::Network(n, _) => ToolRouterKey::from_string(&n.tool_router_key).unwrap_or_else(|_| {
+                ToolRouterKey::new(n.provider.to_string(), n.author.to_string(), n.name.clone(), None)
+            }),
             ShinkaiTool::Deno(d, _) => {
                 if let Some(key) = &d.tool_router_key {
                     key.clone()

@@ -340,10 +340,15 @@ impl ShinkaiRegistry {
         contract_abi: String,
         identity: String,
     ) -> Result<OnchainIdentity, ShinkaiRegistryError> {
-        let identity_data = get_identity_data(rpc_endpoints.clone(), contract_address.clone(), contract_abi.clone(), identity.clone())
-            .await
-            .map_err(|e| ShinkaiRegistryError::IdentityFetchError(e.to_string()))?
-            .identity_data;
+        let identity_data = get_identity_data(
+            rpc_endpoints.clone(),
+            contract_address.clone(),
+            contract_abi.clone(),
+            identity.clone(),
+        )
+        .await
+        .map_err(|e| ShinkaiRegistryError::IdentityFetchError(e.to_string()))?
+        .identity_data;
 
         if identity_data.is_none() {
             return Err(ShinkaiRegistryError::IdentityNotFound(format!(
@@ -378,8 +383,13 @@ impl ShinkaiRegistry {
         }) {
             // Call the proxy node to get the actual data
             let proxy_identity = onchain_identity.address_or_proxy_nodes.clone();
-            
-            let identity_data = get_identity_data(rpc_endpoints.clone(), contract_address.clone(), contract_abi.clone(), proxy_identity.join(","))
+
+            let identity_data = get_identity_data(
+                rpc_endpoints.clone(),
+                contract_address.clone(),
+                contract_abi.clone(),
+                proxy_identity.join(","),
+            )
             .await
             .map_err(|e| ShinkaiRegistryError::IdentityFetchError(e.to_string()))?
             .identity_data;
@@ -400,7 +410,7 @@ impl ShinkaiRegistry {
             };
 
             return Ok(updated_record);
-        }        
+        }
 
         Ok(onchain_identity)
     }

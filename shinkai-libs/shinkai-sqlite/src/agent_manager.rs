@@ -90,7 +90,7 @@ impl SqliteManager {
             let scope: String = row.get(10)?;
             let tools_config_override: Option<String> = row.get(11).unwrap_or(None);
             let edited: bool = row.get(12)?;
-                Ok(Agent {
+            Ok(Agent {
                 agent_id: row.get(0)?,
                 name: row.get(1)?,
                 full_identity_name: ShinkaiName::new(full_identity_name).map_err(|e| {
@@ -277,8 +277,7 @@ mod tests {
         let temp_file = NamedTempFile::new().unwrap();
         let db_path = PathBuf::from(temp_file.path());
         let api_url = String::new();
-        let model_type =
-            EmbeddingModelType::default();
+        let model_type = EmbeddingModelType::default();
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }

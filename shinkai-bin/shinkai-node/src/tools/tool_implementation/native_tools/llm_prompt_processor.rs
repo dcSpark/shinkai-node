@@ -10,8 +10,8 @@ use serde_json::{json, Map, Value};
 use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
 
 use ed25519_dalek::SigningKey;
-use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobCreationInfo;
 use tokio::sync::Mutex;
 
@@ -26,7 +26,6 @@ use async_trait::async_trait;
 use tokio::time::{sleep, Duration};
 
 use crate::tools::tool_implementation::tool_traits::ToolExecutor;
-
 
 pub struct LlmPromptProcessorTool {
     pub tool: ShinkaiToolHeader,
@@ -104,27 +103,40 @@ impl ToolExecutor for LlmPromptProcessorTool {
             .to_string();
 
         let tools = if let Some(tools_array) = parameters.get("tools").and_then(|v| v.as_array()) {
-            Some(tools_array.iter().map(|v| v.as_str().unwrap_or("").to_string()).collect::<Vec<String>>())
+            Some(
+                tools_array
+                    .iter()
+                    .map(|v| v.as_str().unwrap_or("").to_string())
+                    .collect::<Vec<String>>(),
+            )
         } else {
             None
         };
 
         let image_paths = if let Some(paths_array) = parameters.get("image_paths").and_then(|v| v.as_array()) {
-            Some(paths_array.iter().map(|v| v.as_str().unwrap_or("").to_string()).collect::<Vec<String>>())
+            Some(
+                paths_array
+                    .iter()
+                    .map(|v| v.as_str().unwrap_or("").to_string())
+                    .collect::<Vec<String>>(),
+            )
         } else {
             None
         };
 
         let llm_provider_param_opt = parameters.get("llm_provider").and_then(|v| v.as_str());
-        
+
         let mut llm_provider_to_use = default_llm_provider;
 
         if let Some(llm_provider_param) = llm_provider_param_opt {
             if !llm_provider_param.is_empty() {
-                let available_providers = db_clone.get_all_llm_providers()
+                let available_providers = db_clone
+                    .get_all_llm_providers()
                     .map_err(|e| ToolError::ExecutionError(format!("Failed to get LLM providers: {}", e)))?;
-                
-                let provider_exists = available_providers.iter().any(|p: &SerializedLLMProvider| p.id == llm_provider_param);
+
+                let provider_exists = available_providers
+                    .iter()
+                    .any(|p: &SerializedLLMProvider| p.id == llm_provider_param);
 
                 if provider_exists {
                     llm_provider_to_use = llm_provider_param.to_string();

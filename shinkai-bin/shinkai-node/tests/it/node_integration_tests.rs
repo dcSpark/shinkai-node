@@ -4,11 +4,13 @@ use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair, EncryptionMethod
+    encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair,
+    EncryptionMethod,
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::{
-    clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string, unsafe_deterministic_signature_keypair
+    clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string,
+    unsafe_deterministic_signature_keypair,
 };
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::Node;
@@ -20,7 +22,8 @@ use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
 
 use crate::it::utils::node_test_api::{
-    api_registration_device_node_profile_main, api_registration_profile_node, api_try_re_register_profile_node, wait_for_default_tools
+    api_registration_device_node_profile_main, api_registration_profile_node, api_try_re_register_profile_node,
+    wait_for_default_tools,
 };
 use crate::it::utils::test_boilerplate::{default_embedding_model, supported_embedding_models};
 
@@ -714,7 +717,7 @@ fn test_relay_server_communication() {
         assert!(port_is_available(8083), "Port 8083 is not available");
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8082);
         let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8083);
-        
+
         let node1 = Node::new(
             node1_identity_name.to_string(),
             addr1,
@@ -760,7 +763,7 @@ fn test_relay_server_communication() {
         .await;
 
         eprintln!(">> Starting relay test with real identities and relay server");
-        
+
         eprintln!("Starting nodes");
         // Start node1 and node2
         let node1_clone = Arc::clone(&node1);
@@ -786,7 +789,7 @@ fn test_relay_server_communication() {
 
             // Register profiles on both nodes first (required for messaging)
             eprintln!(">> Registering profiles on both nodes");
-            
+
             let (profile1_sk, profile1_pk) = unsafe_deterministic_signature_keypair(100);
             let (profile1_encryption_sk, profile1_encryption_pk) = unsafe_deterministic_encryption_keypair(100);
 
@@ -798,7 +801,8 @@ fn test_relay_server_communication() {
                 node1_encryption_pk,
                 clone_signature_secret_key(&profile1_sk),
                 1,
-            ).await;
+            )
+            .await;
             eprintln!(">> Node 1 ({}) profile registration completed", node1_identity_name);
 
             let (profile2_sk, profile2_pk) = unsafe_deterministic_signature_keypair(101);
@@ -812,35 +816,47 @@ fn test_relay_server_communication() {
                 node2_encryption_pk,
                 clone_signature_secret_key(&profile2_sk),
                 1,
-            ).await;
+            )
+            .await;
             eprintln!(">> Node 2 ({}) profile registration completed", node2_identity_name);
 
             eprintln!("=== NODE KEYS ===");
-            eprintln!("Node 1 Identity Public Key:  {}", signature_public_key_to_string(node1_identity_pk));
-            eprintln!("Node 1 Encryption Public Key: {}", encryption_public_key_to_string(node1_encryption_pk));
-            eprintln!("Node 2 Identity Public Key:  {}", signature_public_key_to_string(node2_identity_pk));
-            eprintln!("Node 2 Encryption Public Key: {}", encryption_public_key_to_string(node2_encryption_pk));
+            eprintln!(
+                "Node 1 Identity Public Key:  {}",
+                signature_public_key_to_string(node1_identity_pk)
+            );
+            eprintln!(
+                "Node 1 Encryption Public Key: {}",
+                encryption_public_key_to_string(node1_encryption_pk)
+            );
+            eprintln!(
+                "Node 2 Identity Public Key:  {}",
+                signature_public_key_to_string(node2_identity_pk)
+            );
+            eprintln!(
+                "Node 2 Encryption Public Key: {}",
+                encryption_public_key_to_string(node2_encryption_pk)
+            );
             eprintln!("=== PROFILE KEYS ===");
             eprintln!("Profile 1 Public Key: {}", signature_public_key_to_string(profile1_pk));
-            eprintln!("Profile 2 Public Key: {}", signature_public_key_to_string(profile2_pk));               
+            eprintln!("Profile 2 Public Key: {}", signature_public_key_to_string(profile2_pk));
 
             // Wait for tools to be ready
-            let tools_ready1 = wait_for_default_tools(
-                node1_commands_sender.clone(),
-                "debug".to_string(),
-                60,
-            ).await.unwrap_or(false);
-            
-            let tools_ready2 = wait_for_default_tools(
-                node2_commands_sender.clone(),
-                "debug".to_string(), 
-                60,
-            ).await.unwrap_or(false);
+            let tools_ready1 = wait_for_default_tools(node1_commands_sender.clone(), "debug".to_string(), 60)
+                .await
+                .unwrap_or(false);
+
+            let tools_ready2 = wait_for_default_tools(node2_commands_sender.clone(), "debug".to_string(), 60)
+                .await
+                .unwrap_or(false);
 
             eprintln!(">> Tools ready - Node 1: {}, Node 2: {}", tools_ready1, tools_ready2);
 
             // Test sending message from node1 to node2
-            eprintln!(">> Sending message from Node 1 ({}) to Node 2 ({})", node1_identity_name, node2_identity_name);
+            eprintln!(
+                ">> Sending message from Node 1 ({}) to Node 2 ({})",
+                node1_identity_name, node2_identity_name
+            );
             let message_content_1to2 = "Hello from node1 to node2 via relay!".to_string();
             let message_1to2 = ShinkaiMessageBuilder::new(
                 profile1_encryption_sk.clone(),
@@ -874,7 +890,10 @@ fn test_relay_server_communication() {
                 .unwrap();
 
             // Test sending message from node2 to node1
-            eprintln!(">> Sending message from Node 2 ({}) to Node 1 ({})", node2_identity_name, node1_identity_name);
+            eprintln!(
+                ">> Sending message from Node 2 ({}) to Node 1 ({})",
+                node2_identity_name, node1_identity_name
+            );
             let message_content_2to1 = "Hello from node2 to node1 via relay!".to_string();
             let message_2to1 = ShinkaiMessageBuilder::new(
                 profile2_encryption_sk.clone(),
@@ -913,7 +932,7 @@ fn test_relay_server_communication() {
 
             eprintln!(">> Node 1 to Node 2 send result: {:?}", send_result_1to2.is_ok());
             eprintln!(">> Node 2 to Node 1 send result: {:?}", send_result_2to1.is_ok());
-            
+
             if let Err(ref e) = send_result_1to2 {
                 eprintln!(">> Node 1 to Node 2 send error: {:?}", e);
             }
@@ -939,7 +958,7 @@ fn test_relay_server_communication() {
             let mut node2_messages = Vec::new();
             let mut attempts = 0;
             let max_attempts = 120; // up to ~60 seconds (120 * 500ms)
-            
+
             while attempts < max_attempts {
                 let (res1_check_sender, res1_check_receiver) = async_channel::bounded(1);
                 node1_commands_sender
@@ -962,8 +981,13 @@ fn test_relay_server_communication() {
                 node1_messages = res1_check_receiver.recv().await.unwrap();
                 node2_messages = res2_check_receiver.recv().await.unwrap();
 
-                eprintln!(">> Polling attempt {}/{}: Node1={} messages, Node2={} messages", 
-                    attempts + 1, max_attempts, node1_messages.len(), node2_messages.len());
+                eprintln!(
+                    ">> Polling attempt {}/{}: Node1={} messages, Node2={} messages",
+                    attempts + 1,
+                    max_attempts,
+                    node1_messages.len(),
+                    node2_messages.len()
+                );
 
                 if node1_messages.len() >= 2 && node2_messages.len() >= 2 {
                     eprintln!(">> Both nodes have received expected messages!");
@@ -979,17 +1003,23 @@ fn test_relay_server_communication() {
 
             if !node1_messages.is_empty() {
                 eprintln!(">> ✅ Node 1 received messages via relay");
-                
+
                 // Display received message content on Node 1
                 for (i, message) in node1_messages.iter().enumerate() {
                     eprintln!(">> Node 1 - Message {}: {:?}", i + 1, message.get_message_content());
-                    
+
                     // Try to decrypt the message if it's encrypted
                     if ShinkaiMessage::is_content_currently_encrypted(message) {
-                        match message.clone().decrypt_inner_layer(&profile1_encryption_sk, &profile2_encryption_pk) {
+                        match message
+                            .clone()
+                            .decrypt_inner_layer(&profile1_encryption_sk, &profile2_encryption_pk)
+                        {
                             Ok(decrypted_msg) => {
-                                eprintln!(">> Node 1 - Decrypted content: {:?}", decrypted_msg.get_message_content());
-                            },
+                                eprintln!(
+                                    ">> Node 1 - Decrypted content: {:?}",
+                                    decrypted_msg.get_message_content()
+                                );
+                            }
                             Err(e) => {
                                 eprintln!(">> Node 1 - Failed to decrypt: {:?}", e);
                             }
@@ -997,20 +1027,26 @@ fn test_relay_server_communication() {
                     }
                 }
             }
-            
+
             if !node2_messages.is_empty() {
                 eprintln!(">> ✅ Node 2 received messages via relay");
-                
+
                 // Display received message content on Node 2
                 for (i, message) in node2_messages.iter().enumerate() {
                     eprintln!(">> Node 2 - Message {}: {:?}", i + 1, message.get_message_content());
-                    
+
                     // Try to decrypt the message if it's encrypted
                     if ShinkaiMessage::is_content_currently_encrypted(message) {
-                        match message.clone().decrypt_inner_layer(&profile2_encryption_sk, &profile1_encryption_pk) {
+                        match message
+                            .clone()
+                            .decrypt_inner_layer(&profile2_encryption_sk, &profile1_encryption_pk)
+                        {
                             Ok(decrypted_msg) => {
-                                eprintln!(">> Node 2 - Decrypted content: {:?}", decrypted_msg.get_message_content());
-                            },
+                                eprintln!(
+                                    ">> Node 2 - Decrypted content: {:?}",
+                                    decrypted_msg.get_message_content()
+                                );
+                            }
                             Err(e) => {
                                 eprintln!(">> Node 2 - Failed to decrypt: {:?}", e);
                             }
@@ -1038,7 +1074,7 @@ fn test_relay_server_communication() {
             Ok(_) => {
                 eprintln!(">> Relay test completed - nodes can communicate via relay server");
                 Ok(())
-            },
+            }
             Err(e) => {
                 // Check if the error is because one of the tasks was aborted
                 if e.is_cancelled() {
@@ -1089,7 +1125,7 @@ fn test_localhost_relay_server_communication() {
         assert!(port_is_available(12051), "Port 12051 is not available");
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12050);
         let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12051);
-        
+
         let node1 = Node::new(
             node1_identity_name.to_string(),
             addr1,
@@ -1135,7 +1171,7 @@ fn test_localhost_relay_server_communication() {
         .await;
 
         eprintln!(">> Starting relay test with real identities and relay server");
-        
+
         eprintln!("Starting nodes");
         // Start node1 and node2
         let node1_clone = Arc::clone(&node1);
@@ -1161,7 +1197,7 @@ fn test_localhost_relay_server_communication() {
 
             // Register profiles on both nodes first (required for messaging)
             eprintln!(">> Registering profiles on both nodes");
-            
+
             let (profile1_sk, profile1_pk) = unsafe_deterministic_signature_keypair(100);
             let (profile1_encryption_sk, profile1_encryption_pk) = unsafe_deterministic_encryption_keypair(100);
 
@@ -1173,7 +1209,8 @@ fn test_localhost_relay_server_communication() {
                 node1_encryption_pk,
                 clone_signature_secret_key(&profile1_sk),
                 1,
-            ).await;
+            )
+            .await;
             eprintln!(">> Node 1 ({}) profile registration completed", node1_identity_name);
 
             let (profile2_sk, profile2_pk) = unsafe_deterministic_signature_keypair(101);
@@ -1187,37 +1224,55 @@ fn test_localhost_relay_server_communication() {
                 node2_encryption_pk,
                 clone_signature_secret_key(&profile2_sk),
                 1,
-            ).await;
+            )
+            .await;
             eprintln!(">> Node 2 ({}) profile registration completed", node2_identity_name);
 
             eprintln!("=== NODE KEYS ===");
-            eprintln!("Node 1 Identity Public Key:  {}", signature_public_key_to_string(node1_identity_pk));
-            eprintln!("Node 1 Encryption Public Key: {}", encryption_public_key_to_string(node1_encryption_pk));
-            eprintln!("Node 2 Identity Public Key:  {}", signature_public_key_to_string(node2_identity_pk));
-            eprintln!("Node 2 Encryption Public Key: {}", encryption_public_key_to_string(node2_encryption_pk));
+            eprintln!(
+                "Node 1 Identity Public Key:  {}",
+                signature_public_key_to_string(node1_identity_pk)
+            );
+            eprintln!(
+                "Node 1 Encryption Public Key: {}",
+                encryption_public_key_to_string(node1_encryption_pk)
+            );
+            eprintln!(
+                "Node 2 Identity Public Key:  {}",
+                signature_public_key_to_string(node2_identity_pk)
+            );
+            eprintln!(
+                "Node 2 Encryption Public Key: {}",
+                encryption_public_key_to_string(node2_encryption_pk)
+            );
             eprintln!("=== PROFILE KEYS ===");
             eprintln!("Profile 1 Public Key: {}", signature_public_key_to_string(profile1_pk));
-            eprintln!("Profile 1 Encryption Public Key: {}", encryption_public_key_to_string(profile1_encryption_pk));
-            eprintln!("Profile 2 Public Key: {}", signature_public_key_to_string(profile2_pk));               
-            eprintln!("Profile 2 Encryption Public Key: {}", encryption_public_key_to_string(profile2_encryption_pk));
+            eprintln!(
+                "Profile 1 Encryption Public Key: {}",
+                encryption_public_key_to_string(profile1_encryption_pk)
+            );
+            eprintln!("Profile 2 Public Key: {}", signature_public_key_to_string(profile2_pk));
+            eprintln!(
+                "Profile 2 Encryption Public Key: {}",
+                encryption_public_key_to_string(profile2_encryption_pk)
+            );
 
             // Wait for tools to be ready
-            let tools_ready1 = wait_for_default_tools(
-                node1_commands_sender.clone(),
-                "debug".to_string(),
-                60,
-            ).await.unwrap_or(false);
-            
-            let tools_ready2 = wait_for_default_tools(
-                node2_commands_sender.clone(),
-                "debug".to_string(), 
-                60,
-            ).await.unwrap_or(false);
+            let tools_ready1 = wait_for_default_tools(node1_commands_sender.clone(), "debug".to_string(), 60)
+                .await
+                .unwrap_or(false);
+
+            let tools_ready2 = wait_for_default_tools(node2_commands_sender.clone(), "debug".to_string(), 60)
+                .await
+                .unwrap_or(false);
 
             eprintln!(">> Tools ready - Node 1: {}, Node 2: {}", tools_ready1, tools_ready2);
 
             // Test sending message from node2 to node1
-            eprintln!(">> Sending message from registered node ({}) to unregistered node ({})", node2_identity_name, node1_identity_name);
+            eprintln!(
+                ">> Sending message from registered node ({}) to unregistered node ({})",
+                node2_identity_name, node1_identity_name
+            );
             let message_content_2to1 = "Hello from localhost node to registered node via relay!".to_string();
             let message_2to1 = ShinkaiMessageBuilder::new(
                 profile2_encryption_sk.clone(),
@@ -1257,11 +1312,7 @@ fn test_localhost_relay_server_communication() {
             // eprintln!(">> Node 1 to Node 2 send result: {:?}", send_result_1to2.is_ok());
             eprintln!(">> Node 2 to Node 1 send result: {:?}", send_result_2to1.is_ok());
 
-            assert_eq!(
-                send_result_2to1.is_ok(),
-                true,
-                "Message should be sent successfully"
-            );
+            assert_eq!(send_result_2to1.is_ok(), true, "Message should be sent successfully");
 
             // Wait for messages to be delivered via relay by polling periodically
             eprintln!(">> Waiting for relay message delivery...");
@@ -1270,7 +1321,7 @@ fn test_localhost_relay_server_communication() {
             let mut node2_messages = Vec::new();
             let mut attempts = 0;
             let max_attempts = 120; // up to ~60 seconds (120 * 500ms)
-            
+
             while attempts < max_attempts {
                 let (res1_check_sender, res1_check_receiver) = async_channel::bounded(1);
                 node1_commands_sender
@@ -1293,8 +1344,13 @@ fn test_localhost_relay_server_communication() {
                 node1_messages = res1_check_receiver.recv().await.unwrap();
                 node2_messages = res2_check_receiver.recv().await.unwrap();
 
-                eprintln!(">> Polling attempt {}/{}: Node1={} messages, Node2={} messages", 
-                    attempts + 1, max_attempts, node1_messages.len(), node2_messages.len());
+                eprintln!(
+                    ">> Polling attempt {}/{}: Node1={} messages, Node2={} messages",
+                    attempts + 1,
+                    max_attempts,
+                    node1_messages.len(),
+                    node2_messages.len()
+                );
 
                 if node1_messages.len() >= 1 && node2_messages.len() >= 1 {
                     eprintln!(">> Both nodes have received expected messages!");
@@ -1310,17 +1366,23 @@ fn test_localhost_relay_server_communication() {
 
             if !node1_messages.is_empty() {
                 eprintln!(">> ✅ Registered node received messages via relay");
-                
+
                 // Display received message content on Node 1
                 for (i, message) in node1_messages.iter().enumerate() {
                     eprintln!(">> Node 1 - Message {}: {:?}", i + 1, message.get_message_content());
-                    
+
                     // Try to decrypt the message if it's encrypted
                     if ShinkaiMessage::is_content_currently_encrypted(message) {
-                        match message.clone().decrypt_inner_layer(&profile1_encryption_sk, &profile2_encryption_pk) {
+                        match message
+                            .clone()
+                            .decrypt_inner_layer(&profile1_encryption_sk, &profile2_encryption_pk)
+                        {
                             Ok(decrypted_msg) => {
-                                eprintln!(">> Node 1 - Decrypted content: {:?}", decrypted_msg.get_message_content());
-                            },
+                                eprintln!(
+                                    ">> Node 1 - Decrypted content: {:?}",
+                                    decrypted_msg.get_message_content()
+                                );
+                            }
                             Err(e) => {
                                 eprintln!(">> Node 1 - Failed to decrypt: {:?}", e);
                             }
@@ -1328,20 +1390,26 @@ fn test_localhost_relay_server_communication() {
                     }
                 }
             }
-            
+
             if !node2_messages.is_empty() {
                 eprintln!(">> ✅ Unregistered node received messages via relay");
-                
+
                 // Display received message content on Node 2
                 for (i, message) in node2_messages.iter().enumerate() {
                     eprintln!(">> Node 2 - Message {}: {:?}", i + 1, message.get_message_content());
-                    
+
                     // Try to decrypt the message if it's encrypted
                     if ShinkaiMessage::is_content_currently_encrypted(message) {
-                        match message.clone().decrypt_inner_layer(&profile2_encryption_sk, &profile1_encryption_pk) {
+                        match message
+                            .clone()
+                            .decrypt_inner_layer(&profile2_encryption_sk, &profile1_encryption_pk)
+                        {
                             Ok(decrypted_msg) => {
-                                eprintln!(">> Node 2 - Decrypted content: {:?}", decrypted_msg.get_message_content());
-                            },
+                                eprintln!(
+                                    ">> Node 2 - Decrypted content: {:?}",
+                                    decrypted_msg.get_message_content()
+                                );
+                            }
                             Err(e) => {
                                 eprintln!(">> Node 2 - Failed to decrypt: {:?}", e);
                             }
@@ -1369,7 +1437,7 @@ fn test_localhost_relay_server_communication() {
             Ok(_) => {
                 eprintln!(">> Relay test completed - nodes can communicate via relay server");
                 Ok(())
-            },
+            }
             Err(e) => {
                 // Check if the error is because one of the tasks was aborted
                 if e.is_cancelled() {
@@ -1388,7 +1456,6 @@ fn test_localhost_relay_server_communication() {
         assert!(false, "An unexpected error occurred: {:?}", e);
     }
 }
-
 
 #[test]
 fn test_send_message_to_localhost_node() {
@@ -1437,7 +1504,7 @@ fn test_send_message_to_localhost_node() {
         assert!(port_is_available(12053), "Port 12053 is not available");
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12052);
         let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12053);
-        
+
         let node1 = Node::new(
             node1_identity_name.to_string(),
             addr1,
@@ -1483,7 +1550,7 @@ fn test_send_message_to_localhost_node() {
         .await;
 
         eprintln!(">> Starting relay test with real identities and relay server");
-        
+
         eprintln!("Starting nodes");
         // Start node1 and node2
         let node1_clone = Arc::clone(&node1);
@@ -1509,7 +1576,7 @@ fn test_send_message_to_localhost_node() {
 
             // Register profiles on both nodes first (required for messaging)
             eprintln!(">> Registering profiles on both nodes");
-            
+
             let (profile1_sk, profile1_pk) = unsafe_deterministic_signature_keypair(0);
             let (profile1_encryption_sk, profile1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
@@ -1521,7 +1588,8 @@ fn test_send_message_to_localhost_node() {
                 node1_encryption_pk,
                 clone_signature_secret_key(&profile1_sk),
                 1,
-            ).await;
+            )
+            .await;
             eprintln!(">> Node 1 ({}) profile registration completed", node1_identity_name);
 
             let (profile2_sk, profile2_pk) = unsafe_deterministic_signature_keypair(101);
@@ -1535,48 +1603,72 @@ fn test_send_message_to_localhost_node() {
                 node2_encryption_pk,
                 clone_signature_secret_key(&profile2_sk),
                 1,
-            ).await;
+            )
+            .await;
             eprintln!(">> Node 2 ({}) profile registration completed", node2_identity_name);
 
             eprintln!("=== NODE KEYS ===");
-            eprintln!("Node 1 Identity Public Key:  {}", signature_public_key_to_string(node1_identity_pk));
-            eprintln!("Node 1 Encryption Public Key: {}", encryption_public_key_to_string(node1_encryption_pk));
-            eprintln!("Node 2 Identity Public Key:  {}", signature_public_key_to_string(node2_identity_pk));
-            eprintln!("Node 2 Encryption Public Key: {}", encryption_public_key_to_string(node2_encryption_pk));
+            eprintln!(
+                "Node 1 Identity Public Key:  {}",
+                signature_public_key_to_string(node1_identity_pk)
+            );
+            eprintln!(
+                "Node 1 Encryption Public Key: {}",
+                encryption_public_key_to_string(node1_encryption_pk)
+            );
+            eprintln!(
+                "Node 2 Identity Public Key:  {}",
+                signature_public_key_to_string(node2_identity_pk)
+            );
+            eprintln!(
+                "Node 2 Encryption Public Key: {}",
+                encryption_public_key_to_string(node2_encryption_pk)
+            );
             eprintln!("=== PROFILE KEYS ===");
             eprintln!("Profile 1 Public Key: {}", signature_public_key_to_string(profile1_pk));
-            eprintln!("Profile 1 Encryption Public Key: {}", encryption_public_key_to_string(profile1_encryption_pk));
-            eprintln!("Profile 2 Public Key: {}", signature_public_key_to_string(profile2_pk));               
-            eprintln!("Profile 2 Encryption Public Key: {}", encryption_public_key_to_string(profile2_encryption_pk));
+            eprintln!(
+                "Profile 1 Encryption Public Key: {}",
+                encryption_public_key_to_string(profile1_encryption_pk)
+            );
+            eprintln!("Profile 2 Public Key: {}", signature_public_key_to_string(profile2_pk));
+            eprintln!(
+                "Profile 2 Encryption Public Key: {}",
+                encryption_public_key_to_string(profile2_encryption_pk)
+            );
             eprintln!("=== RELAY KEYS ===");
-            eprintln!("Relay Encryption Public Key: {}", encryption_public_key_to_string(relay_encryption_pk));
-            eprintln!("Relay Signature Public Key: {}", signature_public_key_to_string(relay_signature_pk));
+            eprintln!(
+                "Relay Encryption Public Key: {}",
+                encryption_public_key_to_string(relay_encryption_pk)
+            );
+            eprintln!(
+                "Relay Signature Public Key: {}",
+                signature_public_key_to_string(relay_signature_pk)
+            );
             eprintln!("=== PEER IDS ===");
             eprintln!("Node 2 Peer ID: {}", node2_peer_id);
 
             // Wait for tools to be ready
-            let tools_ready1 = wait_for_default_tools(
-                node1_commands_sender.clone(),
-                "debug".to_string(),
-                60,
-            ).await.unwrap_or(false);
-            
-            let tools_ready2 = wait_for_default_tools(
-                node2_commands_sender.clone(),
-                "debug".to_string(), 
-                60,
-            ).await.unwrap_or(false);
+            let tools_ready1 = wait_for_default_tools(node1_commands_sender.clone(), "debug".to_string(), 60)
+                .await
+                .unwrap_or(false);
+
+            let tools_ready2 = wait_for_default_tools(node2_commands_sender.clone(), "debug".to_string(), 60)
+                .await
+                .unwrap_or(false);
 
             eprintln!(">> Tools ready - Node 1: {}, Node 2: {}", tools_ready1, tools_ready2);
 
             // Test sending message from node2 to node1
-            eprintln!(">> Sending message from registered node ({}) to unregistered node ({})", node1_identity_name, node2_identity_name);
+            eprintln!(
+                ">> Sending message from registered node ({}) to unregistered node ({})",
+                node1_identity_name, node2_identity_name
+            );
             let message_content_1to2 = "Hello from registered node to unregistered node via relay!".to_string();
-            
+
             let message_1to2 = ShinkaiMessageBuilder::new(
                 profile1_encryption_sk.clone(),
                 clone_signature_secret_key(&profile1_sk),
-                relay_encryption_pk,  // Encrypt for relay, not end recipient
+                relay_encryption_pk, // Encrypt for relay, not end recipient
             )
             .message_raw_content(message_content_1to2.clone())
             .no_body_encryption()
@@ -1591,7 +1683,7 @@ fn test_send_message_to_localhost_node() {
                 relay_identity_name.clone().unwrap(),
                 node1_identity_name.to_string(),
                 encryption_public_key_to_string(node2_encryption_pk), // use destination (localhost) node encryption pk
-                node2_peer_id.to_string(), // use destination (localhost) peer id
+                node2_peer_id.to_string(),                            // use destination (localhost) peer id
             )
             .build()
             .unwrap();
@@ -1614,11 +1706,7 @@ fn test_send_message_to_localhost_node() {
             // eprintln!(">> Node 1 to Node 2 send result: {:?}", send_result_1to2.is_ok());
             eprintln!(">> Node 2 to Node 1 send result: {:?}", send_result_1to2.is_ok());
 
-            assert_eq!(
-                send_result_1to2.is_ok(),
-                true,
-                "Message should be sent successfully"
-            );
+            assert_eq!(send_result_1to2.is_ok(), true, "Message should be sent successfully");
 
             // Wait for messages to be delivered via relay by polling periodically
             eprintln!(">> Waiting for relay message delivery...");
@@ -1627,7 +1715,7 @@ fn test_send_message_to_localhost_node() {
             let mut node2_messages = Vec::new();
             let mut attempts = 0;
             let max_attempts = 30; // up to ~60 seconds (120 * 500ms)
-            
+
             while attempts < max_attempts {
                 let (res1_check_sender, res1_check_receiver) = async_channel::bounded(1);
                 node1_commands_sender
@@ -1650,8 +1738,13 @@ fn test_send_message_to_localhost_node() {
                 node1_messages = res1_check_receiver.recv().await.unwrap();
                 node2_messages = res2_check_receiver.recv().await.unwrap();
 
-                eprintln!(">> Polling attempt {}/{}: Node1={} messages, Node2={} messages", 
-                    attempts + 1, max_attempts, node1_messages.len(), node2_messages.len());
+                eprintln!(
+                    ">> Polling attempt {}/{}: Node1={} messages, Node2={} messages",
+                    attempts + 1,
+                    max_attempts,
+                    node1_messages.len(),
+                    node2_messages.len()
+                );
 
                 if node1_messages.len() >= 1 && node2_messages.len() >= 1 {
                     eprintln!(">> Both nodes have received expected messages!");
@@ -1667,17 +1760,23 @@ fn test_send_message_to_localhost_node() {
 
             if !node1_messages.is_empty() {
                 eprintln!(">> ✅ Registered node received messages via relay");
-                
+
                 // Display received message content on Node 1
                 for (i, message) in node1_messages.iter().enumerate() {
                     eprintln!(">> Node 1 - Message {}: {:?}", i + 1, message.get_message_content());
-                    
+
                     // Try to decrypt the message if it's encrypted
                     if ShinkaiMessage::is_content_currently_encrypted(message) {
-                        match message.clone().decrypt_inner_layer(&profile1_encryption_sk, &relay_encryption_pk) {
+                        match message
+                            .clone()
+                            .decrypt_inner_layer(&profile1_encryption_sk, &relay_encryption_pk)
+                        {
                             Ok(decrypted_msg) => {
-                                eprintln!(">> Node 1 - Decrypted content: {:?}", decrypted_msg.get_message_content());
-                            },
+                                eprintln!(
+                                    ">> Node 1 - Decrypted content: {:?}",
+                                    decrypted_msg.get_message_content()
+                                );
+                            }
                             Err(e) => {
                                 eprintln!(">> Node 1 - Failed to decrypt: {:?}", e);
                             }
@@ -1685,20 +1784,26 @@ fn test_send_message_to_localhost_node() {
                     }
                 }
             }
-            
+
             if !node2_messages.is_empty() {
                 eprintln!(">> ✅ Unregistered node received messages via relay");
-                
+
                 // Display received message content on Node 2
                 for (i, message) in node2_messages.iter().enumerate() {
                     eprintln!(">> Node 2 - Message {}: {:?}", i + 1, message.get_message_content());
-                    
+
                     // Try to decrypt the message if it's encrypted
                     if ShinkaiMessage::is_content_currently_encrypted(message) {
-                        match message.clone().decrypt_inner_layer(&profile2_encryption_sk, &relay_encryption_pk) {
+                        match message
+                            .clone()
+                            .decrypt_inner_layer(&profile2_encryption_sk, &relay_encryption_pk)
+                        {
                             Ok(decrypted_msg) => {
-                                eprintln!(">> Node 2 - Decrypted content: {:?}", decrypted_msg.get_message_content());
-                            },
+                                eprintln!(
+                                    ">> Node 2 - Decrypted content: {:?}",
+                                    decrypted_msg.get_message_content()
+                                );
+                            }
                             Err(e) => {
                                 eprintln!(">> Node 2 - Failed to decrypt: {:?}", e);
                             }
@@ -1725,7 +1830,7 @@ fn test_send_message_to_localhost_node() {
             Ok(_) => {
                 eprintln!(">> Relay test completed - nodes can communicate via relay server");
                 Ok(())
-            },
+            }
             Err(e) => {
                 // Check if the error is because one of the tasks was aborted
                 if e.is_cancelled() {

@@ -7,8 +7,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("===============================================");
 
     let rpc_url = env::var("RPC_URL").unwrap_or("https://sepolia.base.org".to_string());
-    let contract_address = env::var("CONTRACT_ADDRESS")
-        .unwrap_or("0x425fb20ba3874e887336aaa7f3fab32d08135ba9".to_string());
+    let contract_address =
+        env::var("CONTRACT_ADDRESS").unwrap_or("0x425fb20ba3874e887336aaa7f3fab32d08135ba9".to_string());
 
     println!("📡 Using RPC: {}", rpc_url);
     println!("📝 Contract: {}", contract_address);
@@ -18,19 +18,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let relay_identity = "@@libp2p_relayer.sep-shinkai";
     println!("\n🔍 Resolving identity: {}", relay_identity);
 
-    match registry.get_identity_record(relay_identity.to_string(), Some(true)).await {
+    match registry
+        .get_identity_record(relay_identity.to_string(), Some(true))
+        .await
+    {
         Ok(identity) => {
             println!("✅ Identity found!");
             println!("   Identity: {}", identity.shinkai_identity);
             println!("   Encryption Key: {}", identity.encryption_key);
             println!("   Signature Key: {}", identity.signature_key);
             println!("   Address(es): {:?}", identity.address_or_proxy_nodes);
-            
+
             // Try to get the first address
             match identity.first_address().await {
                 Ok(addr) => {
                     println!("   📍 Resolved Address: {}", addr);
-                    
+
                     // Check if this matches the expected relay address
                     if addr.to_string() == "34.170.114.216:9901" {
                         println!("✅ Address matches relay external IP!");
@@ -75,4 +78,4 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
-} 
+}

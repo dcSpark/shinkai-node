@@ -15,9 +15,12 @@ use shinkai_message_primitives::schemas::job::JobLike;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::{
-    schemas::shinkai_name::ShinkaiName, shinkai_message::{
-        shinkai_message::{MessageBody, MessageData, ShinkaiMessage}, shinkai_message_schemas::{JobCreationInfo, JobMessage, MessageSchemaType}
-    }, shinkai_utils::signatures::clone_signature_secret_key
+    schemas::shinkai_name::ShinkaiName,
+    shinkai_message::{
+        shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
+        shinkai_message_schemas::{JobCreationInfo, JobMessage, MessageSchemaType},
+    },
+    shinkai_utils::signatures::clone_signature_secret_key,
 };
 use shinkai_sqlite::SqliteManager;
 use std::collections::HashSet;

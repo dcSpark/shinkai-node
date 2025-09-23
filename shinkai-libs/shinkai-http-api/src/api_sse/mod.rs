@@ -10,4 +10,4 @@ mod mcp_tools_service;
 pub use api_sse_routes::{mcp_sse_routes, SessionQuery};
 
 // Re-export the state for custom integrations
-pub use api_sse_handlers::McpState; 
+pub use api_sse_handlers::McpState;

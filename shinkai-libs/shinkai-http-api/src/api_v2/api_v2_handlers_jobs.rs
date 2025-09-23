@@ -6,21 +6,29 @@ use serde::Deserialize;
 use serde_json::json;
 use shinkai_message_primitives::{
     schemas::{
-        job_config::JobConfig, llm_providers::serialized_llm_provider::{
-            Exo, Gemini, Groq, LLMProviderInterface, Ollama, OpenAI, SerializedLLMProvider, ShinkaiBackend
-        }, shinkai_name::{ShinkaiName, ShinkaiSubidentityType}, smart_inbox::{LLMProviderSubset, V2SmartInbox}
-    }, shinkai_message::{
-        shinkai_message::NodeApiData, shinkai_message_schemas::{
-            APIChangeJobAgentRequest, AssociatedUI, CallbackAction, ExportInboxMessagesFormat, JobCreationInfo, JobMessage, V2ChatMessage
-        }
-    }, shinkai_utils::job_scope::MinimalJobScope
+        job_config::JobConfig,
+        llm_providers::serialized_llm_provider::{
+            Exo, Gemini, Groq, LLMProviderInterface, Ollama, OpenAI, SerializedLLMProvider, ShinkaiBackend,
+        },
+        shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
+        smart_inbox::{LLMProviderSubset, V2SmartInbox},
+    },
+    shinkai_message::{
+        shinkai_message::NodeApiData,
+        shinkai_message_schemas::{
+            APIChangeJobAgentRequest, AssociatedUI, CallbackAction, ExportInboxMessagesFormat, JobCreationInfo,
+            JobMessage, V2ChatMessage,
+        },
+    },
+    shinkai_utils::job_scope::MinimalJobScope,
 };
 use utoipa::{OpenApi, ToSchema};
 use warp::multipart::FormData;
 use warp::Filter;
 
 use crate::{
-    node_api_router::{APIError, SendResponseBody, SendResponseBodyData}, node_commands::NodeCommand
+    node_api_router::{APIError, SendResponseBody, SendResponseBodyData},
+    node_commands::NodeCommand,
 };
 
 use super::api_v2_router::{create_success_response, with_sender};

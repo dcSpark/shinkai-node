@@ -8,8 +8,6 @@ mod tests {
 
     use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 
-    
-
     // Helper function to convert a vector of ChatCompletionRequestMessage to a
     // single string
     fn messages_to_string(messages: &[LlmMessage]) -> String {

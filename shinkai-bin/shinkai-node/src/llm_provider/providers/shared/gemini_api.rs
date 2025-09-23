@@ -1,4 +1,4 @@
-use super::shared_model_logic::{get_image_type, get_video_type, get_audio_type, sanitize_tool_name};
+use super::shared_model_logic::{get_audio_type, get_image_type, get_video_type, sanitize_tool_name};
 use crate::llm_provider::error::LLMProviderError;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 use crate::managers::model_capabilities_manager::PromptResult;
@@ -1032,6 +1032,9 @@ mod tests {
 
         // Generate and print the final payload
         let payload = generate_test_payload(prompt, &model).expect("Failed to generate payload");
-        println!("Audio Test Final Payload: {}", serde_json::to_string_pretty(&payload).unwrap());
+        println!(
+            "Audio Test Final Payload: {}",
+            serde_json::to_string_pretty(&payload).unwrap()
+        );
     }
 }

@@ -77,15 +77,11 @@ impl ShinkaiFileParser {
                 let batch_texts = batch.to_vec();
                 let generator_clone = generator.box_clone(); // clone for an async block below
 
-                let future = async move {
-                    generator_clone.generate_embeddings(&batch_texts).await
-                };
+                let future = async move { generator_clone.generate_embeddings(&batch_texts).await };
                 current_batch_futures.push(future);
 
                 // If we have 10 futures queued or we're at the last batch, we gather them
-                if current_batch_futures.len() == 10 ||
-                   index == texts.chunks(max_batch_size as usize).count() - 1
-                {
+                if current_batch_futures.len() == 10 || index == texts.chunks(max_batch_size as usize).count() - 1 {
                     all_futures.push(current_batch_futures);
                     current_batch_futures = Vec::new();
                 }
@@ -167,11 +163,11 @@ impl ShinkaiFileParser {
                     text.len()
                 } else {
                     // walk backward until whitespace or until we exit a metadata block
-                    while candidate_end > start &&
-                        (
-                            !text.as_bytes()[candidate_end].is_ascii_whitespace() ||
-                            matched_positions.iter().any(|&(s, e)| candidate_end >= s && candidate_end < e)
-                        )
+                    while candidate_end > start
+                        && (!text.as_bytes()[candidate_end].is_ascii_whitespace()
+                            || matched_positions
+                                .iter()
+                                .any(|&(s, e)| candidate_end >= s && candidate_end < e))
                     {
                         candidate_end -= 1;
                     }
@@ -203,10 +199,11 @@ impl ShinkaiFileParser {
         let extractor = KeyPhraseExtractor::new(&text, num as usize);
 
         // Return keywords only, discarding scores
-        extractor.get_keywords()
-                 .into_iter()
-                 .map(|(_score, keyword)| keyword)
-                 .collect()
+        extractor
+            .get_keywords()
+            .into_iter()
+            .map(|(_score, keyword)| keyword)
+            .collect()
     }
 
     /// Concatenate text from multiple groups up to a maximum size.

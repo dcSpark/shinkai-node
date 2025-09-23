@@ -1,3 +1,4 @@
+use super::shared_model_logic::{get_image_type, sanitize_tool_name};
 use crate::llm_provider::error::LLMProviderError;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 use crate::managers::model_capabilities_manager::PromptResult;
@@ -8,7 +9,6 @@ use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider:
 use shinkai_message_primitives::schemas::prompts::Prompt;
 use std::collections::HashMap;
 use uuid::Uuid;
-use super::shared_model_logic::{get_image_type, sanitize_tool_name};
 
 pub fn claude_prepare_messages(
     model: &LLMProviderInterface,
@@ -60,18 +60,21 @@ pub fn process_llm_messages(
         serde_json::Value::Array(arr) => {
             // First pass: collect function calls and generate unique IDs
             let mut function_name_to_tool_id: HashMap<String, String> = HashMap::new();
-            
+
             for message in &arr {
                 if message.get("role") == Some(&serde_json::Value::String("assistant".to_string())) {
                     if let Some(function_call) = message.get("function_call") {
                         if let Some(name) = function_call.get("name").and_then(|n| n.as_str()) {
-                            let tool_id = format!("toolu_{}", Uuid::new_v4().to_string().replace("-", "")[0..12].to_string());
+                            let tool_id = format!(
+                                "toolu_{}",
+                                Uuid::new_v4().to_string().replace("-", "")[0..12].to_string()
+                            );
                             function_name_to_tool_id.insert(name.to_string(), tool_id);
                         }
                     }
                 }
             }
-            
+
             // Second pass: process messages with generated IDs
             arr.into_iter()
             .map(|mut message| {
@@ -198,7 +201,7 @@ pub fn process_llm_messages(
                 message
             })
             .collect()
-        },
+        }
         _ => vec![],
     };
 
@@ -252,7 +255,9 @@ mod tests {
     use regex::Regex;
     use serde_json::json;
     use shinkai_message_primitives::schemas::{
-        llm_message::DetailedFunctionCall, llm_providers::serialized_llm_provider::{Claude, SerializedLLMProvider}, subprompts::{SubPrompt, SubPromptType}
+        llm_message::DetailedFunctionCall,
+        llm_providers::serialized_llm_provider::{Claude, SerializedLLMProvider},
+        subprompts::{SubPrompt, SubPromptType},
     };
 
     #[test]
@@ -282,7 +287,10 @@ mod tests {
                 function_call: None,
                 functions: None,
                 // Small PNG that won't trigger optimization: 1x1 pixel
-                images: Some(vec!["iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==".to_string()]),
+                images: Some(vec![
+                    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+                        .to_string(),
+                ]),
                 videos: None,
                 audios: None,
                 tool_calls: None,
@@ -298,29 +306,38 @@ mod tests {
         };
 
         // Verify the user message has both text and image content
-        let user_message = messages_json.as_array().unwrap().iter()
+        let user_message = messages_json
+            .as_array()
+            .unwrap()
+            .iter()
             .find(|msg| msg.get("role") == Some(&serde_json::Value::String("user".to_string())))
             .expect("Should have a user message");
 
         let content = user_message.get("content").expect("Should have content");
         assert!(content.is_array(), "Content should be an array when images are present");
-        
+
         let content_array = content.as_array().unwrap();
         assert_eq!(content_array.len(), 2, "Should have text and image content");
 
         // Check text content
         let text_block = &content_array[0];
         assert_eq!(text_block.get("type").unwrap().as_str().unwrap(), "text");
-        assert_eq!(text_block.get("text").unwrap().as_str().unwrap(), "What's in this image?");
+        assert_eq!(
+            text_block.get("text").unwrap().as_str().unwrap(),
+            "What's in this image?"
+        );
 
         // Check image content
         let image_block = &content_array[1];
         assert_eq!(image_block.get("type").unwrap().as_str().unwrap(), "image");
-        
+
         let source = image_block.get("source").expect("Image should have source");
         assert_eq!(source.get("type").unwrap().as_str().unwrap(), "base64");
         assert_eq!(source.get("media_type").unwrap().as_str().unwrap(), "image/png");
-        assert_eq!(source.get("data").unwrap().as_str().unwrap(), "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==");
+        assert_eq!(
+            source.get("data").unwrap().as_str().unwrap(),
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+        );
     }
 
     #[test]
@@ -391,14 +408,17 @@ mod tests {
         };
 
         let messages = messages_json.as_array().unwrap();
-        
+
         // Should have 3 messages: user, assistant (with tool_use), user (with tool_result)
         assert_eq!(messages.len(), 3);
-        
+
         // Check user message
         assert_eq!(messages[0]["role"], "user");
-        assert_eq!(messages[0]["content"], "tell me what's the response when using shinkai echo tool with: say hello");
-        
+        assert_eq!(
+            messages[0]["content"],
+            "tell me what's the response when using shinkai echo tool with: say hello"
+        );
+
         // Check assistant message with tool_use
         assert_eq!(messages[1]["role"], "assistant");
         let assistant_content = messages[1]["content"].as_array().unwrap();
@@ -406,19 +426,22 @@ mod tests {
         assert_eq!(assistant_content[0]["type"], "tool_use");
         assert_eq!(assistant_content[0]["name"], "shinkai__echo");
         assert_eq!(assistant_content[0]["input"]["message"], "hello");
-        
+
         // Extract the tool_use ID
         let tool_use_id = assistant_content[0]["id"].as_str().unwrap();
         assert!(tool_use_id.starts_with("toolu_"));
         assert_eq!(tool_use_id.len(), 18); // "toolu_" + 12 chars
-        
+
         // Check tool_result message
         assert_eq!(messages[2]["role"], "user");
         let tool_result_content = messages[2]["content"].as_array().unwrap();
         assert_eq!(tool_result_content.len(), 1);
         assert_eq!(tool_result_content[0]["type"], "tool_result");
         assert_eq!(tool_result_content[0]["tool_use_id"], tool_use_id); // Should match the tool_use ID
-        assert_eq!(tool_result_content[0]["content"], "{\"data\":{\"message\":\"echoing: hello\"}}");
+        assert_eq!(
+            tool_result_content[0]["content"],
+            "{\"data\":{\"message\":\"echoing: hello\"}}"
+        );
     }
 
     #[test]

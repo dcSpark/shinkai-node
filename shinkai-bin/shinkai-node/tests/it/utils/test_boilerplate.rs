@@ -65,9 +65,7 @@ pub fn supported_embedding_models() -> Vec<EmbeddingModelType> {
                 .map(|s| EmbeddingModelType::from_string(s).expect("Failed to parse SUPPORTED_EMBEDDING_MODELS"))
                 .collect()
         })
-        .unwrap_or_else(|_| {
-            vec![EmbeddingModelType::default()]
-        })
+        .unwrap_or_else(|_| vec![EmbeddingModelType::default()])
 }
 
 pub fn run_test_one_node_network<F>(interactions_handler_logic: F)

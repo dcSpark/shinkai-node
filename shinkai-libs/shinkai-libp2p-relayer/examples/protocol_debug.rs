@@ -1,9 +1,9 @@
 use libp2p::{
     futures::StreamExt,
     identify::{self, Event as IdentifyEvent},
-    noise, ping, quic, tcp, yamux,
-    swarm::{NetworkBehaviour, SwarmEvent, Config},
-    Multiaddr, PeerId, Swarm, Transport,
+    noise, ping, quic,
+    swarm::{Config, NetworkBehaviour, SwarmEvent},
+    tcp, yamux, Multiaddr, PeerId, Swarm, Transport,
 };
 use std::time::Duration;
 
@@ -20,7 +20,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Get relay address from command line args or use default
     let args: Vec<String> = std::env::args().collect();
-    let relay_addr = args.get(1).cloned().expect("Relay IP address must be specified as first argument");
+    let relay_addr = args
+        .get(1)
+        .cloned()
+        .expect("Relay IP address must be specified as first argument");
 
     println!("📡 Connecting to relay: {}", relay_addr);
 
@@ -45,32 +48,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .boxed();
 
     // Configure identify with the same protocol version as Shinkai nodes
-    let identify = identify::Behaviour::new(identify::Config::new(
-        "/shinkai/1.0.0".to_string(),
-        local_key.public(),
-    ).with_agent_version("shinkai-node-debug@@debug".to_string())
-    .with_interval(Duration::from_secs(60))
-    .with_push_listen_addr_updates(true)
-    .with_cache_size(100));
+    let identify = identify::Behaviour::new(
+        identify::Config::new("/shinkai/1.0.0".to_string(), local_key.public())
+            .with_agent_version("shinkai-node-debug@@debug".to_string())
+            .with_interval(Duration::from_secs(60))
+            .with_push_listen_addr_updates(true)
+            .with_cache_size(100),
+    );
 
     let ping = ping::Behaviour::new(
         ping::Config::new()
             .with_interval(Duration::from_secs(10))
-            .with_timeout(Duration::from_secs(20))
+            .with_timeout(Duration::from_secs(20)),
     );
 
-    let behaviour = ProtocolDebugBehaviour {
-        identify,
-        ping,
-    };
+    let behaviour = ProtocolDebugBehaviour { identify, ping };
 
     let mut swarm = Swarm::new(transport, behaviour, local_peer_id, Config::with_tokio_executor());
 
     // Connect to relay
-    let tcp_addr: Multiaddr = format!("/ip4/{}/tcp/{}", 
+    let tcp_addr: Multiaddr = format!(
+        "/ip4/{}/tcp/{}",
         relay_addr.split(':').next().unwrap(),
-        relay_addr.split(':').nth(1).unwrap())
-        .parse()?;
+        relay_addr.split(':').nth(1).unwrap()
+    )
+    .parse()?;
 
     println!("🔌 Connecting to: {}", tcp_addr);
     swarm.dial(tcp_addr)?;
@@ -94,26 +96,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     break;
                 }
             }
-            SwarmEvent::Behaviour(ProtocolDebugBehaviourEvent::Identify(IdentifyEvent::Received { peer_id, info, .. })) => {
+            SwarmEvent::Behaviour(ProtocolDebugBehaviourEvent::Identify(IdentifyEvent::Received {
+                peer_id,
+                info,
+                ..
+            })) => {
                 println!("\n🔍 === PEER IDENTIFICATION ===");
                 println!("Peer ID: {}", peer_id);
                 println!("Protocol Version: {}", info.protocol_version);
                 println!("Agent Version: {}", info.agent_version);
                 println!("Listen Addresses: {:?}", info.listen_addrs);
                 println!("\n📋 Supported Protocols:");
-                
+
                 let mut supported_protocols = Vec::new();
                 for protocol in &info.protocols {
                     println!("  ✓ {}", protocol);
                     supported_protocols.push(protocol.to_string());
                 }
-                
+
                 // Check for protocol compatibility
                 println!("\n🔍 === PROTOCOL COMPATIBILITY ANALYSIS ===");
-                
+
                 let relay_protocols = ["/libp2p/circuit/relay/0.2.0/hop", "/ipfs/kad/1.0.0"];
-                let node_protocols = ["/gossipsub/1.1.0", "/ipfs/id/1.0.0", "/ipfs/ping/1.0.0", "/libp2p/dcutr"];
-                
+                let node_protocols = [
+                    "/gossipsub/1.1.0",
+                    "/ipfs/id/1.0.0",
+                    "/ipfs/ping/1.0.0",
+                    "/libp2p/dcutr",
+                ];
+
                 println!("Relay-specific protocols (may cause 'no protocol agreed' messages):");
                 for protocol in &relay_protocols {
                     let supported = supported_protocols.iter().any(|p| p.contains(protocol));
@@ -123,7 +134,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         println!("  ❌ {} - NOT SUPPORTED (will cause negotiation failures)", protocol);
                     }
                 }
-                
+
                 println!("\nCommon protocols:");
                 for protocol in &node_protocols {
                     let supported = supported_protocols.iter().any(|p| p.contains(protocol));
@@ -133,7 +144,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         println!("  ❌ {} - NOT SUPPORTED", protocol);
                     }
                 }
-                
+
                 println!("\n📝 === EXPLANATION ===");
                 println!("The 'no protocol could be agreed upon' messages occur when:");
                 println!("1. The relay tries to use /libp2p/circuit/relay/0.2.0/hop protocol");
@@ -150,7 +161,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             _ => {}
         }
-        
+
         // Exit after 30 seconds
         if start_time.elapsed() > Duration::from_secs(30) {
             println!("🏁 Debug session completed after 30 seconds");
@@ -159,4 +170,4 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
-} 
+}

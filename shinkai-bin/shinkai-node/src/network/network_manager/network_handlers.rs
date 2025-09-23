@@ -1,9 +1,14 @@
 use crate::{
-    managers::IdentityManager, network::{
+    managers::IdentityManager,
+    network::{
         agent_payments_manager::{
-            external_agent_offerings_manager::ExtAgentOfferingsManager, my_agent_offerings_manager::MyAgentOfferingsManager
-        }, libp2p_manager::NetworkEvent, node::ProxyConnectionInfo, Node
-    }
+            external_agent_offerings_manager::ExtAgentOfferingsManager,
+            my_agent_offerings_manager::MyAgentOfferingsManager,
+        },
+        libp2p_manager::NetworkEvent,
+        node::ProxyConnectionInfo,
+        Node,
+    },
 };
 use ed25519_dalek::{SigningKey, VerifyingKey};
 
@@ -11,17 +16,26 @@ use libp2p::{request_response::ResponseChannel, PeerId};
 use serde_json::json;
 use serde_json::Value;
 use shinkai_message_primitives::schemas::agent_network_offering::{
-    AgentNetworkOfferingRequest, AgentNetworkOfferingResponse
+    AgentNetworkOfferingRequest, AgentNetworkOfferingResponse,
 };
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::{
     schemas::{
-        invoices::{Invoice, InvoiceRequest, InvoiceRequestNetworkError}, shinkai_name::ShinkaiName
-    }, shinkai_message::{
-        shinkai_message::{MessageBody, MessageData, ShinkaiMessage}, shinkai_message_error::ShinkaiMessageError, shinkai_message_extension::EncryptionStatus, shinkai_message_schemas::MessageSchemaType
-    }, shinkai_utils::{
-        encryption::clone_static_secret_key, shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption}, shinkai_message_builder::{ShinkaiMessageBuilder, ShinkaiNameString}, signatures::{clone_signature_secret_key, signature_public_key_to_string}
-    }
+        invoices::{Invoice, InvoiceRequest, InvoiceRequestNetworkError},
+        shinkai_name::ShinkaiName,
+    },
+    shinkai_message::{
+        shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
+        shinkai_message_error::ShinkaiMessageError,
+        shinkai_message_extension::EncryptionStatus,
+        shinkai_message_schemas::MessageSchemaType,
+    },
+    shinkai_utils::{
+        encryption::clone_static_secret_key,
+        shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
+        shinkai_message_builder::{ShinkaiMessageBuilder, ShinkaiNameString},
+        signatures::{clone_signature_secret_key, signature_public_key_to_string},
+    },
 };
 use shinkai_sqlite::SqliteManager;
 use std::sync::{Arc, Weak};

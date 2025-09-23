@@ -6,8 +6,8 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, Sh
 use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::SqliteManager;
-use std::result::Result::Ok;
 use std::collections::HashMap;
+use std::result::Result::Ok;
 
 impl JobManager {
     /// Retrieves all resources in the given job scope and returns them as a vector of ShinkaiFileChunkCollection.
@@ -61,7 +61,10 @@ impl JobManager {
                 let chunks = sqlite_manager.get_chunks_for_parsed_file(parsed_file.id.unwrap())?;
                 let mut paths_map = HashMap::new();
                 paths_map.insert(parsed_file.id.unwrap(), path.clone());
-                Ok(Some(ShinkaiFileChunkCollection { chunks, paths: Some(paths_map) }))
+                Ok(Some(ShinkaiFileChunkCollection {
+                    chunks,
+                    paths: Some(paths_map),
+                }))
             }
             Ok(Some(_)) => {
                 shinkai_log(
@@ -91,4 +94,4 @@ impl JobManager {
     }
 }
 
-// TODO: implement tests under a cfg. 
+// TODO: implement tests under a cfg.

@@ -184,7 +184,10 @@ pub async fn get_ngrok_status_handler(
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
-        .send(NodeCommand::V2ApiGetNgrokStatus { bearer, res: res_sender })
+        .send(NodeCommand::V2ApiGetNgrokStatus {
+            bearer,
+            res: res_sender,
+        })
         .await
         .map_err(|_| warp::reject::reject())?;
 

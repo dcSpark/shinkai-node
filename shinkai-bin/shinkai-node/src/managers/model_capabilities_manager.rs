@@ -1,17 +1,24 @@
 use crate::llm_provider::{
-    error::LLMProviderError, providers::shared::{openai_api::openai_prepare_messages, shared_model_logic::llama_prepare_messages}
+    error::LLMProviderError,
+    providers::shared::{openai_api::openai_prepare_messages, shared_model_logic::llama_prepare_messages},
 };
 use ai_model_catalog::{get_openrouter_model, providers::openrouter};
 use shinkai_message_primitives::{
     schemas::{
-        llm_message::LlmMessage, llm_providers::{
-            common_agent_llm_provider::ProviderOrAgent, serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider}
-        }, prompts::Prompt, shinkai_name::ShinkaiName
-    }, shinkai_utils::utils::count_tokens_from_message_llama3
+        llm_message::LlmMessage,
+        llm_providers::{
+            common_agent_llm_provider::ProviderOrAgent,
+            serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider},
+        },
+        prompts::Prompt,
+        shinkai_name::ShinkaiName,
+    },
+    shinkai_utils::utils::count_tokens_from_message_llama3,
 };
 use shinkai_sqlite::SqliteManager;
 use std::{
-    fmt, sync::{Arc, Weak}
+    fmt,
+    sync::{Arc, Weak},
 };
 
 #[derive(Debug)]
@@ -269,7 +276,7 @@ impl ModelCapabilitiesManager {
                     ModelCapability::ImageAnalysis,
                     ModelCapability::ImageGeneration,
                 ]
-            }            
+            }
             model_type if model_type.starts_with("gemini-2.5-flash") => {
                 vec![
                     ModelCapability::TextInference,
@@ -780,7 +787,7 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("claude") => 200_000,
             // Groq Production Models
             model_type if model_type.starts_with("groq/compound") => 131_072,
-            model_type if model_type.starts_with("groq/compound-mini") => 131_072,            
+            model_type if model_type.starts_with("groq/compound-mini") => 131_072,
             model_type if model_type.starts_with("llama-3.1-8b-instant") => 131_072,
             model_type if model_type.starts_with("llama-3.3-70b-versatile") => 131_072,
             model_type if model_type.starts_with("meta-llama/llama-guard-4-12b") => 131_072,
@@ -797,11 +804,11 @@ impl ModelCapabilitiesManager {
             // Legacy Groq models (keeping for backward compatibility)
             model_type if model_type.starts_with("deepseek-r1-distill-llama-70b") => 131_072,
             model_type if model_type.starts_with("mistral-saba-24b") => 32_000,
-            model_type if model_type.starts_with("qwen-qwq-32b") => 128_000,            
-            model_type if model_type.starts_with("allam-2-7b") => 4_096,            
+            model_type if model_type.starts_with("qwen-qwq-32b") => 128_000,
+            model_type if model_type.starts_with("allam-2-7b") => 4_096,
             model_type if model_type.starts_with("gemma2-9b-it") => 8_192,
             model_type if model_type.starts_with("llama3-70b-8192") => 8_192,
-            model_type if model_type.starts_with("llama3-8b-8192") => 8_192,            
+            model_type if model_type.starts_with("llama3-8b-8192") => 8_192,
             model_type if model_type.starts_with("llama-guard-3-8b") => 8_192,
             model_type if model_type.starts_with("mixtral-8x7b-32768") => 32_768,
             model_type if model_type.starts_with("llama-3.3-70b-specdec") => 8_192,
@@ -1175,7 +1182,7 @@ impl ModelCapabilitiesManager {
                     || gemini.model_type == "gemini-2.5-flash"
                     || gemini.model_type == "gemini-2.5-pro"
                     || gemini.model_type == "gemini-2.0-flash-exp"
-            },
+            }
             LLMProviderInterface::ShinkaiBackend(shinkai_backend) => {
                 shinkai_backend.model_type().starts_with("FREE_TEXT_INFERENCE")
                     || shinkai_backend.model_type().starts_with("STANDARD_TEXT_INFERENCE")

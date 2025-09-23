@@ -1,7 +1,9 @@
 use std::sync::{Arc, Weak};
 
 use shinkai_message_primitives::{
-    schemas::{identity::StandardIdentity, shinkai_proxy_builder_info::ShinkaiProxyBuilderInfo}, shinkai_message::shinkai_message::ShinkaiMessage, shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption}
+    schemas::{identity::StandardIdentity, shinkai_proxy_builder_info::ShinkaiProxyBuilderInfo},
+    shinkai_message::shinkai_message::ShinkaiMessage,
+    shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
 use shinkai_sqlite::SqliteManager;
 use tokio::sync::Mutex;
@@ -9,7 +11,8 @@ use tokio::sync::Mutex;
 use crate::{managers::identity_manager::IdentityManagerTrait, network::libp2p_manager::NetworkEvent};
 
 use super::{
-    agent_payments_manager::external_agent_offerings_manager::AgentOfferingManagerError, node::ProxyConnectionInfo, Node
+    agent_payments_manager::external_agent_offerings_manager::AgentOfferingManagerError, node::ProxyConnectionInfo,
+    Node,
 };
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 

@@ -1,9 +1,9 @@
 use libp2p::{
     futures::StreamExt,
     identify::{self, Event as IdentifyEvent},
-    noise, ping, quic, tcp, yamux,
-    swarm::{NetworkBehaviour, SwarmEvent, Config},
-    Multiaddr, PeerId, Swarm, Transport,
+    noise, ping, quic,
+    swarm::{Config, NetworkBehaviour, SwarmEvent},
+    tcp, yamux, Multiaddr, PeerId, Swarm, Transport,
 };
 use std::time::Duration;
 
@@ -20,7 +20,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Get relay address from command line args or use default
     let args: Vec<String> = std::env::args().collect();
-    let relay_addr = args.get(1).cloned().expect("Relay IP address must be specified as first argument");
+    let relay_addr = args
+        .get(1)
+        .cloned()
+        .expect("Relay IP address must be specified as first argument");
 
     println!("📡 Testing connection to relay: {}", relay_addr);
 
@@ -54,24 +57,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ping = ping::Behaviour::new(ping::Config::new());
 
     // Create behaviour
-    let behaviour = TestClientBehaviour {
-        identify,
-        ping,
-    };
+    let behaviour = TestClientBehaviour { identify, ping };
 
     // Create swarm
     let mut swarm = Swarm::new(transport, behaviour, local_peer_id, Config::with_tokio_executor());
 
     // Try both TCP and QUIC connections to the relay
-    let tcp_addr: Multiaddr = format!("/ip4/{}/tcp/{}", 
+    let tcp_addr: Multiaddr = format!(
+        "/ip4/{}/tcp/{}",
         relay_addr.split(':').next().unwrap(),
-        relay_addr.split(':').nth(1).unwrap())
-        .parse()?;
-    
-    let quic_addr: Multiaddr = format!("/ip4/{}/udp/{}/quic-v1", 
+        relay_addr.split(':').nth(1).unwrap()
+    )
+    .parse()?;
+
+    let quic_addr: Multiaddr = format!(
+        "/ip4/{}/udp/{}/quic-v1",
         relay_addr.split(':').next().unwrap(),
-        relay_addr.split(':').nth(1).unwrap())
-        .parse()?;
+        relay_addr.split(':').nth(1).unwrap()
+    )
+    .parse()?;
 
     println!("🔌 Attempting to connect to relay...");
     println!("   TCP address:  {}", tcp_addr);
@@ -93,7 +97,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("\n⏱️  Waiting for connection events (30 seconds)...");
-    
+
     let mut connected = false;
     let mut peer_count: u32 = 0;
     let timeout = tokio::time::sleep(Duration::from_secs(30));
@@ -140,7 +144,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("========================");
     println!("🔗 Connected: {}", if connected { "✅ Yes" } else { "❌ No" });
     println!("👥 Active peers: {}", peer_count);
-    
+
     if connected {
         println!("✅ SUCCESS: Successfully connected to the relay!");
         println!("💡 The relay is reachable and functioning.");
@@ -158,4 +162,4 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
-} 
+}

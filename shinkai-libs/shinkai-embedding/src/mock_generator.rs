@@ -1,7 +1,7 @@
+use crate::embedding_generator::EmbeddingGenerator;
 use crate::model_type::EmbeddingModelType;
 use crate::shinkai_embedding_errors::ShinkaiEmbeddingError;
 use async_trait::async_trait;
-use crate::embedding_generator::EmbeddingGenerator;
 
 #[derive(Clone)]
 pub struct MockGenerator {
@@ -36,7 +36,10 @@ impl EmbeddingGenerator for MockGenerator {
         Ok(vec![0.0; self.num_embeddings])
     }
 
-    fn generate_embeddings_blocking(&self, input_strings: &Vec<String>) -> Result<Vec<Vec<f32>>, ShinkaiEmbeddingError> {
+    fn generate_embeddings_blocking(
+        &self,
+        input_strings: &Vec<String>,
+    ) -> Result<Vec<Vec<f32>>, ShinkaiEmbeddingError> {
         Ok(input_strings.iter().map(|_| vec![0.0; self.num_embeddings]).collect())
     }
 

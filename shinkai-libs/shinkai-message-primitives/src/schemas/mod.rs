@@ -1,3 +1,4 @@
+pub mod agent_network_offering;
 pub mod coinbase_mpc_config;
 pub mod cron_task;
 pub mod crontab;
@@ -12,6 +13,7 @@ pub mod job;
 pub mod job_config;
 pub mod llm_message;
 pub mod llm_providers;
+pub mod mcp_server;
 pub mod prompts;
 pub mod registration_code;
 pub mod retry;
@@ -29,5 +31,3 @@ pub mod wallet_complementary;
 pub mod wallet_mixed;
 pub mod ws_types;
 pub mod x402_types;
-pub mod mcp_server;
-pub mod agent_network_offering;

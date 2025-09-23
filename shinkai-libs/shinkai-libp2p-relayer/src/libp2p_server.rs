@@ -4,15 +4,12 @@ use libp2p::PeerId;
 use shinkai_crypto_identities::ShinkaiRegistry;
 use shinkai_message_primitives::{
     schemas::shinkai_name::ShinkaiName,
-    shinkai_utils::{
-        encryption::encryption_public_key_to_string,
-        signatures::signature_public_key_to_string,
-    },
+    shinkai_utils::{encryption::encryption_public_key_to_string, signatures::signature_public_key_to_string},
 };
 use std::collections::HashMap;
 use std::env;
 use std::sync::Arc;
-use tokio::sync::{ Mutex, Semaphore};
+use tokio::sync::{Mutex, Semaphore};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::{LibP2PRelayError, RelayManager};
@@ -104,12 +101,12 @@ impl LibP2PProxy {
             .await
             .map_err(|e| LibP2PRelayError::RegistryError(format!("Failed to get identity from registry: {}", e)))?;
 
-        let registry_identity_public_key = registry_identity
-            .signature_verifying_key()
-            .map_err(|e| LibP2PRelayError::RegistryError(format!("Failed to get signature key from registry: {}", e)))?;
-        let registry_encryption_public_key = registry_identity
-            .encryption_public_key()
-            .map_err(|e| LibP2PRelayError::RegistryError(format!("Failed to get encryption key from registry: {}", e)))?;
+        let registry_identity_public_key = registry_identity.signature_verifying_key().map_err(|e| {
+            LibP2PRelayError::RegistryError(format!("Failed to get signature key from registry: {}", e))
+        })?;
+        let registry_encryption_public_key = registry_identity.encryption_public_key().map_err(|e| {
+            LibP2PRelayError::RegistryError(format!("Failed to get encryption key from registry: {}", e))
+        })?;
 
         // Check if the provided keys match the ones from the registry
         if identity_public_key != registry_identity_public_key {
@@ -134,7 +131,15 @@ impl LibP2PProxy {
 
         // Initialize the relay manager
         let status_endpoint_url = env::var("STATUS_ENDPOINT_URL").ok();
-        let relay_manager = RelayManager::new(listen_port, node_name.to_string(), identity_secret_key.clone(), encryption_secret_key.clone(), registry.clone(), status_endpoint_url).await?;
+        let relay_manager = RelayManager::new(
+            listen_port,
+            node_name.to_string(),
+            identity_secret_key.clone(),
+            encryption_secret_key.clone(),
+            registry.clone(),
+            status_endpoint_url,
+        )
+        .await?;
         let relay_manager = Arc::new(Mutex::new(relay_manager));
 
         Ok(LibP2PProxy {
@@ -155,10 +160,10 @@ impl LibP2PProxy {
     /// Start the libp2p relay server
     pub async fn start(&self) -> Result<(), LibP2PRelayError> {
         println!("Starting LibP2P Relay Server...");
-        
+
         // Clone the relay manager for the background task
         let relay_manager = self.relay_manager.clone();
-        
+
         // Spawn the relay manager task
         let relay_task = tokio::spawn(async move {
             let mut manager = relay_manager.lock().await;
@@ -175,4 +180,4 @@ impl LibP2PProxy {
 
         Ok(())
     }
-} 
+}

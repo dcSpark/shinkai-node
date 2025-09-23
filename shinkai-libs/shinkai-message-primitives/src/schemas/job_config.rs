@@ -25,7 +25,10 @@ impl JobConfig {
     pub fn merge(&self, other: &JobConfig) -> JobConfig {
         JobConfig {
             // Prefer `self` (provided config) over `other` (agent's config)
-            custom_system_prompt: self.custom_system_prompt.clone().or_else(|| other.custom_system_prompt.clone()),
+            custom_system_prompt: self
+                .custom_system_prompt
+                .clone()
+                .or_else(|| other.custom_system_prompt.clone()),
             custom_prompt: self.custom_prompt.clone().or_else(|| other.custom_prompt.clone()),
             temperature: self.temperature.or(other.temperature),
             max_tokens: self.max_tokens.or(other.max_tokens),

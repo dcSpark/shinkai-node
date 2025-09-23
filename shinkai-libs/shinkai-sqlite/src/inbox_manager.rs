@@ -5,10 +5,19 @@ use rusqlite::params;
 use serde_json::Value;
 use shinkai_message_primitives::{
     schemas::{
-        identity::StandardIdentity, inbox_name::InboxName, inbox_permission::InboxPermission, job_config::JobConfig, shinkai_name::ShinkaiName, smart_inbox::{LLMProviderSubset, ProviderType, SmartInbox}, ws_types::{WSMessageType, WSUpdateHandler}
-    }, shinkai_message::{
-        shinkai_message::{NodeApiData, ShinkaiMessage}, shinkai_message_schemas::WSTopic
-    }, shinkai_utils::shinkai_time::ShinkaiStringTime
+        identity::StandardIdentity,
+        inbox_name::InboxName,
+        inbox_permission::InboxPermission,
+        job_config::JobConfig,
+        shinkai_name::ShinkaiName,
+        smart_inbox::{LLMProviderSubset, ProviderType, SmartInbox},
+        ws_types::{WSMessageType, WSUpdateHandler},
+    },
+    shinkai_message::{
+        shinkai_message::{NodeApiData, ShinkaiMessage},
+        shinkai_message_schemas::WSTopic,
+    },
+    shinkai_utils::shinkai_time::ShinkaiStringTime,
 };
 use tokio::sync::Mutex;
 
@@ -517,8 +526,13 @@ impl SqliteManager {
         show_hidden: Option<bool>,
         agent_id: Option<String>,
     ) -> Result<Vec<SmartInbox>, SqliteManagerError> {
-        let result =
-            self.get_all_smart_inboxes_for_profile_with_pagination(profile_name_identity, None, None, show_hidden, agent_id)?;
+        let result = self.get_all_smart_inboxes_for_profile_with_pagination(
+            profile_name_identity,
+            None,
+            None,
+            show_hidden,
+            agent_id,
+        )?;
         Ok(result.inboxes)
     }
 
@@ -548,12 +562,9 @@ impl SqliteManager {
                 rows.collect::<Result<Vec<_>, _>>()?
             } else {
                 // No Agent ID: Fetch all inboxes (permissions are not checked here, consistent with original logic)
-                let mut stmt = conn.prepare(
-                    "SELECT inbox_name, smart_inbox_name, last_modified, is_hidden FROM inboxes",
-                )?;
-                let rows = stmt.query_map([], |row| {
-                    Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
-                })?;
+                let mut stmt =
+                    conn.prepare("SELECT inbox_name, smart_inbox_name, last_modified, is_hidden FROM inboxes")?;
+                let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)))?;
                 rows.collect::<Result<Vec<_>, _>>()?
             }
         };
@@ -562,9 +573,7 @@ impl SqliteManager {
         let show_hidden_flag = show_hidden.unwrap_or(false);
         let mut filtered_data = initial_inbox_data
             .into_iter()
-            .filter(|(_, _, _, is_hidden_opt)| {
-                show_hidden_flag || !is_hidden_opt.unwrap_or(false)
-            })
+            .filter(|(_, _, _, is_hidden_opt)| show_hidden_flag || !is_hidden_opt.unwrap_or(false))
             .collect::<Vec<_>>();
 
         // 3. Sort by last_modified DESC for stable pagination order
@@ -581,11 +590,7 @@ impl SqliteManager {
             .collect();
 
         // 5. Extract sorted inbox names for pagination
-        let sorted_inbox_names: Vec<String> = filtered_data
-            .into_iter()
-            .map(|(name, _, _, _)| name)
-            .collect();
-
+        let sorted_inbox_names: Vec<String> = filtered_data.into_iter().map(|(name, _, _, _)| name).collect();
 
         // 6. Apply pagination logic
         let start_index = if let Some(offset_id) = offset {
@@ -612,11 +617,10 @@ impl SqliteManager {
         // Get the slice of inbox names to process for the current page
         let inboxes_to_process = if start_index >= sorted_inbox_names.len() || start_index > end_index {
             // Handle cases where start_index is out of bounds or invalid range
-             &[]
+            &[]
         } else {
-             &sorted_inbox_names[start_index..end_index]
+            &sorted_inbox_names[start_index..end_index]
         };
-
 
         // 7. Build SmartInbox objects for the paginated list
         let mut smart_inboxes = Vec::new();
@@ -629,7 +633,8 @@ impl SqliteManager {
                 .and_then(|mut v| v.pop());
 
             // Use the pre-fetched smart inbox name from the map
-            let custom_name = smart_inbox_names_map.get(inbox_id)
+            let custom_name = smart_inbox_names_map
+                .get(inbox_id)
                 .cloned()
                 .unwrap_or_else(|| inbox_id.to_string()); // Fallback just in case
 
@@ -641,20 +646,20 @@ impl SqliteManager {
             let is_finished = if inbox_id.starts_with("job_inbox::") {
                 match InboxName::new(inbox_id.clone()).map_err(|e| SqliteManagerError::SomeError(e.to_string()))? {
                     InboxName::JobInbox { unique_id, .. } => {
-                         match self.get_job_with_options(&unique_id, false) {
-                             Ok(job) => {
+                        match self.get_job_with_options(&unique_id, false) {
+                            Ok(job) => {
                                 let scope_value = job.scope.to_json_value()?;
                                 job_scope_value = Some(scope_value);
                                 job_config_value = job.config;
                                 datetime_created.clone_from(&job.datetime_created);
                                 // Consider finished if job is finished OR if job is hidden
                                 job.is_finished || job.is_hidden
-                             },
-                             Err(_) => {
+                            }
+                            Err(_) => {
                                 // Handle error case e.g. job not found, assume not finished
                                 false
-                             }
-                         }
+                            }
+                        }
                     }
                     _ => false, // Not a job inbox format after all
                 }
@@ -672,22 +677,24 @@ impl SqliteManager {
                                 .map_err(|e| SqliteManagerError::SomeError(e.to_string()))?
                             {
                                 InboxName::JobInbox { unique_id, .. } => {
-                                     match self.get_job_with_options(&unique_id, false) {
-                                         Ok(job) => {
+                                    match self.get_job_with_options(&unique_id, false) {
+                                        Ok(job) => {
                                             let parent_id = job.parent_agent_or_llm_provider_id;
-                                             // Check if the parent_id is an LLM provider
-                                             match self.get_llm_provider(&parent_id, &p) {
-                                                 Ok(Some(provider)) => (
+                                            // Check if the parent_id is an LLM provider
+                                            match self.get_llm_provider(&parent_id, &p) {
+                                                Ok(Some(provider)) => (
                                                     Some(LLMProviderSubset::from_serialized_llm_provider(provider)),
                                                     ProviderType::LLMProvider,
-                                                 ),
-                                                 Ok(None) => self.get_agent_provider(p, parent_id), // Not found as provider, try agent
-                                                 Err(SqliteManagerError::DataNotFound) => self.get_agent_provider(p, parent_id), // Not found as provider, try agent
-                                                 Err(_) => (None, ProviderType::Unknown) // Error fetching provider
-                                             }
-                                         },
-                                         Err(_) => (None, ProviderType::Unknown) // Job not found
-                                     }
+                                                ),
+                                                Ok(None) => self.get_agent_provider(p, parent_id), // Not found as provider, try agent
+                                                Err(SqliteManagerError::DataNotFound) => {
+                                                    self.get_agent_provider(p, parent_id)
+                                                } // Not found as provider, try agent
+                                                Err(_) => (None, ProviderType::Unknown), // Error fetching provider
+                                            }
+                                        }
+                                        Err(_) => (None, ProviderType::Unknown), // Job not found
+                                    }
                                 }
                                 _ => (None, ProviderType::Unknown), // Invalid JobInbox name format
                             }
@@ -717,12 +724,12 @@ impl SqliteManager {
         // 8. Sort the final smart_inboxes by the timestamp of the last message (descending)
         smart_inboxes.sort_by(|a, b| match (&a.last_message, &b.last_message) {
             (Some(a_msg), Some(b_msg)) => {
-                 // Handle potential parsing errors gracefully
-                 let a_time = DateTime::parse_from_rfc3339(&a_msg.external_metadata.scheduled_time)
-                               .unwrap_or(DateTime::<Utc>::MIN_UTC.into());
-                 let b_time = DateTime::parse_from_rfc3339(&b_msg.external_metadata.scheduled_time)
-                               .unwrap_or(DateTime::<Utc>::MIN_UTC.into());
-                 b_time.cmp(&a_time) // Descending
+                // Handle potential parsing errors gracefully
+                let a_time = DateTime::parse_from_rfc3339(&a_msg.external_metadata.scheduled_time)
+                    .unwrap_or(DateTime::<Utc>::MIN_UTC.into());
+                let b_time = DateTime::parse_from_rfc3339(&b_msg.external_metadata.scheduled_time)
+                    .unwrap_or(DateTime::<Utc>::MIN_UTC.into());
+                b_time.cmp(&a_time) // Descending
             }
             (Some(_), None) => std::cmp::Ordering::Less, // Inboxes with messages come first
             (None, Some(_)) => std::cmp::Ordering::Greater,
@@ -739,26 +746,21 @@ impl SqliteManager {
     fn get_agent_provider(&self, p: ShinkaiName, parent_id: String) -> (Option<LLMProviderSubset>, ProviderType) {
         eprintln!("Trying to get agent: {:?}", parent_id);
         match self.get_agent(&parent_id.to_lowercase()) {
-             Ok(Some(agent)) => {
-                 // Fetch the serialized LLM provider for the agent
-                 if let Ok(Some(serialized_llm_provider)) =
-                     self.get_llm_provider(&agent.llm_provider_id, &p)
-                 {
-                     (
-                         Some(LLMProviderSubset::from_agent(
-                             agent,
-                             serialized_llm_provider,
-                         )),
-                         ProviderType::Agent,
-                     )
-                 } else {
-                     (None, ProviderType::Unknown) // Agent exists but provider doesn't?
-                 }
-             }
-             _ => (None, ProviderType::Unknown), // Not found as agent either
-         }
+            Ok(Some(agent)) => {
+                // Fetch the serialized LLM provider for the agent
+                if let Ok(Some(serialized_llm_provider)) = self.get_llm_provider(&agent.llm_provider_id, &p) {
+                    (
+                        Some(LLMProviderSubset::from_agent(agent, serialized_llm_provider)),
+                        ProviderType::Agent,
+                    )
+                } else {
+                    (None, ProviderType::Unknown) // Agent exists but provider doesn't?
+                }
+            }
+            _ => (None, ProviderType::Unknown), // Not found as agent either
+        }
     }
-    
+
     // Note: This is unsafe because it does not update folder names which depend on the inbox name
     pub fn unsafe_update_smart_inbox_name(&self, inbox_id: &str, new_name: &str) -> Result<(), SqliteManagerError> {
         // Update the name in the database
@@ -867,11 +869,18 @@ mod tests {
     use ed25519_dalek::SigningKey;
     use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use shinkai_message_primitives::{
-        schemas::identity::StandardIdentityType, shinkai_message::{
-            shinkai_message::MessageBody, shinkai_message_schemas::{IdentityPermissions, MessageSchemaType}
-        }, shinkai_utils::{
-            encryption::{unsafe_deterministic_encryption_keypair, EncryptionMethod}, job_scope::MinimalJobScope, search_mode::VectorSearchMode, shinkai_message_builder::ShinkaiMessageBuilder, signatures::{clone_signature_secret_key, unsafe_deterministic_signature_keypair}
-        }
+        schemas::identity::StandardIdentityType,
+        shinkai_message::{
+            shinkai_message::MessageBody,
+            shinkai_message_schemas::{IdentityPermissions, MessageSchemaType},
+        },
+        shinkai_utils::{
+            encryption::{unsafe_deterministic_encryption_keypair, EncryptionMethod},
+            job_scope::MinimalJobScope,
+            search_mode::VectorSearchMode,
+            shinkai_message_builder::ShinkaiMessageBuilder,
+            signatures::{clone_signature_secret_key, unsafe_deterministic_signature_keypair},
+        },
     };
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
@@ -881,8 +890,7 @@ mod tests {
         let temp_file = NamedTempFile::new().unwrap();
         let db_path = PathBuf::from(temp_file.path());
         let api_url = String::new();
-        let model_type =
-            EmbeddingModelType::default();
+        let model_type = EmbeddingModelType::default();
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }
@@ -1644,7 +1652,9 @@ mod tests {
 
         // Measure the time taken by get_all_smart_inboxes_for_profile
         let start_time = std::time::Instant::now();
-        let smart_inboxes = db.get_all_smart_inboxes_for_profile(profile_identity, None, None).unwrap();
+        let smart_inboxes = db
+            .get_all_smart_inboxes_for_profile(profile_identity, None, None)
+            .unwrap();
         let duration = start_time.elapsed();
 
         println!("Time taken to get all smart inboxes: {:?}", duration);

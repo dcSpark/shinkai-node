@@ -186,18 +186,17 @@ async fn handle_streaming_response(
             ShinkaiLogLevel::Error,
             format!("Grok API Error Response (status {}): {}", status, response_text).as_str(),
         );
-        
+
         if let Ok(error_json) = serde_json::from_str::<serde_json::Value>(&response_text) {
             if let Some(error) = error_json.get("error") {
                 let error_message = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
-                return Err(LLMProviderError::APIError(
-                    format!("Grok API Error: {}", error_message),
-                ));
+                return Err(LLMProviderError::APIError(format!("Grok API Error: {}", error_message)));
             }
         }
-        return Err(LLMProviderError::APIError(
-            format!("Grok API Error ({}): {}", status, response_text),
-        ));
+        return Err(LLMProviderError::APIError(format!(
+            "Grok API Error ({}): {}",
+            status, response_text
+        )));
     }
 
     // Check content type to determine if it's a stream
@@ -218,15 +217,13 @@ async fn handle_streaming_response(
             ShinkaiLogLevel::Debug,
             format!("Grok API Non-streaming Response: {}", response_text).as_str(),
         );
-        
+
         if let Ok(response_json) = serde_json::from_str::<serde_json::Value>(&response_text) {
             if let Some(error) = response_json.get("error") {
                 let error_message = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
-                return Err(LLMProviderError::APIError(
-                    format!("Grok API Error: {}", error_message),
-                ));
+                return Err(LLMProviderError::APIError(format!("Grok API Error: {}", error_message)));
             }
-            
+
             // If we got valid JSON but expected streaming, return the response anyway
             if let Ok(data) = serde_json::from_value::<OpenAIResponse>(response_json.clone()) {
                 let response_string: String = data
@@ -239,13 +236,21 @@ async fn handle_streaming_response(
                     .collect::<Vec<String>>()
                     .join(" ");
 
-                return Ok(LLMInferenceResponse::new(response_string, None, json!({}), Vec::new(), Vec::new(), None));
+                return Ok(LLMInferenceResponse::new(
+                    response_string,
+                    None,
+                    json!({}),
+                    Vec::new(),
+                    Vec::new(),
+                    None,
+                ));
             }
         }
-        
-        return Err(LLMProviderError::APIError(
-            format!("Grok API Error: Invalid response format: {}", response_text),
-        ));
+
+        return Err(LLMProviderError::APIError(format!(
+            "Grok API Error: Invalid response format: {}",
+            response_text
+        )));
     }
 
     let mut stream = res.bytes_stream();
@@ -264,7 +269,14 @@ async fn handle_streaming_response(
                 );
                 llm_stopper.reset(&inbox_name.to_string());
 
-                return Ok(LLMInferenceResponse::new(response_text, None, json!({}), Vec::new(), Vec::new(), None));
+                return Ok(LLMInferenceResponse::new(
+                    response_text,
+                    None,
+                    json!({}),
+                    Vec::new(),
+                    Vec::new(),
+                    None,
+                ));
             }
         }
 
@@ -286,10 +298,11 @@ async fn handle_streaming_response(
                                 inbox_name.clone(),
                                 &session_id,
                                 response_text.clone(),
-                                false, // is_reasoning
-                                function_calls.is_empty(), // is_done
+                                false,                                   // is_reasoning
+                                function_calls.is_empty(),               // is_done
                                 Some("streaming completed".to_string()), // done_reason
-                            ).await;
+                            )
+                            .await;
                             break;
                         } else {
                             match serde_json::from_str::<JsonValue>(data) {
@@ -362,7 +375,12 @@ async fn handle_streaming_response(
                                                                     };
                                                                     function_calls.push(function_call.clone());
 
-                                                                    let _ = send_tool_ws_update(&ws_manager_trait, inbox_name.clone(), &function_call).await;
+                                                                    let _ = send_tool_ws_update(
+                                                                        &ws_manager_trait,
+                                                                        inbox_name.clone(),
+                                                                        &function_call,
+                                                                    )
+                                                                    .await;
                                                                 }
                                                             }
                                                         }
@@ -391,7 +409,8 @@ async fn handle_streaming_response(
                                                         false, // is_reasoning
                                                         is_done,
                                                         done_reason,
-                                                    ).await;
+                                                    )
+                                                    .await;
                                                 }
                                             }
                                         }
@@ -428,10 +447,11 @@ async fn handle_streaming_response(
         inbox_name.clone(),
         &session_id,
         response_text.clone(),
-        false, // is_reasoning
-        function_calls.is_empty(), // is_done
+        false,                        // is_reasoning
+        function_calls.is_empty(),    // is_done
         Some("finished".to_string()), // done_reason
-    ).await;
+    )
+    .await;
 
     Ok(LLMInferenceResponse::new(
         response_text,
@@ -537,7 +557,7 @@ async fn handle_non_streaming_response(
 
                             // Handle tool_calls
                             if let Some(tool_calls) = &choice.message.tool_calls {
-                                for (index, tool_call) in tool_calls.iter().enumerate() {                                    
+                                for (index, tool_call) in tool_calls.iter().enumerate() {
                                     let arguments = serde_json::from_str::<serde_json::Value>(&tool_call.function.arguments)
                                         .map(|args_value| args_value)
                                         .ok()

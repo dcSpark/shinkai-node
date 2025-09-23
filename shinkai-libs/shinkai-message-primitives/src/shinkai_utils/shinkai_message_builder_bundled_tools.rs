@@ -1,5 +1,5 @@
 use crate::{
-    shinkai_message::shinkai_message::ExternalMetadata, shinkai_utils::encryption::encryption_public_key_to_string
+    shinkai_message::shinkai_message::ExternalMetadata, shinkai_utils::encryption::encryption_public_key_to_string,
 };
 use ed25519_dalek::SigningKey;
 use serde::Serialize;
@@ -42,22 +42,18 @@ impl ShinkaiMessageBuilder {
             }
         }
 
-        ShinkaiMessageBuilder::new(
-            my_encryption_secret_key,
-            my_signature_secret_key,
-            receiver_public_key,
-        )
-        .message_raw_content(body)
-        .internal_metadata_with_schema(
-            sender_subidentity.clone(),
-            node_receiver_subidentity.clone(),
-            "".to_string(),
-            schema_type,
-            EncryptionMethod::None,
-            None,
-        )
-        .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
-        .external_metadata_with_other_and_intra_sender(node_receiver, sender, my_enc_string, sender_subidentity)
-        .build()
+        ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
+            .message_raw_content(body)
+            .internal_metadata_with_schema(
+                sender_subidentity.clone(),
+                node_receiver_subidentity.clone(),
+                "".to_string(),
+                schema_type,
+                EncryptionMethod::None,
+                None,
+            )
+            .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
+            .external_metadata_with_other_and_intra_sender(node_receiver, sender, my_enc_string, sender_subidentity)
+            .build()
     }
 }

@@ -6,16 +6,41 @@ use ed25519_dalek::VerifyingKey;
 use serde_json::{Map, Value};
 use shinkai_message_primitives::{
     schemas::{
-        coinbase_mpc_config::CoinbaseMPCWalletConfig, crontab::{CronTask, CronTaskAction}, custom_prompt::CustomPrompt, identity::{Identity, StandardIdentity}, job_config::JobConfig, llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider, shinkai_backend::QuotaResponse}, mcp_server::MCPServer, shinkai_name::ShinkaiName, shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry}, shinkai_tools::{CodeLanguage, DynamicToolType}, smart_inbox::{SmartInbox, V2SmartInbox}, tool_router_key::ToolRouterKey, wallet_complementary::{WalletRole, WalletSource}, wallet_mixed::NetworkIdentifier, x402_types::Network
-    }, shinkai_message::{
-        shinkai_message::ShinkaiMessage, shinkai_message_schemas::{
-            APIAddOllamaModels, APIChangeJobAgentRequest, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile, APIVecFsSearchItems, ExportInboxMessagesFormat, IdentityPermissions, JobCreationInfo, JobMessage, RegistrationCodeType, V2ChatMessage
-        }
-    }, shinkai_utils::job_scope::MinimalJobScope
+        coinbase_mpc_config::CoinbaseMPCWalletConfig,
+        crontab::{CronTask, CronTaskAction},
+        custom_prompt::CustomPrompt,
+        identity::{Identity, StandardIdentity},
+        job_config::JobConfig,
+        llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider, shinkai_backend::QuotaResponse},
+        mcp_server::MCPServer,
+        shinkai_name::ShinkaiName,
+        shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry},
+        shinkai_tools::{CodeLanguage, DynamicToolType},
+        smart_inbox::{SmartInbox, V2SmartInbox},
+        tool_router_key::ToolRouterKey,
+        wallet_complementary::{WalletRole, WalletSource},
+        wallet_mixed::NetworkIdentifier,
+        x402_types::Network,
+    },
+    shinkai_message::{
+        shinkai_message::ShinkaiMessage,
+        shinkai_message_schemas::{
+            APIAddOllamaModels, APIChangeJobAgentRequest, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder,
+            APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem,
+            APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile, APIVecFsSearchItems,
+            ExportInboxMessagesFormat, IdentityPermissions, JobCreationInfo, JobMessage, RegistrationCodeType,
+            V2ChatMessage,
+        },
+    },
+    shinkai_utils::job_scope::MinimalJobScope,
 };
 
 use shinkai_tools_primitives::tools::{
-    mcp_server_tool::MCPServerTool, shinkai_tool::{ShinkaiTool, ShinkaiToolHeader, ShinkaiToolWithAssets}, tool_config::OAuth, tool_playground::ToolPlayground, tool_types::{OperatingSystem, RunnerType}
+    mcp_server_tool::MCPServerTool,
+    shinkai_tool::{ShinkaiTool, ShinkaiToolHeader, ShinkaiToolWithAssets},
+    tool_config::OAuth,
+    tool_playground::ToolPlayground,
+    tool_types::{OperatingSystem, RunnerType},
 };
 // use crate::{
 //     prompts::custom_prompt::CustomPrompt, tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader}, wallet::{
@@ -25,7 +50,8 @@ use shinkai_tools_primitives::tools::{
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use crate::{
-    api_v2::api_v2_handlers_mcp_servers::{AddMCPServerRequest, DeleteMCPServerResponse, UpdateMCPServerRequest}, node_api_router::{APIUseRegistrationCodeSuccessResponse, SendResponseBody}
+    api_v2::api_v2_handlers_mcp_servers::{AddMCPServerRequest, DeleteMCPServerResponse, UpdateMCPServerRequest},
+    node_api_router::{APIUseRegistrationCodeSuccessResponse, SendResponseBody},
 };
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -35,7 +61,8 @@ pub struct EmbeddingMigrationRequest {
 }
 
 use super::{
-    api_v2::api_v2_handlers_general::InitialRegistrationRequest, node_api_router::{APIError, GetPublicKeysResponse, SendResponseBodyData}
+    api_v2::api_v2_handlers_general::InitialRegistrationRequest,
+    node_api_router::{APIError, GetPublicKeysResponse, SendResponseBodyData},
 };
 
 pub enum NodeCommand {

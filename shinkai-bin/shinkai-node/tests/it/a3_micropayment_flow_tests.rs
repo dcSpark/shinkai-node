@@ -5,21 +5,22 @@ use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::invoices::{Invoice, InvoiceStatusEnum};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{
-    ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry
+    ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry,
 };
+use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use shinkai_message_primitives::schemas::wallet_complementary::{WalletRole, WalletSource};
 use shinkai_message_primitives::schemas::x402_types::{self, Network, PaymentRequirements};
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair
+    encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair,
 };
 use shinkai_message_primitives::shinkai_utils::signatures::{
-    clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string, unsafe_deterministic_signature_keypair
+    clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string,
+    unsafe_deterministic_signature_keypair,
 };
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::Node;
 use shinkai_tools_primitives::tools::deno_tools::DenoTool;
 use shinkai_tools_primitives::tools::network_tool::NetworkTool;
-use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use shinkai_tools_primitives::tools::parameters::Parameters;
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader, ShinkaiToolWithAssets};
 use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;

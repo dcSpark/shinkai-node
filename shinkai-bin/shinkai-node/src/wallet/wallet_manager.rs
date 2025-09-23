@@ -3,13 +3,22 @@ use std::sync::Arc;
 use chrono::Utc;
 use serde::{ser::SerializeStruct, Deserialize, Deserializer, Serialize, Serializer};
 use shinkai_message_primitives::schemas::{
-    coinbase_mpc_config::CoinbaseMPCWalletConfig, invoices::{Invoice, Payment, PaymentStatusEnum}, shinkai_name::ShinkaiName, shinkai_tool_offering::ToolPrice, wallet_complementary::{WalletRole, WalletSource}, wallet_mixed::{Asset, Balance, PublicAddress}, x402_types::Network
+    coinbase_mpc_config::CoinbaseMPCWalletConfig,
+    invoices::{Invoice, Payment, PaymentStatusEnum},
+    shinkai_name::ShinkaiName,
+    shinkai_tool_offering::ToolPrice,
+    wallet_complementary::{WalletRole, WalletSource},
+    wallet_mixed::{Asset, Balance, PublicAddress},
+    x402_types::Network,
 };
 use shinkai_sqlite::SqliteManager;
 use uuid::Uuid;
 
 use super::{
-    coinbase_mpc_wallet::CoinbaseMPCWallet, local_ether_wallet::LocalEthersWallet, wallet_error::WalletError, wallet_traits::{PaymentWallet, ReceivingWallet}
+    coinbase_mpc_wallet::CoinbaseMPCWallet,
+    local_ether_wallet::LocalEthersWallet,
+    wallet_error::WalletError,
+    wallet_traits::{PaymentWallet, ReceivingWallet},
 };
 
 /// Enum to represent different wallet types.

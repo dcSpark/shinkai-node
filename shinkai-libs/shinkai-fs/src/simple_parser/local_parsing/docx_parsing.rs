@@ -3,7 +3,8 @@ use std::path::PathBuf;
 use shinkai_non_rust_code::functions::parse_docx::parse_docx;
 
 use crate::{
-    shinkai_fs_error::ShinkaiFsError, simple_parser::{file_parser_helper::ShinkaiFileParser, text_group::TextGroup}
+    shinkai_fs_error::ShinkaiFsError,
+    simple_parser::{file_parser_helper::ShinkaiFileParser, text_group::TextGroup},
 };
 
 use super::LocalFileParser;

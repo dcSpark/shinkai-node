@@ -16,7 +16,10 @@ pub fn generate_x402_nonce() -> String {
 }
 
 use super::{
-    shinkai_name::ShinkaiName, shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry}, tool_router_key::ToolRouterKey, wallet_mixed::PublicAddress
+    shinkai_name::ShinkaiName,
+    shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry},
+    tool_router_key::ToolRouterKey,
+    wallet_mixed::PublicAddress,
 };
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]

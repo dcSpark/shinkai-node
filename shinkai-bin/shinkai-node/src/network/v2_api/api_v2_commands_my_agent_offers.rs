@@ -69,10 +69,7 @@ impl Node {
         let manager = my_agent_payments_manager.lock().await;
 
         // Request the invoice
-        match manager
-            .network_request_invoice(network_tool, usage, None)
-            .await
-        {
+        match manager.network_request_invoice(network_tool, usage, None).await {
             Ok(invoice_request) => {
                 let invoice_value = match serde_json::to_value(invoice_request) {
                     Ok(value) => value,
@@ -216,12 +213,7 @@ impl Node {
         let payment = match my_agent_offerings_manager
             .lock()
             .await
-            .pay_invoice_and_send_receipt(
-                invoice_id,
-                data_for_tool,
-                node_name.clone(),
-                None,
-            )
+            .pay_invoice_and_send_receipt(invoice_id, data_for_tool, node_name.clone(), None)
             .await
         {
             Ok(payment) => payment,

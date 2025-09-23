@@ -9,9 +9,11 @@ use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::identity::Identity;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::{
-    schemas::{llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName}, shinkai_message::{
-        shinkai_message::ShinkaiMessage, shinkai_message_schemas::{IdentityPermissions, RegistrationCodeType}
-    }
+    schemas::{llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName},
+    shinkai_message::{
+        shinkai_message::ShinkaiMessage,
+        shinkai_message_schemas::{IdentityPermissions, RegistrationCodeType},
+    },
 };
 use shinkai_sqlite::SqliteManager;
 use std::sync::Arc;

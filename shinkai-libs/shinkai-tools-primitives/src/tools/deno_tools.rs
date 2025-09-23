@@ -1,6 +1,7 @@
 use super::parameters::Parameters;
 use super::tool_config::{OAuth, ToolConfig};
 use super::tool_output_arg::ToolOutputArg;
+use super::tool_playground::ToolPlaygroundMetadata;
 use super::tool_playground::{SqlQuery, SqlTable};
 use super::tool_types::{OperatingSystem, RunnerType, ToolResult};
 use crate::tools::error::ToolError;
@@ -15,7 +16,6 @@ use shinkai_tools_runner::tools::execution_context::ExecutionContext;
 use shinkai_tools_runner::tools::execution_error::ExecutionError;
 use shinkai_tools_runner::tools::run_result::RunResult;
 use shinkai_tools_runner::tools::shinkai_node_location::ShinkaiNodeLocation;
-use super::tool_playground::ToolPlaygroundMetadata;
 use std::collections::HashMap;
 use std::env;
 use std::fs::create_dir_all;

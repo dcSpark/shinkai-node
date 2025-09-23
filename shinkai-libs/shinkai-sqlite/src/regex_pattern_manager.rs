@@ -5,7 +5,7 @@ use crate::{errors::SqliteManagerError, SqliteManager};
 #[derive(Debug, Clone)]
 pub struct RegexPattern {
     pub id: Option<i64>,
-    provider_name: String,  // Made private to ensure it's set correctly
+    provider_name: String, // Made private to ensure it's set correctly
     pub pattern: String,
     pub response: String,
     pub description: Option<String>,
@@ -16,16 +16,28 @@ pub struct RegexPattern {
 }
 
 impl RegexPattern {
-    pub fn new(provider_name: String, pattern: String, response: String, description: Option<String>, priority: i32) -> Result<Self, SqliteManagerError> {
+    pub fn new(
+        provider_name: String,
+        pattern: String,
+        response: String,
+        description: Option<String>,
+        priority: i32,
+    ) -> Result<Self, SqliteManagerError> {
         // Basic validation
         if provider_name.trim().is_empty() {
-            return Err(SqliteManagerError::ValidationError("Provider name cannot be empty".to_string()));
+            return Err(SqliteManagerError::ValidationError(
+                "Provider name cannot be empty".to_string(),
+            ));
         }
         if pattern.trim().is_empty() {
-            return Err(SqliteManagerError::ValidationError("Pattern cannot be empty".to_string()));
+            return Err(SqliteManagerError::ValidationError(
+                "Pattern cannot be empty".to_string(),
+            ));
         }
         if response.trim().is_empty() {
-            return Err(SqliteManagerError::ValidationError("Response cannot be empty".to_string()));
+            return Err(SqliteManagerError::ValidationError(
+                "Response cannot be empty".to_string(),
+            ));
         }
 
         Ok(RegexPattern {
@@ -76,7 +88,9 @@ impl SqliteManager {
     pub fn add_regex_pattern(&self, pattern: &RegexPattern) -> Result<i64, SqliteManagerError> {
         // Additional validation before inserting
         if pattern.provider_name.trim().is_empty() {
-            return Err(SqliteManagerError::ValidationError("Provider name cannot be empty".to_string()));
+            return Err(SqliteManagerError::ValidationError(
+                "Provider name cannot be empty".to_string(),
+            ));
         }
 
         let conn = self.get_connection()?;
@@ -100,15 +114,16 @@ impl SqliteManager {
     pub fn get_regex_pattern(&self, id: i64) -> Result<Option<RegexPattern>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare("SELECT * FROM regex_patterns WHERE id = ?")?;
-        
-        let pattern = stmt
-            .query_row([id], RegexPattern::from_row)
-            .optional()?;
+
+        let pattern = stmt.query_row([id], RegexPattern::from_row).optional()?;
 
         Ok(pattern)
     }
 
-    pub fn get_enabled_regex_patterns_for_provider(&self, provider_name: &str) -> Result<Vec<RegexPattern>, SqliteManagerError> {
+    pub fn get_enabled_regex_patterns_for_provider(
+        &self,
+        provider_name: &str,
+    ) -> Result<Vec<RegexPattern>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
             "SELECT * FROM regex_patterns 
@@ -161,7 +176,10 @@ impl SqliteManager {
         Ok(patterns)
     }
 
-    pub fn get_all_regex_patterns_for_provider(&self, provider_name: &str) -> Result<Vec<RegexPattern>, SqliteManagerError> {
+    pub fn get_all_regex_patterns_for_provider(
+        &self,
+        provider_name: &str,
+    ) -> Result<Vec<RegexPattern>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
             "SELECT * FROM regex_patterns 
@@ -198,8 +216,7 @@ mod tests {
         let temp_file = NamedTempFile::new().unwrap();
         let db_path = temp_file.path();
         let api_url = String::new();
-        let model_type =
-            EmbeddingModelType::default();
+        let model_type = EmbeddingModelType::default();
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }
@@ -215,7 +232,8 @@ mod tests {
             "Hello to you too!".to_string(),
             Some("Test pattern".to_string()),
             100,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Add pattern
         let id = db.add_regex_pattern(&pattern).unwrap();
@@ -250,7 +268,9 @@ mod tests {
         assert_eq!(patterns.len(), 1);
         assert_eq!(patterns[0].pattern, pattern.pattern);
 
-        let patterns = db.get_enabled_regex_patterns_for_provider("non_existent_provider").unwrap();
+        let patterns = db
+            .get_enabled_regex_patterns_for_provider("non_existent_provider")
+            .unwrap();
         assert_eq!(patterns.len(), 0);
 
         // Test provider existence
@@ -267,13 +287,7 @@ mod tests {
     #[tokio::test]
     async fn test_pattern_validation() {
         // Test empty provider name
-        let result = RegexPattern::new(
-            "".to_string(),
-            "pattern".to_string(),
-            "response".to_string(),
-            None,
-            100,
-        );
+        let result = RegexPattern::new("".to_string(), "pattern".to_string(), "response".to_string(), None, 100);
         assert!(result.is_err());
 
         // Test empty pattern
@@ -287,13 +301,7 @@ mod tests {
         assert!(result.is_err());
 
         // Test empty response
-        let result = RegexPattern::new(
-            "provider".to_string(),
-            "pattern".to_string(),
-            "".to_string(),
-            None,
-            100,
-        );
+        let result = RegexPattern::new("provider".to_string(), "pattern".to_string(), "".to_string(), None, 100);
         assert!(result.is_err());
 
         // Test valid pattern
@@ -307,4 +315,3 @@ mod tests {
         assert!(result.is_ok());
     }
 }
-
