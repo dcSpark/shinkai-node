@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use regex::Regex;
+use std::collections::HashMap;
 
 pub fn disect_command(command: String) -> (HashMap<String, String>, String, Vec<String>) {
     let mut cmd_parts = command.trim().split_whitespace();

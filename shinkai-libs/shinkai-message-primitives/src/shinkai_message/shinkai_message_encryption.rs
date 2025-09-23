@@ -1,5 +1,4 @@
-use crate::shinkai_utils::encryption::{EncryptionMethod};
-
+use crate::shinkai_utils::encryption::EncryptionMethod;
 
 use super::shinkai_message::{
     EncryptedShinkaiBody, EncryptedShinkaiData, MessageBody, MessageData, ShinkaiBody, ShinkaiData, ShinkaiMessage,

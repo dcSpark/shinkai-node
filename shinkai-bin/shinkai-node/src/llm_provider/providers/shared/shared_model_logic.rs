@@ -1,10 +1,11 @@
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
-use shinkai_message_primitives::{schemas::{
-    inbox_name::InboxName, llm_providers::serialized_llm_provider::LLMProviderInterface, prompts::Prompt
-}, shinkai_utils::{shinkai_path::ShinkaiPath, utils::count_tokens_from_message_llama3}};
 use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_fs::shinkai_file_manager::{FileProcessingMode, ShinkaiFileManager};
+use shinkai_message_primitives::{
+    schemas::{inbox_name::InboxName, llm_providers::serialized_llm_provider::LLMProviderInterface, prompts::Prompt},
+    shinkai_utils::{shinkai_path::ShinkaiPath, utils::count_tokens_from_message_llama3},
+};
 use shinkai_sqlite::SqliteManager;
 
 use crate::{
@@ -142,13 +143,13 @@ pub async fn save_image_file(
             Some(job_id) => job_id,
             None => {
                 return Err(LLMProviderError::NetworkError(
-                    "Inbox is not a job inbox - cannot save images".to_string()
+                    "Inbox is not a job inbox - cannot save images".to_string(),
                 ));
             }
         }
     } else {
         return Err(LLMProviderError::NetworkError(
-            "Inbox name is required for saving images".to_string()
+            "Inbox name is required for saving images".to_string(),
         ));
     };
 
@@ -227,8 +228,10 @@ pub async fn send_tool_ws_update_with_status(
     result: Option<serde_json::Value>,
     status_type: Option<shinkai_message_primitives::schemas::ws_types::ToolStatusType>,
 ) -> Result<(), LLMProviderError> {
-    use shinkai_message_primitives::schemas::ws_types::{ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WidgetMetadata};
-    
+    use shinkai_message_primitives::schemas::ws_types::{
+        ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WidgetMetadata,
+    };
+
     if let Some(ref manager) = ws_manager_trait {
         if let Some(inbox_name) = inbox_name {
             let m = manager.lock().await;
@@ -253,9 +256,11 @@ pub async fn send_tool_ws_update_with_status(
             shinkai_log(
                 ShinkaiLogOption::JobExecution,
                 ShinkaiLogLevel::Debug,
-                format!("Websocket content (function_call): {}", 
+                format!(
+                    "Websocket content (function_call): {}",
                     serde_json::to_string(function_call).unwrap_or_else(|_| "{}".to_string())
-                ).as_str(),
+                )
+                .as_str(),
             );
 
             let _ = m

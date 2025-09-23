@@ -228,8 +228,7 @@ mod tests {
         let temp_file = NamedTempFile::new().unwrap();
         let db_path = PathBuf::from(temp_file.path());
         let api_url = String::new();
-        let model_type =
-            EmbeddingModelType::default();
+        let model_type = EmbeddingModelType::default();
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }
@@ -651,8 +650,14 @@ mod tests {
         assert!(ShinkaiFileManager::remove_folder(main_folder_path.clone(), &sqlite_manager).is_ok());
 
         // Verify the main folder and subfolder are removed
-        assert!(!main_folder_path.exists(), "The main folder should not exist after removal.");
-        assert!(!subfolder_path.exists(), "The subfolder should not exist after removal.");
+        assert!(
+            !main_folder_path.exists(),
+            "The main folder should not exist after removal."
+        );
+        assert!(
+            !subfolder_path.exists(),
+            "The subfolder should not exist after removal."
+        );
 
         // Verify the files and their chunks are removed from the database
         let chunks1 = sqlite_manager.get_chunks_for_parsed_file(parsed_file1.id.unwrap());

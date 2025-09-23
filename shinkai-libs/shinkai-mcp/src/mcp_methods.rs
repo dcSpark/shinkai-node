@@ -338,17 +338,25 @@ pub mod tests_mcp_manager {
         let result = list_tools_via_command("npx -y @modelcontextprotocol/server-everything@2025.9.12", None).await;
         assert!(result.is_ok());
         let unwrapped = result.unwrap();
-        
+
         // Debug output to see actual tools
         println!("Actual number of tools: {}", unwrapped.len());
-        println!("Actual tools: {:?}", unwrapped.iter().map(|t| &t.name).collect::<Vec<_>>());
-        
+        println!(
+            "Actual tools: {:?}",
+            unwrapped.iter().map(|t| &t.name).collect::<Vec<_>>()
+        );
+
         // The MCP server-everything package now returns 10 tools
-        assert_eq!(unwrapped.len(), 10, "Expected exactly 10 tools, got {}", unwrapped.len());
-        
+        assert_eq!(
+            unwrapped.len(),
+            10,
+            "Expected exactly 10 tools, got {}",
+            unwrapped.len()
+        );
+
         let expected_tools = [
             "echo",
-            "add", 
+            "add",
             "longRunningOperation",
             "printEnv",
             "sampleLLM",
@@ -359,7 +367,11 @@ pub mod tests_mcp_manager {
             "structuredContent",
         ];
         for tool in expected_tools {
-            assert!(unwrapped.iter().any(|t| t.name == tool), "Missing expected tool: {}", tool);
+            assert!(
+                unwrapped.iter().any(|t| t.name == tool),
+                "Missing expected tool: {}",
+                tool
+            );
         }
     }
 
@@ -396,17 +408,25 @@ pub mod tests_mcp_manager {
             });
         assert!(result.is_ok());
         let unwrapped = result.unwrap();
-        
+
         // Debug output to see actual tools
         println!("SSE - Actual number of tools: {}", unwrapped.len());
-        println!("SSE - Actual tools: {:?}", unwrapped.iter().map(|t| &t.name).collect::<Vec<_>>());
-        
+        println!(
+            "SSE - Actual tools: {:?}",
+            unwrapped.iter().map(|t| &t.name).collect::<Vec<_>>()
+        );
+
         // The MCP server-everything package now returns 10 tools
-        assert_eq!(unwrapped.len(), 10, "Expected exactly 10 tools, got {}", unwrapped.len());
-        
+        assert_eq!(
+            unwrapped.len(),
+            10,
+            "Expected exactly 10 tools, got {}",
+            unwrapped.len()
+        );
+
         let expected_tools = [
             "echo",
-            "add", 
+            "add",
             "longRunningOperation",
             "printEnv",
             "sampleLLM",
@@ -417,7 +437,11 @@ pub mod tests_mcp_manager {
             "structuredContent",
         ];
         for tool in expected_tools {
-            assert!(unwrapped.iter().any(|t| t.name == tool), "Missing expected tool: {}", tool);
+            assert!(
+                unwrapped.iter().any(|t| t.name == tool),
+                "Missing expected tool: {}",
+                tool
+            );
         }
     }
 
@@ -447,17 +471,25 @@ pub mod tests_mcp_manager {
         let result = list_tools_via_http("http://localhost:8002/mcp", None).await;
         assert!(result.is_ok());
         let unwrapped = result.unwrap();
-        
+
         // Debug output to see actual tools
         println!("HTTP - Actual number of tools: {}", unwrapped.len());
-        println!("HTTP - Actual tools: {:?}", unwrapped.iter().map(|t| &t.name).collect::<Vec<_>>());
-        
+        println!(
+            "HTTP - Actual tools: {:?}",
+            unwrapped.iter().map(|t| &t.name).collect::<Vec<_>>()
+        );
+
         // The MCP server-everything package now returns 10 tools
-        assert_eq!(unwrapped.len(), 10, "Expected exactly 10 tools, got {}", unwrapped.len());
-        
+        assert_eq!(
+            unwrapped.len(),
+            10,
+            "Expected exactly 10 tools, got {}",
+            unwrapped.len()
+        );
+
         let expected_tools = [
             "echo",
-            "add", 
+            "add",
             "longRunningOperation",
             "printEnv",
             "sampleLLM",
@@ -468,7 +500,11 @@ pub mod tests_mcp_manager {
             "structuredContent",
         ];
         for tool in expected_tools {
-            assert!(unwrapped.iter().any(|t| t.name == tool), "Missing expected tool: {}", tool);
+            assert!(
+                unwrapped.iter().any(|t| t.name == tool),
+                "Missing expected tool: {}",
+                tool
+            );
         }
     }
 

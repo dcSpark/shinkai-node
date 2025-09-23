@@ -10,6 +10,7 @@ use crate::network::agent_payments_manager::external_agent_offerings_manager::Ex
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use ed25519_dalek::SigningKey;
 
+use base64::Engine;
 use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_fs::shinkai_file_manager::ShinkaiFileManager;
 use shinkai_job_queue_manager::job_queue_manager::{JobForProcessing, JobQueueManager};
@@ -19,10 +20,11 @@ use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{CallbackAction, MessageMetadata};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::{
-    schemas::shinkai_name::ShinkaiName, shinkai_message::shinkai_message_schemas::JobMessage, shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key}
+    schemas::shinkai_name::ShinkaiName,
+    shinkai_message::shinkai_message_schemas::JobMessage,
+    shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
 };
 use shinkai_sqlite::SqliteManager;
-use base64::Engine;
 use std::result::Result::Ok;
 use std::sync::Weak;
 use std::time::Instant;
@@ -184,11 +186,11 @@ impl JobManager {
         // Note: this could be other type of files later on e.g. video, audio, etc.
         let image_files = JobManager::get_image_files_from_message(db.clone(), &job_message).await?;
         eprintln!("# of images: {:?}", image_files.len());
-        
+
         // Retrieve video files from the message
         let video_files = JobManager::get_video_files_from_message(db.clone(), &job_message).await?;
         eprintln!("# of videos: {:?}", video_files.len());
-        
+
         // Retrieve audio files from the message
         let audio_files = JobManager::get_audio_files_from_message(db.clone(), &job_message).await?;
         eprintln!("# of audios: {:?}", audio_files.len());
@@ -214,7 +216,7 @@ impl JobManager {
                         }
                     }
                 };
-                
+
                 // Check if this specific model has ImageAnalysis capability
                 ModelCapabilitiesManager::get_llm_provider_capabilities(&model)
                     .contains(&ModelCapability::ImageAnalysis)
@@ -255,7 +257,7 @@ impl JobManager {
                         }
                     }
                 };
-                
+
                 // Check if this specific model has VideoAnalysis capability
                 ModelCapabilitiesManager::get_llm_provider_capabilities(&model)
                     .contains(&ModelCapability::VideoAnalysis)
@@ -296,7 +298,7 @@ impl JobManager {
                         }
                     }
                 };
-                
+
                 // Check if this specific model has AudioAnalysis capability
                 ModelCapabilitiesManager::get_llm_provider_capabilities(&model)
                     .contains(&ModelCapability::AudioAnalysis)

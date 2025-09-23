@@ -6,6 +6,7 @@ use super::shared::shared_model_logic::{send_tool_ws_update, send_ws_update};
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
+use futures::StreamExt;
 use reqwest::Client;
 use serde_json::json;
 use serde_json::Value as JsonValue;
@@ -16,9 +17,8 @@ use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider:
 use shinkai_message_primitives::schemas::prompts::Prompt;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_sqlite::SqliteManager;
-use tokio::sync::Mutex;
-use futures::StreamExt;
 use std::collections::HashMap;
+use tokio::sync::Mutex;
 use uuid::Uuid;
 
 #[allow(clippy::too_many_arguments)]
@@ -81,7 +81,12 @@ pub async fn call_api(
                         .get("name")
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string())
-                        .or_else(|| fn_obj.and_then(|f| f.get("name")).and_then(|v| v.as_str()).map(|s| s.to_string()));
+                        .or_else(|| {
+                            fn_obj
+                                .and_then(|f| f.get("name"))
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string())
+                        });
 
                     // Skip malformed tool entries with no name to avoid API errors
                     let Some(name) = name else { continue };
@@ -99,7 +104,9 @@ pub async fn call_api(
                     let mut obj = serde_json::Map::new();
                     obj.insert("type".to_string(), json!("function"));
                     obj.insert("name".to_string(), json!(name));
-                    if let Some(desc) = description { obj.insert("description".to_string(), desc); }
+                    if let Some(desc) = description {
+                        obj.insert("description".to_string(), desc);
+                    }
                     obj.insert("parameters".to_string(), parameters);
                     tools_for_responses.push(JsonValue::Object(obj));
                 }
@@ -127,7 +134,6 @@ pub async fn call_api(
                     // ignore tracing failures
                 }
             }
-
 
             if is_stream {
                 handle_streaming_response_responses(
@@ -251,8 +257,16 @@ async fn handle_non_streaming_response_responses(
                         .get("name")
                         .and_then(|n| n.as_str())
                         .map(|s| s.to_string())
-                        .or_else(|| function_obj.and_then(|f| f.get("name")).and_then(|n| n.as_str()).map(|s| s.to_string()));
-                    let id_opt = item.get("call_id").and_then(|id| id.as_str()).map(|s| s.to_string())
+                        .or_else(|| {
+                            function_obj
+                                .and_then(|f| f.get("name"))
+                                .and_then(|n| n.as_str())
+                                .map(|s| s.to_string())
+                        });
+                    let id_opt = item
+                        .get("call_id")
+                        .and_then(|id| id.as_str())
+                        .map(|s| s.to_string())
                         .or_else(|| item.get("id").and_then(|id| id.as_str()).map(|s| s.to_string()));
 
                     if let Some(name) = name_opt {
@@ -306,7 +320,11 @@ async fn handle_non_streaming_response_responses(
 
     Ok(LLMInferenceResponse::new(
         response_text,
-        if reasoning_text.is_empty() { None } else { Some(reasoning_text) },
+        if reasoning_text.is_empty() {
+            None
+        } else {
+            Some(reasoning_text)
+        },
         json!({}),
         function_calls,
         Vec::new(),
@@ -343,7 +361,9 @@ async fn handle_streaming_response_responses(
                 }
             }
         }
-        return Err(LLMProviderError::APIError("AI Provider API Error: Unknown error occurred".to_string()));
+        return Err(LLMProviderError::APIError(
+            "AI Provider API Error: Unknown error occurred".to_string(),
+        ));
     }
 
     let mut stream = res.bytes_stream();
@@ -399,7 +419,9 @@ async fn handle_streaming_response_responses(
                     if let Some(rest) = line.strip_prefix("event: ") {
                         event_type = Some(rest.trim().to_string());
                     } else if let Some(rest) = line.strip_prefix("data: ") {
-                        if !data_buf.is_empty() { data_buf.push('\n'); }
+                        if !data_buf.is_empty() {
+                            data_buf.push('\n');
+                        }
                         data_buf.push_str(rest);
                     }
                 }
@@ -476,28 +498,58 @@ async fn handle_streaming_response_responses(
                                     None,
                                 )
                                 .await?;
-                            }                            
+                            }
                         }
                         // Tool call lifecycle
                         "response.tool_call.created" => {
                             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&data_buf) {
-                                if let Some(id) = v.get("call_id").and_then(|s| s.as_str()).map(|s| s.to_string())
-                                    .or_else(|| v.get("id").and_then(|s| s.as_str()).map(|s| s.to_string())) {
-                                    let name = v.get("name").and_then(|s| s.as_str()).map(|s| s.to_string())
-                                        .or_else(|| v.get("function").and_then(|f| f.get("name")).and_then(|s| s.as_str()).map(|s| s.to_string()));
-                                    tools_map.entry(id).or_insert(ToolAccum { name, arguments: String::new(), call_type: Some("function".to_string()) });
+                                if let Some(id) = v
+                                    .get("call_id")
+                                    .and_then(|s| s.as_str())
+                                    .map(|s| s.to_string())
+                                    .or_else(|| v.get("id").and_then(|s| s.as_str()).map(|s| s.to_string()))
+                                {
+                                    let name =
+                                        v.get("name")
+                                            .and_then(|s| s.as_str())
+                                            .map(|s| s.to_string())
+                                            .or_else(|| {
+                                                v.get("function")
+                                                    .and_then(|f| f.get("name"))
+                                                    .and_then(|s| s.as_str())
+                                                    .map(|s| s.to_string())
+                                            });
+                                    tools_map.entry(id).or_insert(ToolAccum {
+                                        name,
+                                        arguments: String::new(),
+                                        call_type: Some("function".to_string()),
+                                    });
                                 }
                             }
                         }
                         "response.tool_call.delta" => {
                             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&data_buf) {
-                                if let Some(id) = v.get("call_id").and_then(|s| s.as_str())
-                                    .or_else(|| v.get("id").and_then(|s| s.as_str())) {
-                                    let entry = tools_map.entry(id.to_string()).or_insert(ToolAccum { name: None, arguments: String::new(), call_type: Some("function".to_string()) });
+                                if let Some(id) = v
+                                    .get("call_id")
+                                    .and_then(|s| s.as_str())
+                                    .or_else(|| v.get("id").and_then(|s| s.as_str()))
+                                {
+                                    let entry = tools_map.entry(id.to_string()).or_insert(ToolAccum {
+                                        name: None,
+                                        arguments: String::new(),
+                                        call_type: Some("function".to_string()),
+                                    });
                                     // name may arrive here too
                                     if entry.name.is_none() {
-                                        entry.name = v.get("name").and_then(|s| s.as_str()).map(|s| s.to_string())
-                                            .or_else(|| v.get("function").and_then(|f| f.get("name")).and_then(|s| s.as_str()).map(|s| s.to_string()));
+                                        entry.name =
+                                            v.get("name").and_then(|s| s.as_str()).map(|s| s.to_string()).or_else(
+                                                || {
+                                                    v.get("function")
+                                                        .and_then(|f| f.get("name"))
+                                                        .and_then(|s| s.as_str())
+                                                        .map(|s| s.to_string())
+                                                },
+                                            );
                                     }
                                     // delta may be in {"delta":{"arguments":"..."}}
                                     if let Some(delta) = v.get("delta") {
@@ -510,8 +562,11 @@ async fn handle_streaming_response_responses(
                         }
                         "response.tool_call.done" => {
                             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&data_buf) {
-                                if let Some(id) = v.get("call_id").and_then(|s| s.as_str())
-                                    .or_else(|| v.get("id").and_then(|s| s.as_str())) {
+                                if let Some(id) = v
+                                    .get("call_id")
+                                    .and_then(|s| s.as_str())
+                                    .or_else(|| v.get("id").and_then(|s| s.as_str()))
+                                {
                                     if let Some(acc) = tools_map.remove(id) {
                                         if let Some(name) = acc.name {
                                             let args_map = serde_json::from_str::<serde_json::Value>(&acc.arguments)
@@ -531,7 +586,12 @@ async fn handle_streaming_response_responses(
                                     }
                                     if let Some(ref inbox) = inbox_name {
                                         if let Some(last) = function_calls.last() {
-                                            super::shared::shared_model_logic::send_tool_ws_update(&ws_manager_trait, Some(inbox.clone()), last).await?;
+                                            super::shared::shared_model_logic::send_tool_ws_update(
+                                                &ws_manager_trait,
+                                                Some(inbox.clone()),
+                                                last,
+                                            )
+                                            .await?;
                                         }
                                     }
                                 }
@@ -540,27 +600,59 @@ async fn handle_streaming_response_responses(
                         // Function call lifecycle (OpenAI Responses API uses function_call instead of tool_call)
                         "response.function_call.created" => {
                             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&data_buf) {
-                                if let Some(id) = v.get("call_id").and_then(|s| s.as_str()).map(|s| s.to_string())
-                                    .or_else(|| v.get("id").and_then(|s| s.as_str()).map(|s| s.to_string())) {
-                                    let name = v.get("name").and_then(|s| s.as_str()).map(|s| s.to_string())
-                                        .or_else(|| v.get("function").and_then(|f| f.get("name")).and_then(|s| s.as_str()).map(|s| s.to_string()));
-                                    tools_map.entry(id).or_insert(ToolAccum { name, arguments: String::new(), call_type: Some("function".to_string()) });
+                                if let Some(id) = v
+                                    .get("call_id")
+                                    .and_then(|s| s.as_str())
+                                    .map(|s| s.to_string())
+                                    .or_else(|| v.get("id").and_then(|s| s.as_str()).map(|s| s.to_string()))
+                                {
+                                    let name =
+                                        v.get("name")
+                                            .and_then(|s| s.as_str())
+                                            .map(|s| s.to_string())
+                                            .or_else(|| {
+                                                v.get("function")
+                                                    .and_then(|f| f.get("name"))
+                                                    .and_then(|s| s.as_str())
+                                                    .map(|s| s.to_string())
+                                            });
+                                    tools_map.entry(id).or_insert(ToolAccum {
+                                        name,
+                                        arguments: String::new(),
+                                        call_type: Some("function".to_string()),
+                                    });
                                 }
                             }
                         }
                         "response.function_call.delta" => {
                             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&data_buf) {
-                                if let Some(id) = v.get("call_id").and_then(|s| s.as_str())
-                                    .or_else(|| v.get("id").and_then(|s| s.as_str())) {
-                                    let entry = tools_map.entry(id.to_string()).or_insert(ToolAccum { name: None, arguments: String::new(), call_type: Some("function".to_string()) });
+                                if let Some(id) = v
+                                    .get("call_id")
+                                    .and_then(|s| s.as_str())
+                                    .or_else(|| v.get("id").and_then(|s| s.as_str()))
+                                {
+                                    let entry = tools_map.entry(id.to_string()).or_insert(ToolAccum {
+                                        name: None,
+                                        arguments: String::new(),
+                                        call_type: Some("function".to_string()),
+                                    });
                                     // name may arrive here too
                                     if entry.name.is_none() {
-                                        entry.name = v.get("name").and_then(|s| s.as_str()).map(|s| s.to_string())
-                                            .or_else(|| v.get("function").and_then(|f| f.get("name")).and_then(|s| s.as_str()).map(|s| s.to_string()));
+                                        entry.name =
+                                            v.get("name").and_then(|s| s.as_str()).map(|s| s.to_string()).or_else(
+                                                || {
+                                                    v.get("function")
+                                                        .and_then(|f| f.get("name"))
+                                                        .and_then(|s| s.as_str())
+                                                        .map(|s| s.to_string())
+                                                },
+                                            );
                                     }
                                     // delta may be in {"delta":{"arguments":"..."}}
                                     if let Some(delta) = v.get("delta") {
-                                        if let Some(args) = delta.get("arguments").and_then(|a| a.as_str()) { entry.arguments.push_str(args); }
+                                        if let Some(args) = delta.get("arguments").and_then(|a| a.as_str()) {
+                                            entry.arguments.push_str(args);
+                                        }
                                     }
                                 }
                             }
@@ -568,28 +660,41 @@ async fn handle_streaming_response_responses(
                         "response.function_call_arguments.delta" => {
                             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&data_buf) {
                                 // For OpenAI Responses API, the ID is in item_id field
-                                if let Some(id) = v.get("item_id").and_then(|s| s.as_str())
+                                if let Some(id) = v
+                                    .get("item_id")
+                                    .and_then(|s| s.as_str())
                                     .or_else(|| v.get("call_id").and_then(|s| s.as_str()))
-                                    .or_else(|| v.get("id").and_then(|s| s.as_str())) {
-                                    let entry = tools_map.entry(id.to_string()).or_insert(ToolAccum { name: None, arguments: String::new(), call_type: Some("function".to_string()) });
+                                    .or_else(|| v.get("id").and_then(|s| s.as_str()))
+                                {
+                                    let entry = tools_map.entry(id.to_string()).or_insert(ToolAccum {
+                                        name: None,
+                                        arguments: String::new(),
+                                        call_type: Some("function".to_string()),
+                                    });
                                     // OpenAI Responses API puts the delta directly in the "delta" field
-                                    if let Some(delta) = v.get("delta").and_then(|d| d.as_str()) { entry.arguments.push_str(delta); }
+                                    if let Some(delta) = v.get("delta").and_then(|d| d.as_str()) {
+                                        entry.arguments.push_str(delta);
+                                    }
                                 }
                             }
                         }
                         "response.function_call_arguments.done" => {
                             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&data_buf) {
-                                // For OpenAI Responses API, the ID is in item_id field  
-                                if let Some(id) = v.get("item_id").and_then(|s| s.as_str())
+                                // For OpenAI Responses API, the ID is in item_id field
+                                if let Some(id) = v
+                                    .get("item_id")
+                                    .and_then(|s| s.as_str())
                                     .or_else(|| v.get("call_id").and_then(|s| s.as_str()))
-                                    .or_else(|| v.get("id").and_then(|s| s.as_str())) {
-                                    
+                                    .or_else(|| v.get("id").and_then(|s| s.as_str()))
+                                {
                                     // Get the complete arguments from the event (fallback to accumulated)
-                                    let final_arguments = v.get("arguments").and_then(|a| a.as_str())
+                                    let final_arguments = v
+                                        .get("arguments")
+                                        .and_then(|a| a.as_str())
                                         .map(|s| s.to_string())
                                         .or_else(|| tools_map.get(id).map(|acc| acc.arguments.clone()))
                                         .unwrap_or_default();
-                                    
+
                                     if let Some(acc) = tools_map.remove(id) {
                                         if let Some(name) = acc.name {
                                             let args_map = serde_json::from_str::<serde_json::Value>(&final_arguments)
@@ -608,7 +713,12 @@ async fn handle_streaming_response_responses(
                                             // Send WebSocket update for this function call
                                             if let Some(ref inbox) = inbox_name {
                                                 if let Some(last) = function_calls.last() {
-                                                    let _ = super::shared::shared_model_logic::send_tool_ws_update(&ws_manager_trait, Some(inbox.clone()), last).await;
+                                                    let _ = super::shared::shared_model_logic::send_tool_ws_update(
+                                                        &ws_manager_trait,
+                                                        Some(inbox.clone()),
+                                                        last,
+                                                    )
+                                                    .await;
                                                 }
                                             }
                                         }
@@ -618,8 +728,11 @@ async fn handle_streaming_response_responses(
                         }
                         "response.function_call.done" => {
                             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&data_buf) {
-                                if let Some(id) = v.get("call_id").and_then(|s| s.as_str())
-                                    .or_else(|| v.get("id").and_then(|s| s.as_str())) {
+                                if let Some(id) = v
+                                    .get("call_id")
+                                    .and_then(|s| s.as_str())
+                                    .or_else(|| v.get("id").and_then(|s| s.as_str()))
+                                {
                                     if let Some(acc) = tools_map.remove(id) {
                                         if let Some(name) = acc.name {
                                             let args_map = serde_json::from_str::<serde_json::Value>(&acc.arguments)
@@ -639,7 +752,12 @@ async fn handle_streaming_response_responses(
                                     }
                                     if let Some(ref inbox) = inbox_name {
                                         if let Some(last) = function_calls.last() {
-                                            super::shared::shared_model_logic::send_tool_ws_update(&ws_manager_trait, Some(inbox.clone()), last).await?;
+                                            super::shared::shared_model_logic::send_tool_ws_update(
+                                                &ws_manager_trait,
+                                                Some(inbox.clone()),
+                                                last,
+                                            )
+                                            .await?;
                                         }
                                     }
                                 }
@@ -672,7 +790,12 @@ async fn handle_streaming_response_responses(
                             // Send tool updates for any finalized function calls
                             if let Some(ref inbox) = inbox_name {
                                 if let Some(last_function_call) = function_calls.last() {
-                                    let _ = super::shared::shared_model_logic::send_tool_ws_update(&ws_manager_trait, Some(inbox.clone()), last_function_call).await;
+                                    let _ = super::shared::shared_model_logic::send_tool_ws_update(
+                                        &ws_manager_trait,
+                                        Some(inbox.clone()),
+                                        last_function_call,
+                                    )
+                                    .await;
                                 }
                             }
 
@@ -703,13 +826,25 @@ async fn handle_streaming_response_responses(
                                     if item.get("type").and_then(|t| t.as_str()) == Some("function_call") {
                                         if let Some(id) = item.get("id").and_then(|id| id.as_str()) {
                                             // Extract function name from various possible locations
-                                            let name = item.get("name").and_then(|n| n.as_str()).map(|s| s.to_string())
-                                                .or_else(|| item.get("function_name").and_then(|n| n.as_str()).map(|s| s.to_string()))
-                                                .or_else(|| item.get("function").and_then(|f| f.get("name")).and_then(|n| n.as_str()).map(|s| s.to_string()));
-                                            tools_map.entry(id.to_string()).or_insert(ToolAccum { 
-                                                name, 
-                                                arguments: String::new(), 
-                                                call_type: Some("function".to_string()) 
+                                            let name = item
+                                                .get("name")
+                                                .and_then(|n| n.as_str())
+                                                .map(|s| s.to_string())
+                                                .or_else(|| {
+                                                    item.get("function_name")
+                                                        .and_then(|n| n.as_str())
+                                                        .map(|s| s.to_string())
+                                                })
+                                                .or_else(|| {
+                                                    item.get("function")
+                                                        .and_then(|f| f.get("name"))
+                                                        .and_then(|n| n.as_str())
+                                                        .map(|s| s.to_string())
+                                                });
+                                            tools_map.entry(id.to_string()).or_insert(ToolAccum {
+                                                name,
+                                                arguments: String::new(),
+                                                call_type: Some("function".to_string()),
                                             });
                                         }
                                     }
@@ -723,9 +858,21 @@ async fn handle_streaming_response_responses(
                                     if item.get("type").and_then(|t| t.as_str()) == Some("function_call") {
                                         if let Some(id) = item.get("id").and_then(|id| id.as_str()) {
                                             // Try to extract function name from the completed item
-                                            let name = item.get("name").and_then(|n| n.as_str()).map(|s| s.to_string())
-                                                .or_else(|| item.get("function_name").and_then(|n| n.as_str()).map(|s| s.to_string()))
-                                                .or_else(|| item.get("function").and_then(|f| f.get("name")).and_then(|n| n.as_str()).map(|s| s.to_string()));
+                                            let name = item
+                                                .get("name")
+                                                .and_then(|n| n.as_str())
+                                                .map(|s| s.to_string())
+                                                .or_else(|| {
+                                                    item.get("function_name")
+                                                        .and_then(|n| n.as_str())
+                                                        .map(|s| s.to_string())
+                                                })
+                                                .or_else(|| {
+                                                    item.get("function")
+                                                        .and_then(|f| f.get("name"))
+                                                        .and_then(|n| n.as_str())
+                                                        .map(|s| s.to_string())
+                                                });
                                             // Update the tools_map entry with the function name if we found it
                                             if let Some(name) = name {
                                                 if let Some(entry) = tools_map.get_mut(id) {
@@ -752,14 +899,22 @@ async fn handle_streaming_response_responses(
 
     Ok(LLMInferenceResponse::new(
         response_text,
-        if reasoning_text.is_empty() { None } else { Some(reasoning_text) },
+        if reasoning_text.is_empty() {
+            None
+        } else {
+            Some(reasoning_text)
+        },
         json!({}),
         function_calls,
         Vec::new(),
         None,
     ))
 }
-fn add_options_to_payload_responses(payload: &mut serde_json::Value, config: Option<&JobConfig>, is_reasoning_model: bool) {
+fn add_options_to_payload_responses(
+    payload: &mut serde_json::Value,
+    config: Option<&JobConfig>,
+    is_reasoning_model: bool,
+) {
     // Helper to read env var or config value
     fn read_env_var<T: std::str::FromStr>(key: &str) -> Option<T> {
         std::env::var(key).ok().and_then(|val| val.parse::<T>().ok())
@@ -793,7 +948,9 @@ fn add_options_to_payload_responses(payload: &mut serde_json::Value, config: Opt
     if is_reasoning_model {
         let thinking_enabled = config.and_then(|c| c.thinking).unwrap_or(false);
         if thinking_enabled {
-            let effort = config.and_then(|c| c.reasoning_effort.clone()).unwrap_or_else(|| "medium".to_string());
+            let effort = config
+                .and_then(|c| c.reasoning_effort.clone())
+                .unwrap_or_else(|| "medium".to_string());
             payload["reasoning"] = json!({"effort": effort, "summary": "detailed"});
         } else if let Some(obj) = payload.as_object_mut() {
             obj.remove("reasoning");
@@ -864,7 +1021,9 @@ fn transform_input_messages_for_responses(messages_json: serde_json::Value) -> s
         for msg in arr {
             let role = msg.get("role").and_then(|r| r.as_str()).unwrap_or("");
             // Skip legacy 'function' role
-            if role == "function" { continue; }
+            if role == "function" {
+                continue;
+            }
 
             // Convert tool role messages into function_call_output items
             if role == "tool" {
@@ -882,14 +1041,18 @@ fn transform_input_messages_for_responses(messages_json: serde_json::Value) -> s
                                         match itype {
                                             "text" | "input_text" | "output_text" => {
                                                 if let Some(t) = item.get("text").and_then(|t| t.as_str()) {
-                                                    if !output_text.is_empty() { output_text.push_str("\n"); }
+                                                    if !output_text.is_empty() {
+                                                        output_text.push_str("\n");
+                                                    }
                                                     output_text.push_str(t);
                                                 }
                                             }
                                             _ => {}
                                         }
                                     } else if let Some(t) = item.get("text").and_then(|t| t.as_str()) {
-                                        if !output_text.is_empty() { output_text.push_str("\n"); }
+                                        if !output_text.is_empty() {
+                                            output_text.push_str("\n");
+                                        }
                                         output_text.push_str(t);
                                     }
                                 }
@@ -923,13 +1086,10 @@ fn transform_input_messages_for_responses(messages_json: serde_json::Value) -> s
             if role == "assistant" {
                 if let Some(tcs) = msg.get("tool_calls").and_then(|tc| tc.as_array()) {
                     for tc in tcs {
-                        if let (Some(id), Some(func)) = (
-                            tc.get("id").and_then(|i| i.as_str()),
-                            tc.get("function")
-                        ) {
+                        if let (Some(id), Some(func)) = (tc.get("id").and_then(|i| i.as_str()), tc.get("function")) {
                             if let (Some(name), Some(args)) = (
                                 func.get("name").and_then(|n| n.as_str()),
-                                func.get("arguments").and_then(|a| a.as_str())
+                                func.get("arguments").and_then(|a| a.as_str()),
                             ) {
                                 call_map.insert(id.to_string(), (name.to_string(), args.to_string()));
                             }
@@ -950,7 +1110,11 @@ fn transform_input_messages_for_responses(messages_json: serde_json::Value) -> s
             let mut content_blocks: Vec<serde_json::Value> = Vec::new();
             match content.unwrap() {
                 serde_json::Value::String(s) => {
-                    let block_type = if normalized_role == "assistant" { "output_text" } else { "input_text" };
+                    let block_type = if normalized_role == "assistant" {
+                        "output_text"
+                    } else {
+                        "input_text"
+                    };
                     content_blocks.push(json!({"type": block_type, "text": s}));
                 }
                 serde_json::Value::Array(items) => {
@@ -959,7 +1123,11 @@ fn transform_input_messages_for_responses(messages_json: serde_json::Value) -> s
                             match itype {
                                 "text" => {
                                     if let Some(text) = item.get("text").and_then(|t| t.as_str()) {
-                                        let block_type = if normalized_role == "assistant" { "output_text" } else { "input_text" };
+                                        let block_type = if normalized_role == "assistant" {
+                                            "output_text"
+                                        } else {
+                                            "input_text"
+                                        };
                                         content_blocks.push(json!({"type": block_type, "text": text}));
                                     }
                                 }
@@ -984,7 +1152,11 @@ fn transform_input_messages_for_responses(messages_json: serde_json::Value) -> s
                                 }
                             }
                         } else if let Some(text) = item.get("text").and_then(|t| t.as_str()) {
-                            let block_type = if role == "assistant" { "output_text" } else { "input_text" };
+                            let block_type = if role == "assistant" {
+                                "output_text"
+                            } else {
+                                "input_text"
+                            };
                             content_blocks.push(json!({"type": block_type, "text": text}));
                         }
                     }
@@ -995,7 +1167,9 @@ fn transform_input_messages_for_responses(messages_json: serde_json::Value) -> s
                 }
             }
 
-            if content_blocks.is_empty() { continue; }
+            if content_blocks.is_empty() {
+                continue;
+            }
 
             let mut new_msg = serde_json::Map::new();
             new_msg.insert("role".into(), json!(normalized_role));
@@ -1069,7 +1243,7 @@ mod tests {
                 }
             }
         }
-        
+
         assert!(reasoning_text.contains("Reasoning summary text here."));
     }
 
@@ -1108,8 +1282,16 @@ mod tests {
                             .get("name")
                             .and_then(|n| n.as_str())
                             .map(|s| s.to_string())
-                            .or_else(|| function_obj.and_then(|f| f.get("name")).and_then(|n| n.as_str()).map(|s| s.to_string()));
-                        let id_opt = item.get("call_id").and_then(|id| id.as_str()).map(|s| s.to_string())
+                            .or_else(|| {
+                                function_obj
+                                    .and_then(|f| f.get("name"))
+                                    .and_then(|n| n.as_str())
+                                    .map(|s| s.to_string())
+                            });
+                        let id_opt = item
+                            .get("call_id")
+                            .and_then(|id| id.as_str())
+                            .map(|s| s.to_string())
                             .or_else(|| item.get("id").and_then(|id| id.as_str()).map(|s| s.to_string()));
 
                         if let Some(name) = name_opt {
@@ -1140,13 +1322,16 @@ mod tests {
         assert_eq!(name, "youtube_transcript_extractor_2_0");
         assert_eq!(id, &Some("call_m5OS4MrR1ywdFsxcDnhKcmj9".to_string()));
         assert_eq!(args.get("lang").and_then(|v| v.as_str()), Some("en"));
-        assert_eq!(args.get("url").and_then(|v| v.as_str()), Some("https://www.youtube.com/watch?v=a10M_i42z7M"));
+        assert_eq!(
+            args.get("url").and_then(|v| v.as_str()),
+            Some("https://www.youtube.com/watch?v=a10M_i42z7M")
+        );
     }
 
     #[test]
     fn test_transform_input_messages_for_responses_image_url() {
         use super::transform_input_messages_for_responses;
-        
+
         let messages_json = json!([
             {
                 "role": "user",
@@ -1156,7 +1341,7 @@ mod tests {
                         "text": "What's in this image?"
                     },
                     {
-                        "type": "image_url", 
+                        "type": "image_url",
                         "image_url": {
                             "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=="
                         }
@@ -1166,22 +1351,22 @@ mod tests {
         ]);
 
         let result = transform_input_messages_for_responses(messages_json);
-        
+
         // Verify the structure
         let result_array = result.as_array().unwrap();
         assert_eq!(result_array.len(), 1);
-        
+
         let message = &result_array[0];
         assert_eq!(message.get("role").unwrap(), "user");
-        
+
         let content = message.get("content").unwrap().as_array().unwrap();
         assert_eq!(content.len(), 2);
-        
+
         // Check text block
         let text_block = &content[0];
         assert_eq!(text_block.get("type").unwrap(), "input_text");
         assert_eq!(text_block.get("text").unwrap(), "What's in this image?");
-        
+
         // Check image block - should have URL as string, not object
         let image_block = &content[1];
         assert_eq!(image_block.get("type").unwrap(), "input_image");
@@ -1194,7 +1379,7 @@ mod tests {
     #[test]
     fn test_transform_tool_to_function_call_output() {
         use super::transform_input_messages_for_responses;
-        
+
         let messages_json = json!([
             {
                 "role": "user",
@@ -1213,26 +1398,29 @@ mod tests {
         ]);
 
         let result = transform_input_messages_for_responses(messages_json);
-        
+
         // Verify the structure
         let result_array = result.as_array().unwrap();
         assert_eq!(result_array.len(), 2);
-        
+
         // Check first message (user)
         let user_message = &result_array[0];
         assert_eq!(user_message.get("role").unwrap(), "user");
-        
+
         // Check second item: function_call_output
         let fco = &result_array[1];
         assert_eq!(fco.get("type").and_then(|v| v.as_str()), Some("function_call_output"));
         assert_eq!(fco.get("call_id").and_then(|v| v.as_str()), Some("call_123"));
-        assert_eq!(fco.get("output").and_then(|v| v.as_str()), Some("Tool execution failed with error"));
+        assert_eq!(
+            fco.get("output").and_then(|v| v.as_str()),
+            Some("Tool execution failed with error")
+        );
     }
 
     #[test]
     fn test_transform_complete_function_call_flow() {
         use super::transform_input_messages_for_responses;
-        
+
         let messages_json = json!([
             {
                 "role": "user",
@@ -1261,61 +1449,103 @@ mod tests {
 
         let result = transform_input_messages_for_responses(messages_json);
         let result_array = result.as_array().unwrap();
-        
+
         // Should have: user message, assistant message, function_call item, function_call_output
         assert_eq!(result_array.len(), 4);
-        
+
         // First: user message
         assert_eq!(result_array[0].get("role").and_then(|r| r.as_str()), Some("user"));
-        
+
         // Second: assistant message
         assert_eq!(result_array[1].get("role").and_then(|r| r.as_str()), Some("assistant"));
-        
+
         // Third: function_call item
         let function_call = &result_array[2];
-        assert_eq!(function_call.get("type").and_then(|t| t.as_str()), Some("function_call"));
-        assert_eq!(function_call.get("call_id").and_then(|id| id.as_str()), Some("call_123456"));
-        assert_eq!(function_call.get("name").and_then(|n| n.as_str()), Some("youtube_transcript_extractor_2_0"));
+        assert_eq!(
+            function_call.get("type").and_then(|t| t.as_str()),
+            Some("function_call")
+        );
+        assert_eq!(
+            function_call.get("call_id").and_then(|id| id.as_str()),
+            Some("call_123456")
+        );
+        assert_eq!(
+            function_call.get("name").and_then(|n| n.as_str()),
+            Some("youtube_transcript_extractor_2_0")
+        );
         assert_eq!(function_call.get("status").and_then(|s| s.as_str()), Some("completed"));
-        
+
         // Fourth: function_call_output item
-        assert_eq!(result_array[3].get("type").and_then(|t| t.as_str()), Some("function_call_output"));
-        assert_eq!(result_array[3].get("call_id").and_then(|v| v.as_str()), Some("call_123456"));
-        assert_eq!(result_array[3].get("output").and_then(|t| t.as_str()), Some("Transcript extracted successfully"));
+        assert_eq!(
+            result_array[3].get("type").and_then(|t| t.as_str()),
+            Some("function_call_output")
+        );
+        assert_eq!(
+            result_array[3].get("call_id").and_then(|v| v.as_str()),
+            Some("call_123456")
+        );
+        assert_eq!(
+            result_array[3].get("output").and_then(|t| t.as_str()),
+            Some("Transcript extracted successfully")
+        );
     }
 
     #[test]
     fn test_streaming_tool_call_id_field_extraction() {
         // Test the field extraction logic used in streaming tool call events
-        
+
         // Test call_id is preferred over id
         let event_with_both = json!({
             "call_id": "call_123456",
             "id": "regular_id_123",
             "name": "test_tool"
         });
-        
-        let extracted_id = event_with_both.get("call_id").and_then(|s| s.as_str()).map(|s| s.to_string())
-            .or_else(|| event_with_both.get("id").and_then(|s| s.as_str()).map(|s| s.to_string()));
+
+        let extracted_id = event_with_both
+            .get("call_id")
+            .and_then(|s| s.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| {
+                event_with_both
+                    .get("id")
+                    .and_then(|s| s.as_str())
+                    .map(|s| s.to_string())
+            });
         assert_eq!(extracted_id, Some("call_123456".to_string()));
-        
+
         // Test fallback to id when call_id is missing
         let event_with_id_only = json!({
             "id": "regular_id_123",
             "name": "test_tool"
         });
-        
-        let extracted_id = event_with_id_only.get("call_id").and_then(|s| s.as_str()).map(|s| s.to_string())
-            .or_else(|| event_with_id_only.get("id").and_then(|s| s.as_str()).map(|s| s.to_string()));
+
+        let extracted_id = event_with_id_only
+            .get("call_id")
+            .and_then(|s| s.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| {
+                event_with_id_only
+                    .get("id")
+                    .and_then(|s| s.as_str())
+                    .map(|s| s.to_string())
+            });
         assert_eq!(extracted_id, Some("regular_id_123".to_string()));
-        
+
         // Test no extraction when neither field is present
         let event_without_ids = json!({
             "name": "test_tool"
         });
-        
-        let extracted_id = event_without_ids.get("call_id").and_then(|s| s.as_str()).map(|s| s.to_string())
-            .or_else(|| event_without_ids.get("id").and_then(|s| s.as_str()).map(|s| s.to_string()));
+
+        let extracted_id = event_without_ids
+            .get("call_id")
+            .and_then(|s| s.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| {
+                event_without_ids
+                    .get("id")
+                    .and_then(|s| s.as_str())
+                    .map(|s| s.to_string())
+            });
         assert_eq!(extracted_id, None);
     }
 }

@@ -179,8 +179,11 @@ impl LlmMessage {
         });
 
         let audios = value.get("audios").and_then(|v| {
-            v.as_array()
-                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect::<Vec<String>>())
+            v.as_array().map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect::<Vec<String>>()
+            })
         });
 
         // Extract the functions from the "function" key

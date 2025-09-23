@@ -3,10 +3,15 @@ use rand::RngCore;
 use rusqlite::params;
 use shinkai_message_primitives::{
     schemas::{
-        identity::{DeviceIdentity, StandardIdentity, StandardIdentityType}, identity_registration::{RegistrationCodeInfo, RegistrationCodeStatus}, shinkai_name::{ShinkaiName, ShinkaiSubidentityType}
-    }, shinkai_message::shinkai_message_schemas::{IdentityPermissions, RegistrationCodeType}, shinkai_utils::{
-        encryption::{encryption_public_key_to_string, string_to_encryption_public_key}, signatures::{signature_public_key_to_string, string_to_signature_public_key}
-    }
+        identity::{DeviceIdentity, StandardIdentity, StandardIdentityType},
+        identity_registration::{RegistrationCodeInfo, RegistrationCodeStatus},
+        shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
+    },
+    shinkai_message::shinkai_message_schemas::{IdentityPermissions, RegistrationCodeType},
+    shinkai_utils::{
+        encryption::{encryption_public_key_to_string, string_to_encryption_public_key},
+        signatures::{signature_public_key_to_string, string_to_signature_public_key},
+    },
 };
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
@@ -376,8 +381,7 @@ mod tests {
         let temp_file = NamedTempFile::new().unwrap();
         let db_path = PathBuf::from(temp_file.path());
         let api_url = String::new();
-        let model_type =
-            EmbeddingModelType::default();
+        let model_type = EmbeddingModelType::default();
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }

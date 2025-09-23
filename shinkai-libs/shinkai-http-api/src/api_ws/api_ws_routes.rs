@@ -1,8 +1,8 @@
+use crate::api_ws::api_ws_handlers::ws_handler;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::shinkai_log;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogLevel;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogOption;
 use warp::{http::StatusCode, Filter, Rejection, Reply};
-use crate::api_ws::api_ws_handlers::ws_handler;
 
 /// Handle rejections from the routes
 async fn handle_rejection(err: Rejection) -> Result<impl Reply, Rejection> {
@@ -25,15 +25,15 @@ async fn handle_rejection(err: Rejection) -> Result<impl Reply, Rejection> {
 }
 
 /// Create the Warp routes for WebSocket endpoints
-pub fn ws_routes(ws_address: std::net::SocketAddr) -> impl Filter<Extract = impl warp::Reply, Error = Rejection> + Clone {
+pub fn ws_routes(
+    ws_address: std::net::SocketAddr,
+) -> impl Filter<Extract = impl warp::Reply, Error = Rejection> + Clone {
     tracing::info!("Setting up WebSocket routes");
 
-    let root_ws = warp::path::end()
-        .and(warp::ws())
-        .map(move |ws| {
-            let ws: warp::ws::Ws = ws;
-            ws.on_upgrade(move |socket| ws_handler(socket, ws_address))
-        });
+    let root_ws = warp::path::end().and(warp::ws()).map(move |ws| {
+        let ws: warp::ws::Ws = ws;
+        ws.on_upgrade(move |socket| ws_handler(socket, ws_address))
+    });
 
     root_ws
         .with(warp::cors().allow_any_origin())

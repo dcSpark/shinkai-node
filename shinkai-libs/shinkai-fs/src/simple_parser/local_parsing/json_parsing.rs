@@ -1,17 +1,16 @@
 use std::collections::HashMap;
 
 use super::LocalFileParser;
-use crate::{shinkai_fs_error::ShinkaiFsError, simple_parser::{file_parser_helper::ShinkaiFileParser, text_group::TextGroup}};
+use crate::{
+    shinkai_fs_error::ShinkaiFsError,
+    simple_parser::{file_parser_helper::ShinkaiFileParser, text_group::TextGroup},
+};
 use serde_json::Value as JsonValue;
 
 impl LocalFileParser {
     /// Attempts to process the provided json file into a list of TextGroups.
-    pub fn process_json_file(
-        file_buffer: Vec<u8>,
-        max_node_text_size: u64,
-    ) -> Result<Vec<TextGroup>, ShinkaiFsError> {
-        let json_string =
-            String::from_utf8(file_buffer).map_err(|_| ShinkaiFsError::FailedJSONParsing)?;
+    pub fn process_json_file(file_buffer: Vec<u8>, max_node_text_size: u64) -> Result<Vec<TextGroup>, ShinkaiFsError> {
+        let json_string = String::from_utf8(file_buffer).map_err(|_| ShinkaiFsError::FailedJSONParsing)?;
         let json: JsonValue = serde_json::from_str(&json_string)?;
 
         let text_groups = Self::process_container_json_value(&json, max_node_text_size);
@@ -24,9 +23,7 @@ impl LocalFileParser {
         let fn_merge_groups = |mut acc: Vec<TextGroup>, current_group: TextGroup| {
             if let Some(prev_group) = acc.last_mut() {
                 if prev_group.text.len() + current_group.text.len() < max_node_text_size as usize {
-                    prev_group
-                        .text
-                        .push_str(format!("\n{}", current_group.text).as_str());
+                    prev_group.text.push_str(format!("\n{}", current_group.text).as_str());
                     return acc;
                 }
             }
@@ -62,11 +59,7 @@ impl LocalFileParser {
     }
 
     /// Processes a single JSON value (primitive) into one or more TextGroups.
-    fn process_content_json_value(
-        key: Option<&str>,
-        value: &JsonValue,
-        max_node_text_size: u64,
-    ) -> Vec<TextGroup> {
+    fn process_content_json_value(key: Option<&str>, value: &JsonValue, max_node_text_size: u64) -> Vec<TextGroup> {
         let mut text_groups = Vec::new();
         let text = match key {
             Some(k) => format!("{}: {}", k, value.to_string()),

@@ -20,7 +20,7 @@ use super::wallet_traits::{CommonActions, IsWallet, PaymentWallet, ReceivingWall
 use crate::utils::environment::fetch_node_environment;
 use crate::wallet::wallet_error::WalletError;
 use shinkai_message_primitives::schemas::wallet_mixed::{
-    Address, AddressBalanceList, Asset, AssetType, Balance, PublicAddress
+    Address, AddressBalanceList, Asset, AssetType, Balance, PublicAddress,
 };
 use shinkai_message_primitives::schemas::x402_types::{Network, PaymentRequirements};
 

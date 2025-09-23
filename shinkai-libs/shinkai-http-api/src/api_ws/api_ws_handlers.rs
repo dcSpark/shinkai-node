@@ -15,7 +15,7 @@
 //!
 //! The main entry point is the `ws_handler` function, which creates a proxy
 //! with default configuration and handles the WebSocket connection.
-//! 
+//!
 //! # Why this is needed?
 //!
 //! The original WS implementation listens on a different port than the HTTP server,
@@ -23,13 +23,11 @@
 //! It was easier to forward a route on the API server to the original WS implementation,
 //! but we should explore integrating the WS into the API server in the future.
 
-use std::sync::Arc;
-use std::time::Duration;
 use bytes::Bytes;
 use futures::{SinkExt, StreamExt};
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::{
-    shinkai_log, ShinkaiLogLevel, ShinkaiLogOption,
-};
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::{broadcast, mpsc, Mutex};
 use tokio_tungstenite::tungstenite::Message as TungsteniteMessage;
 use warp::filters::ws::{Message, WebSocket};
@@ -80,7 +78,8 @@ impl WebSocketProxy {
         self.spawn_client_message_handler(client_rx, message_tx.clone()).await;
 
         // Handle connection management and message forwarding
-        self.spawn_connection_manager(client_tx, message_tx, reconnect_tx, reconnect_rx).await;
+        self.spawn_connection_manager(client_tx, message_tx, reconnect_tx, reconnect_rx)
+            .await;
     }
 
     /// Spawns a task to handle incoming messages from the client
@@ -139,7 +138,9 @@ impl WebSocketProxy {
                             &message_tx,
                             &reconnect_tx,
                             &mut reconnect_rx,
-                        ).await {
+                        )
+                        .await
+                        {
                             // Connection closed gracefully, exit
                             break;
                         }
@@ -158,10 +159,7 @@ impl WebSocketProxy {
                         let delay = reconnect_manager.get_next_delay();
                         Self::log_info(&format!(
                             "Connection failed (attempt {}/{}): {}. Retrying in {:?}...",
-                            reconnect_manager.attempts,
-                            reconnect_manager.config.max_reconnect_attempts,
-                            e,
-                            delay
+                            reconnect_manager.attempts, reconnect_manager.config.max_reconnect_attempts, e, delay
                         ));
 
                         tokio::time::sleep(delay).await;
@@ -175,7 +173,10 @@ impl WebSocketProxy {
     /// Establishes connection to the target WebSocket server
     async fn establish_target_connection(
         target_url: &str,
-    ) -> Result<tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<
+        tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+        Box<dyn std::error::Error + Send + Sync>,
+    > {
         let (ws_stream, _) = tokio_tungstenite::connect_async(target_url).await?;
         Ok(ws_stream)
     }
@@ -194,18 +195,12 @@ impl WebSocketProxy {
         let client_msg_rx = message_tx.subscribe();
 
         // Forward messages from client to target
-        let client_to_target_task = Self::spawn_client_to_target_forwarder(
-            client_msg_rx,
-            target_tx.clone(),
-            reconnect_tx.clone(),
-        );
+        let client_to_target_task =
+            Self::spawn_client_to_target_forwarder(client_msg_rx, target_tx.clone(), reconnect_tx.clone());
 
         // Forward messages from target to client
-        let target_to_client_task = Self::spawn_target_to_client_forwarder(
-            target_rx,
-            client_tx.clone(),
-            reconnect_tx.clone(),
-        );
+        let target_to_client_task =
+            Self::spawn_target_to_client_forwarder(target_rx, client_tx.clone(), reconnect_tx.clone());
 
         // Wait for completion or reconnection signal
         tokio::select! {
@@ -227,7 +222,14 @@ impl WebSocketProxy {
     /// Spawns task to forward messages from client to target
     fn spawn_client_to_target_forwarder(
         mut client_msg_rx: broadcast::Receiver<TungsteniteMessage>,
-        target_tx: Arc<Mutex<futures::stream::SplitSink<tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>, TungsteniteMessage>>>,
+        target_tx: Arc<
+            Mutex<
+                futures::stream::SplitSink<
+                    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+                    TungsteniteMessage,
+                >,
+            >,
+        >,
         reconnect_tx: mpsc::UnboundedSender<()>,
     ) -> tokio::task::JoinHandle<bool> {
         tokio::spawn(async move {
@@ -245,7 +247,9 @@ impl WebSocketProxy {
 
     /// Spawns task to forward messages from target to client
     fn spawn_target_to_client_forwarder(
-        mut target_rx: futures::stream::SplitStream<tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>>,
+        mut target_rx: futures::stream::SplitStream<
+            tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+        >,
         client_tx: Arc<Mutex<futures::stream::SplitSink<WebSocket, Message>>>,
         reconnect_tx: mpsc::UnboundedSender<()>,
     ) -> tokio::task::JoinHandle<bool> {
@@ -295,7 +299,7 @@ impl WebSocketProxy {
         match msg {
             TungsteniteMessage::Text(txt) => Some(Message::text(txt.to_string())),
             TungsteniteMessage::Binary(bin) => Some(Message::binary(bin)),
-            TungsteniteMessage::Close(_) => None, // Signal connection close
+            TungsteniteMessage::Close(_) => None,    // Signal connection close
             _ => Some(Message::text(String::new())), // Ignore other types
         }
     }

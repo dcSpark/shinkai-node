@@ -4,7 +4,7 @@ use std::str::FromStr;
 
 use shinkai_embedding::model_type::EmbeddingModelType;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-    LLMProviderInterface, SerializedLLMProvider
+    LLMProviderInterface, SerializedLLMProvider,
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
@@ -97,7 +97,13 @@ pub fn fetch_llm_provider_env(global_identity: String) -> Vec<SerializedLLMProvi
 
 pub fn fetch_node_environment() -> NodeEnvironment {
     let global_identity_name = env::var("GLOBAL_IDENTITY_NAME")
-        .map(|val| if val.is_empty() { "@@localhost.sep-shinkai".to_string() } else { val })
+        .map(|val| {
+            if val.is_empty() {
+                "@@localhost.sep-shinkai".to_string()
+            } else {
+                val
+            }
+        })
         .unwrap_or("@@localhost.sep-shinkai".to_string());
 
     // Fetch the environment variables for the IP and port, or use default values
@@ -125,7 +131,6 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         .expect("Failed to parse port number");
 
     let ws_port: Option<u16> = env::var("NODE_WS_PORT").ok().and_then(|p| p.parse().ok());
-
 
     let first_device_needs_registration_code: bool = env::var("FIRST_DEVICE_NEEDS_REGISTRATION_CODE")
         .unwrap_or_else(|_| "true".to_string())
@@ -178,9 +183,7 @@ pub fn fetch_node_environment() -> NodeEnvironment {
                 .map(|s| EmbeddingModelType::from_string(s).expect("Failed to parse SUPPORTED_EMBEDDING_MODELS"))
                 .collect()
         })
-        .unwrap_or_else(|_| {
-            vec![EmbeddingModelType::default()]
-        });
+        .unwrap_or_else(|_| vec![EmbeddingModelType::default()]);
 
     // Fetch the API_V2_KEY environment variable
     let api_v2_key: Option<String> = env::var("API_V2_KEY").ok();

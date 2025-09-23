@@ -3,8 +3,8 @@ use std::sync::Arc;
 use super::error::LLMProviderError;
 use super::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use super::llm_stopper::LLMStopper;
-use super::providers::LLMService;
 use super::providers::openai_responses;
+use super::providers::LLMService;
 use reqwest::Client;
 use serde_json::{Map, Value as JsonValue};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
@@ -14,7 +14,8 @@ use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provide
 use shinkai_message_primitives::schemas::prompts::Prompt;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::schemas::{
-    llm_providers::serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider}, shinkai_name::ShinkaiName
+    llm_providers::serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider},
+    shinkai_name::ShinkaiName,
 };
 use shinkai_sqlite::SqliteManager;
 use tokio::sync::Mutex;
@@ -83,7 +84,14 @@ impl LLMProvider {
         });
 
         match handle.await {
-            Ok(response) => Ok(LLMInferenceResponse::new(content, None, response, Vec::new(), Vec::new(), None)),
+            Ok(response) => Ok(LLMInferenceResponse::new(
+                content,
+                None,
+                response,
+                Vec::new(),
+                Vec::new(),
+                None,
+            )),
             Err(_e) => Err(LLMProviderError::InferenceFailed),
         }
     }

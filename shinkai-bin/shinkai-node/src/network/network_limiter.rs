@@ -1,9 +1,9 @@
 use async_lock::Mutex;
-use governor::{Quota, RateLimiter};
-use std::num::NonZeroU32;
-use std::collections::HashMap;
 use governor::clock::DefaultClock;
 use governor::state::keyed::DefaultKeyedStateStore;
+use governor::{Quota, RateLimiter};
+use std::collections::HashMap;
+use std::num::NonZeroU32;
 
 // Define a struct to hold your rate limiter and connection tracking.
 pub struct ConnectionLimiter {
@@ -15,7 +15,10 @@ pub struct ConnectionLimiter {
 impl ConnectionLimiter {
     pub fn new(rate_per_second: u32, burst_size: u32, max_connections_per_ip: usize) -> Self {
         // Initialize the keyed rate limiter
-        let rate_limiter = RateLimiter::keyed(Quota::per_second(NonZeroU32::new(rate_per_second).unwrap()).allow_burst(NonZeroU32::new(burst_size).unwrap()));
+        let rate_limiter = RateLimiter::keyed(
+            Quota::per_second(NonZeroU32::new(rate_per_second).unwrap())
+                .allow_burst(NonZeroU32::new(burst_size).unwrap()),
+        );
         let connections = Mutex::new(HashMap::new());
         ConnectionLimiter {
             rate_limiter,

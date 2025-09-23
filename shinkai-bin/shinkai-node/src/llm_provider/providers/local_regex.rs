@@ -7,13 +7,19 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use shinkai_message_primitives::schemas::{
-    inbox_name::InboxName, job_config::JobConfig, llm_providers::serialized_llm_provider::{LLMProviderInterface, LocalRegex}, prompts::Prompt, ws_types::WSUpdateHandler
+    inbox_name::InboxName,
+    job_config::JobConfig,
+    llm_providers::serialized_llm_provider::{LLMProviderInterface, LocalRegex},
+    prompts::Prompt,
+    ws_types::WSUpdateHandler,
 };
 
 use crate::{
     llm_provider::{
-        error::LLMProviderError, execution::chains::inference_chain_trait::LLMInferenceResponse, llm_stopper::LLMStopper, providers::shared::ollama_api::ollama_prepare_messages
-    }, managers::model_capabilities_manager::PromptResultEnum
+        error::LLMProviderError, execution::chains::inference_chain_trait::LLMInferenceResponse,
+        llm_stopper::LLMStopper, providers::shared::ollama_api::ollama_prepare_messages,
+    },
+    managers::model_capabilities_manager::PromptResultEnum,
 };
 
 use super::LLMService;
@@ -74,7 +80,14 @@ impl LLMService for LocalRegex {
         for pattern in patterns {
             if let Ok(regex) = Regex::new(&pattern.pattern) {
                 if regex.is_match(messages) {
-                    return Ok(LLMInferenceResponse::new(pattern.response, None, json!({}), Vec::new(), Vec::new(), None));
+                    return Ok(LLMInferenceResponse::new(
+                        pattern.response,
+                        None,
+                        json!({}),
+                        Vec::new(),
+                        Vec::new(),
+                        None,
+                    ));
                 }
             }
         }

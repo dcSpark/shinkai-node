@@ -8,19 +8,25 @@ use serde_json::Value;
 
 use shinkai_embedding::embedding_generator::EmbeddingGenerator;
 use shinkai_fs::{
-    shinkai_file_manager::{FileProcessingMode, ShinkaiFileManager}, shinkai_fs_error::ShinkaiFsError
+    shinkai_file_manager::{FileProcessingMode, ShinkaiFileManager},
+    shinkai_fs_error::ShinkaiFsError,
 };
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::{
-    schemas::shinkai_fs::ShinkaiFileChunkCollection, shinkai_message::shinkai_message_schemas::{
-        APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile, APIVecFsSearchItems
-    }, shinkai_utils::shinkai_path::ShinkaiPath
+    schemas::shinkai_fs::ShinkaiFileChunkCollection,
+    shinkai_message::shinkai_message_schemas::{
+        APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem,
+        APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile,
+        APIVecFsSearchItems,
+    },
+    shinkai_utils::shinkai_path::ShinkaiPath,
 };
 use shinkai_sqlite::SqliteManager;
 use tokio::sync::Mutex;
 
 use crate::{
-    managers::IdentityManager, network::{node_error::NodeError, Node}
+    managers::IdentityManager,
+    network::{node_error::NodeError, Node},
 };
 
 impl Node {

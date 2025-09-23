@@ -6,17 +6,19 @@ use serde::Deserialize;
 use serde_json::json;
 use shinkai_message_primitives::schemas::llm_providers::agent::Agent;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-    Exo, Gemini, Groq, LLMProviderInterface, Ollama, OpenAI, ShinkaiBackend
+    Exo, Gemini, Groq, LLMProviderInterface, Ollama, OpenAI, ShinkaiBackend,
 };
 use shinkai_message_primitives::schemas::llm_providers::shinkai_backend::QuotaResponse;
 use shinkai_message_primitives::schemas::shinkai_name::{ShinkaiName, ShinkaiSubidentityType};
 use shinkai_message_primitives::shinkai_message::shinkai_message::{
-    EncryptedShinkaiBody, EncryptedShinkaiData, ExternalMetadata, InternalMetadata, MessageBody, MessageData, NodeApiData, ShinkaiBody, ShinkaiData, ShinkaiMessage, ShinkaiVersion
+    EncryptedShinkaiBody, EncryptedShinkaiData, ExternalMetadata, InternalMetadata, MessageBody, MessageData,
+    NodeApiData, ShinkaiBody, ShinkaiData, ShinkaiMessage, ShinkaiVersion,
 };
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
 use shinkai_message_primitives::{
-    schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_message::shinkai_message_schemas::APIAddOllamaModels
+    schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider,
+    shinkai_message::shinkai_message_schemas::APIAddOllamaModels,
 };
 use std::collections::HashMap;
 use utoipa::{OpenApi, ToSchema};
@@ -25,11 +27,12 @@ use warp::Filter;
 
 use crate::node_api_router::APIUseRegistrationCodeSuccessResponse;
 use crate::{
-    node_api_router::{APIError, GetPublicKeysResponse}, node_commands::{NodeCommand, EmbeddingMigrationRequest}
+    node_api_router::{APIError, GetPublicKeysResponse},
+    node_commands::{EmbeddingMigrationRequest, NodeCommand},
 };
 
 use super::api_v2_handlers_mcp_servers::{
-    add_mcp_server_handler, get_all_mcp_server_tools_handler, list_mcp_servers_handler, GetAllMCPServerToolsRequest
+    add_mcp_server_handler, get_all_mcp_server_tools_handler, list_mcp_servers_handler, GetAllMCPServerToolsRequest,
 };
 use super::api_v2_router::{create_success_response, with_node_name, with_sender};
 

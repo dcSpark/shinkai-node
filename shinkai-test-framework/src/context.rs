@@ -9,7 +9,7 @@ use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider:
 use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
 use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_message_primitives::shinkai_utils::signatures::{
-    clone_signature_secret_key, hash_signature_public_key, unsafe_deterministic_signature_keypair
+    clone_signature_secret_key, hash_signature_public_key, unsafe_deterministic_signature_keypair,
 };
 use shinkai_node::network::Node;
 use std::env;
@@ -74,9 +74,7 @@ pub fn supported_embedding_models() -> Vec<EmbeddingModelType> {
                 .map(|s| EmbeddingModelType::from_string(s).expect("Failed to parse SUPPORTED_EMBEDDING_MODELS"))
                 .collect()
         })
-        .unwrap_or_else(|_| {
-            vec![EmbeddingModelType::default()]
-        })
+        .unwrap_or_else(|_| vec![EmbeddingModelType::default()])
 }
 
 pub fn run_test_one_node_network<F>(config: TestConfig, test: F)
@@ -181,7 +179,7 @@ where
 impl TestContext {
     pub async fn register_device(&self) -> anyhow::Result<()> {
         use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-            IdentityPermissions, RegistrationCodeType
+            IdentityPermissions, RegistrationCodeType,
         };
         use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 

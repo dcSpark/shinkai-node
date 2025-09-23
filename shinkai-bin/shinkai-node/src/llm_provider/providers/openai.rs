@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use super::super::error::LLMProviderError;
 use super::shared::openai_api::{openai_prepare_messages, MessageContent, OpenAIResponse};
-use super::shared::shared_model_logic::{send_ws_update, send_tool_ws_update};
+use super::shared::shared_model_logic::{send_tool_ws_update, send_ws_update};
 use super::LLMService;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
 use crate::llm_provider::llm_stopper::LLMStopper;
@@ -18,9 +18,7 @@ use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI};
 use shinkai_message_primitives::schemas::prompts::Prompt;
-use shinkai_message_primitives::schemas::ws_types::{
-    WSUpdateHandler,
-};
+use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_sqlite::SqliteManager;
 use tokio::sync::Mutex;
@@ -1300,8 +1298,6 @@ pub fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&J
         }
     }
 }
-
-
 
 pub fn extract_and_remove_arguments(json_str: &str) -> (Option<String>, String) {
     // Find the start of arguments value - check both function_call and tool_calls prefixes

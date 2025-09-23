@@ -164,10 +164,11 @@ impl LLMService for Exo {
                                         inbox_name.clone(),
                                         &session_id,
                                         choice.delta.content.clone(),
-                                        false, // is_reasoning
+                                        false,                          // is_reasoning
                                         choice.finish_reason.is_some(), // is_done
-                                        choice.finish_reason.clone(), // done_reason
-                                    ).await;
+                                        choice.finish_reason.clone(),   // done_reason
+                                    )
+                                    .await;
                                 }
                             }
                             Err(_e) => {
@@ -194,7 +195,14 @@ impl LLMService for Exo {
             );
 
             // Return response_text with an empty JSON object and empty function calls vector
-            Ok(LLMInferenceResponse::new(response_text, None, json!({}), Vec::new(), Vec::new(), None))
+            Ok(LLMInferenceResponse::new(
+                response_text,
+                None,
+                json!({}),
+                Vec::new(),
+                Vec::new(),
+                None,
+            ))
         } else {
             Err(LLMProviderError::UrlNotSet)
         }

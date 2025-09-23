@@ -9,8 +9,12 @@ use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::{
     schemas::{
-        inbox_name::InboxName, job_config::JobConfig, llm_providers::serialized_llm_provider::{Claude, LLMProviderInterface}, prompts::Prompt
-    }, shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption}
+        inbox_name::InboxName,
+        job_config::JobConfig,
+        llm_providers::serialized_llm_provider::{Claude, LLMProviderInterface},
+        prompts::Prompt,
+    },
+    shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
 use shinkai_sqlite::SqliteManager;
 use tokio::sync::Mutex;
@@ -18,12 +22,12 @@ use uuid::Uuid;
 
 use crate::llm_provider::execution::chains::inference_chain_trait::FunctionCall;
 use crate::llm_provider::{
-    error::LLMProviderError, execution::chains::inference_chain_trait::LLMInferenceResponse, llm_stopper::LLMStopper
+    error::LLMProviderError, execution::chains::inference_chain_trait::LLMInferenceResponse, llm_stopper::LLMStopper,
 };
 use crate::managers::model_capabilities_manager::PromptResultEnum;
 
 use super::shared::claude_api::claude_prepare_messages;
-use super::shared::shared_model_logic::{send_ws_update, send_tool_ws_update};
+use super::shared::shared_model_logic::{send_tool_ws_update, send_ws_update};
 use super::LLMService;
 
 pub fn truncate_image_content_in_claude_payload(payload: &mut JsonValue) {
@@ -38,7 +42,8 @@ pub fn truncate_image_content_in_claude_payload(payload: &mut JsonValue) {
                                     if let Some(source) = content_item.get_mut("source") {
                                         if let Some(data) = source.get_mut("data") {
                                             if let Some(data_str) = data.as_str() {
-                                                let truncated_data = format!("{}...", &data_str[0..100.min(data_str.len())]);
+                                                let truncated_data =
+                                                    format!("{}...", &data_str[0..100.min(data_str.len())]);
                                                 *data = JsonValue::String(truncated_data);
                                             }
                                         }
@@ -139,17 +144,16 @@ impl LLMService for Claude {
                 if let Some(thinking) = payload.get("thinking") {
                     if let Some(thinking_type) = thinking.get("type") {
                         if thinking_type.as_str() == Some("enabled") {
-                            if let (Some(max_tokens), Some(budget_tokens)) = (
-                                payload["max_tokens"].as_u64(),
-                                thinking["budget_tokens"].as_u64()
-                            ) {
+                            if let (Some(max_tokens), Some(budget_tokens)) =
+                                (payload["max_tokens"].as_u64(), thinking["budget_tokens"].as_u64())
+                            {
                                 // Ensure we don't underflow and maintain a minimum of 1 token for actual output
                                 let adjusted_max_tokens = if budget_tokens >= max_tokens {
                                     1 // Minimum token count for output
                                 } else {
                                     max_tokens - budget_tokens
                                 };
-                                
+
                                 payload["max_tokens"] = serde_json::json!(adjusted_max_tokens);
                             }
                         }
@@ -294,7 +298,14 @@ async fn handle_streaming_response(
                 )
                 .await;
 
-                return Ok(LLMInferenceResponse::new(response_text, None, json!({}), Vec::new(), Vec::new(), None));
+                return Ok(LLMInferenceResponse::new(
+                    response_text,
+                    None,
+                    json!({}),
+                    Vec::new(),
+                    Vec::new(),
+                    None,
+                ));
             }
         }
 
@@ -369,7 +380,8 @@ async fn handle_streaming_response(
                                 // since is_done can be set true multiple times (message_delta + message_stop)
                                 processed_tool = None;
 
-                                let _ = send_tool_ws_update(&ws_manager_trait, inbox_name.clone(), &function_call).await;
+                                let _ =
+                                    send_tool_ws_update(&ws_manager_trait, inbox_name.clone(), &function_call).await;
                             }
 
                             // Send WS update
@@ -423,7 +435,11 @@ async fn handle_streaming_response(
 
     Ok(LLMInferenceResponse::new(
         response_text,
-        if thinking_text.is_empty() { None } else { Some(thinking_text) },
+        if thinking_text.is_empty() {
+            None
+        } else {
+            Some(thinking_text)
+        },
         json!({}),
         function_calls,
         Vec::new(),
@@ -601,7 +617,7 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
     if let Some(top_p) = get_value("LLM_TOP_P", config.and_then(|c| c.top_p.as_ref())) {
         payload["top_p"] = serde_json::json!(top_p);
     }
-    
+
     if let Some(max_tokens) = get_value("LLM_MAX_TOKENS", config.and_then(|c| c.max_tokens.as_ref())) {
         payload["max_completion_tokens"] = serde_json::json!(max_tokens);
     }
@@ -609,7 +625,8 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
         // Check if there are actual tool calls in the messages - if so, disable thinking to avoid API errors
         // Claude's extended thinking feature requires specific message formatting when tools are used,
         // which can cause "Expected thinking or redacted_thinking, but found tool_use" errors
-        let has_tool_calls = payload.get("messages")
+        let has_tool_calls = payload
+            .get("messages")
             .map(|messages| has_tool_calls_in_messages(messages))
             .unwrap_or(false);
 
@@ -735,7 +752,7 @@ fn parse_entire_sse_block(block: &str) -> Result<ProcessedChunk, LLMProviderErro
             if let Ok(data_json) = serde_json::from_str::<serde_json::Value>(event_data) {
                 // Extract index from the event data
                 _content_block_index = data_json.get("index").and_then(|i| i.as_u64());
-                
+
                 if let Some(content_block) = data_json.get("content_block") {
                     content_block_type = content_block
                         .get("type")
@@ -1137,16 +1154,16 @@ data: {"type":"message_stop"}
             .as_bytes();
 
         let result = process_chunk(chunk).unwrap();
-        
+
         // Verify thinking text is captured correctly
         assert_eq!(result.thinking_text, "The user is asking me to repeat back only the word \"dogcat\" with no other words. This is straightforward - I should just respond with \"dogcat\" and nothing else.");
-        
+
         // Verify regular text response is captured
         assert_eq!(result.partial_text, "dogcat");
-        
+
         // Verify no tool use
         assert!(result.tool_use.is_none());
-        
+
         // Verify completion status
         assert!(result.is_done);
         assert_eq!(result.done_reason.unwrap(), "end_turn");

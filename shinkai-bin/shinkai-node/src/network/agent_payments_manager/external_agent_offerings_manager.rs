@@ -11,11 +11,11 @@ use ed25519_dalek::SigningKey;
 use futures::Future;
 use shinkai_job_queue_manager::job_queue_manager::JobQueueManager;
 use shinkai_message_primitives::schemas::invoices::{
-    Invoice, InvoiceError, InvoiceRequest, InvoiceRequestNetworkError, InvoiceStatusEnum
+    Invoice, InvoiceError, InvoiceRequest, InvoiceRequestNetworkError, InvoiceStatusEnum,
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{
-    ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry
+    ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry,
 };
 use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ExternalMetadata;
@@ -38,7 +38,7 @@ use std::{env, fmt};
 use tokio::sync::{Mutex, Semaphore};
 
 use shinkai_message_primitives::schemas::x402_types::{
-    ERC20Asset, ERC20TokenAmount, FacilitatorConfig, Network, Price, EIP712
+    ERC20Asset, ERC20TokenAmount, FacilitatorConfig, Network, Price, EIP712,
 };
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
@@ -1145,9 +1145,11 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use shinkai_message_primitives::{
-        schemas::identity::{Identity, StandardIdentity, StandardIdentityType}, shinkai_message::shinkai_message_schemas::IdentityPermissions, shinkai_utils::{
-            encryption::unsafe_deterministic_encryption_keypair, signatures::unsafe_deterministic_signature_keypair
-        }
+        schemas::identity::{Identity, StandardIdentity, StandardIdentityType},
+        shinkai_message::shinkai_message_schemas::IdentityPermissions,
+        shinkai_utils::{
+            encryption::unsafe_deterministic_encryption_keypair, signatures::unsafe_deterministic_signature_keypair,
+        },
     };
 
     #[derive(Clone, Debug)]

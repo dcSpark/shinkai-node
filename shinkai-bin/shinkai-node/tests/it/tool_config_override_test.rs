@@ -12,7 +12,7 @@ use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::signatures::{
-    clone_signature_secret_key, hash_signature_public_key, unsafe_deterministic_signature_keypair
+    clone_signature_secret_key, hash_signature_public_key, unsafe_deterministic_signature_keypair,
 };
 use shinkai_node::network::Node;
 use shinkai_node::tools::tool_implementation::native_tools::sql_processor::get_database_path_from_db_name_config;
@@ -24,8 +24,8 @@ use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
 use shinkai_tools_primitives::tools::tool_playground::{SqlQuery, SqlTable};
 use shinkai_tools_primitives::tools::tool_types::{OperatingSystem, RunnerType, ToolResult};
 use std::collections::HashMap;
-use std::net::{SocketAddr, TcpListener};
 use std::net::{IpAddr, Ipv4Addr};
+use std::net::{SocketAddr, TcpListener};
 use std::time::Duration;
 use tokio::runtime::Runtime;
 
@@ -47,7 +47,10 @@ fn test_tool_execution_with_config_override() {
     std::env::set_var("NODE_API_PORT", "9570");
     std::env::set_var("SKIP_IMPORT_FROM_DIRECTORY", "true");
     std::env::set_var("IS_TESTING", "1");
-    let node1_db_path = format!("db_tests/{}", hash_signature_public_key(&unsafe_deterministic_signature_keypair(0).1));
+    let node1_db_path = format!(
+        "db_tests/{}",
+        hash_signature_public_key(&unsafe_deterministic_signature_keypair(0).1)
+    );
     println!("node1_db_path: {:?}", node1_db_path);
     std::env::set_var("NODE_STORAGE_PATH", node1_db_path.clone());
 

@@ -6,7 +6,12 @@ use serde_json::{Map, Value};
 use shinkai_message_primitives::schemas::{shinkai_name::ShinkaiName, tool_router_key::ToolRouterKey};
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::{
-    error::ToolError, parameters::Parameters, python_tools::PythonTool, tool_config::{OAuth, ToolConfig}, tool_output_arg::ToolOutputArg, tool_types::{OperatingSystem, RunnerType, ToolResult}
+    error::ToolError,
+    parameters::Parameters,
+    python_tools::PythonTool,
+    tool_config::{OAuth, ToolConfig},
+    tool_output_arg::ToolOutputArg,
+    tool_types::{OperatingSystem, RunnerType, ToolResult},
 };
 use std::sync::Arc;
 

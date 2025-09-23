@@ -359,7 +359,6 @@ impl IdentityManagerTrait for IdentityManager {
         };
         let node_name = full_identity_name.get_node_name_string().to_string();
 
-
         // Fall back to external network manager for production environments
         let external_im = self.external_identity_manager.lock().await;
 
@@ -414,7 +413,7 @@ impl IdentityManagerTrait for IdentityManager {
         let node_name = full_identity_name.get_node_name_string().to_string();
 
         let external_im = self.external_identity_manager.lock().await;
-        
+
         match external_im
             .external_identity_to_profile_data(node_name.to_string(), force_refresh)
             .await

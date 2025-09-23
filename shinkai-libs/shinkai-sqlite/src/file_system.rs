@@ -1,7 +1,8 @@
 use crate::{SqliteManager, SqliteManagerError};
 use rusqlite::params;
 use shinkai_message_primitives::{
-    schemas::shinkai_fs::{ParsedFile, ShinkaiFileChunk}, shinkai_utils::shinkai_path::ShinkaiPath
+    schemas::shinkai_fs::{ParsedFile, ShinkaiFileChunk},
+    shinkai_utils::shinkai_path::ShinkaiPath,
 };
 
 impl SqliteManager {
@@ -59,12 +60,13 @@ impl SqliteManager {
         // Create our new virtual table for chunk embeddings using sqlite-vec
         // Using dynamic dimensions based on default embedding model
         let default_model = shinkai_embedding::model_type::EmbeddingModelType::default();
-        let vector_dimensions = default_model.vector_dimensions()
-            .map_err(|e| rusqlite::Error::SqliteFailure(
-                rusqlite::ffi::Error::new(1), 
-                Some(format!("Cannot get vector dimensions: {}", e))
-            ))?;
-        
+        let vector_dimensions = default_model.vector_dimensions().map_err(|e| {
+            rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(1),
+                Some(format!("Cannot get vector dimensions: {}", e)),
+            )
+        })?;
+
         conn.execute(
             &format!(
                 "CREATE VIRTUAL TABLE IF NOT EXISTS chunk_vec USING vec0(
@@ -623,8 +625,7 @@ mod tests {
         let temp_file = NamedTempFile::new().unwrap();
         let db_path = PathBuf::from(temp_file.path());
         let api_url = String::new();
-        let model_type =
-            EmbeddingModelType::default();
+        let model_type = EmbeddingModelType::default();
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }

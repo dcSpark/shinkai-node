@@ -1,6 +1,6 @@
 use crate::api_sse::api_sse_handlers::{
-    sse_handler, post_event_handler, update_tools_cache_handler,
-    McpState, IoError, PayloadTooLarge, SessionExpired};
+    post_event_handler, sse_handler, update_tools_cache_handler, IoError, McpState, PayloadTooLarge, SessionExpired,
+};
 use crate::api_sse::mcp_tools_service::McpToolsService;
 use crate::node_commands::NodeCommand;
 use async_channel::Sender;
@@ -29,16 +29,19 @@ async fn handle_rejection(err: Rejection) -> Result<impl Reply, Rejection> {
         message = "Session not found or expired".to_string();
         tracing::warn!("SSE route rejection: {}", message);
     } else if let Some(e) = err.find::<warp::reject::MethodNotAllowed>() {
-         status = StatusCode::METHOD_NOT_ALLOWED;
-         message = format!("Method not allowed: {}", e);
-         tracing::warn!("SSE route rejection: {}", message);
+        status = StatusCode::METHOD_NOT_ALLOWED;
+        message = format!("Method not allowed: {}", e);
+        tracing::warn!("SSE route rejection: {}", message);
     } else {
         status = StatusCode::INTERNAL_SERVER_ERROR;
         message = "Unknown error occurred".to_string();
         tracing::error!(rejection = ?err, "SSE route unknown rejection type: {}", message);
     }
 
-    Ok(warp::reply::with_status(warp::reply::json(&serde_json::json!({ "error": message })), status))
+    Ok(warp::reply::with_status(
+        warp::reply::json(&serde_json::json!({ "error": message })),
+        status,
+    ))
 }
 
 /// Create the Warp routes for MCP SSE endpoints
@@ -47,11 +50,11 @@ pub fn mcp_sse_routes(
     node_name: String,
 ) -> impl Filter<Extract = impl warp::Reply, Error = Rejection> + Clone {
     tracing::info!("Setting up MCP SSE routes with node name: {}", node_name);
-    
+
     // Create the tools service (used by sse_handler)
     let tools_service = Arc::new(McpToolsService::new(node_commands_sender.clone(), node_name.clone()));
     // Clone the Arc before moving it into the async block
-    let tools_service_for_cache = tools_service.clone(); 
+    let tools_service_for_cache = tools_service.clone();
     // Update the cache immediately (can also be updated periodically or on demand)
     tokio::spawn(async move {
         if let Err(e) = tools_service_for_cache.update_tools_cache().await {
@@ -62,7 +65,7 @@ pub fn mcp_sse_routes(
     // Create the state
     let state = Arc::new(McpState::new());
     tracing::info!("Created MCP state");
-    
+
     // SSE endpoint
     let sse = warp::path("sse")
         .and(warp::get())
@@ -93,9 +96,7 @@ pub fn mcp_sse_routes(
 
     // Combine the routes and add rejection handling
     tracing::info!("MCP SSE routes configured successfully");
-    sse.or(post_event)
-        .or(update_cache_route)
-        .recover(handle_rejection)
+    sse.or(post_event).or(update_cache_route).recover(handle_rejection)
 }
 
 /// Helper to pass the state to handlers

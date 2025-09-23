@@ -1,8 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-
-
-
 use super::{
     shinkai_message::{MessageBody, MessageData, NodeApiData, ShinkaiMessage},
     shinkai_message_error::ShinkaiMessageError,
@@ -195,18 +192,14 @@ impl ShinkaiMessage {
 
     pub fn is_receiver_subidentity_main(&self) -> bool {
         match &self.body {
-            MessageBody::Unencrypted(body) => {
-                body.internal_metadata.recipient_subidentity == "main"
-            }
+            MessageBody::Unencrypted(body) => body.internal_metadata.recipient_subidentity == "main",
             _ => false,
         }
     }
 
     pub fn is_receiver_subidentity_agent(&self) -> bool {
         match &self.body {
-            MessageBody::Unencrypted(body) => {
-                body.internal_metadata.recipient_subidentity.contains("agent")
-            }
+            MessageBody::Unencrypted(body) => body.internal_metadata.recipient_subidentity.contains("agent"),
             _ => false,
         }
     }

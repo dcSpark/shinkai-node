@@ -1,9 +1,9 @@
-use std::collections::HashMap;
 use crate::errors::SqliteManagerError;
 use crate::SqliteManager;
 use rusqlite::{OptionalExtension, Result, ToSql};
 use serde;
 use serde_json;
+use std::collections::HashMap;
 
 impl SqliteManager {
     /// Initializes the preferences table in the database.
@@ -162,7 +162,10 @@ impl SqliteManager {
                             preferences.insert(key.clone(), value); // Insert the actual preference key-value
                         }
                         Err(e) => {
-                            eprintln!("Error deserializing preference value for key '{}': {}. Skipping value.", key, e);
+                            eprintln!(
+                                "Error deserializing preference value for key '{}': {}. Skipping value.",
+                                key, e
+                            );
                         }
                     }
 
@@ -178,7 +181,10 @@ impl SqliteManager {
             }
         }
         if !metadata.is_empty() {
-            preferences.insert("__meta".to_string(), serde_json::Value::Object(metadata.into_iter().collect()));
+            preferences.insert(
+                "__meta".to_string(),
+                serde_json::Value::Object(metadata.into_iter().collect()),
+            );
         }
 
         Ok(preferences)
@@ -200,8 +206,7 @@ mod tests {
         let temp_file = NamedTempFile::new().unwrap();
         let db_path = PathBuf::from(temp_file.path());
         let api_url = String::new();
-        let model_type =
-            EmbeddingModelType::default();
+        let model_type = EmbeddingModelType::default();
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }
@@ -417,8 +422,12 @@ mod tests {
         let manager = setup_test_db().await;
 
         // Set some preferences with different types and descriptions
-        manager.set_preference("key_string", &"value_string", Some("String preference description")).unwrap();
-        manager.set_preference("key_int", &123, Some("Integer preference description")).unwrap();
+        manager
+            .set_preference("key_string", &"value_string", Some("String preference description"))
+            .unwrap();
+        manager
+            .set_preference("key_int", &123, Some("Integer preference description"))
+            .unwrap();
         manager.set_preference("key_bool", &true, None).unwrap(); // Preference without description
 
         // Call the function to test
@@ -450,14 +459,20 @@ mod tests {
         assert!(meta_map.contains_key("key_string"));
         let string_meta = meta_map.get("key_string").unwrap();
         assert!(string_meta.is_object());
-        assert_eq!(string_meta.get("description"), Some(&serde_json::json!("String preference description")));
+        assert_eq!(
+            string_meta.get("description"),
+            Some(&serde_json::json!("String preference description"))
+        );
         assert!(string_meta.get("updated_at").is_some()); // Check updated_at exists
 
         // Verify metadata for "key_int"
         assert!(meta_map.contains_key("key_int"));
         let int_meta = meta_map.get("key_int").unwrap();
         assert!(int_meta.is_object());
-        assert_eq!(int_meta.get("description"), Some(&serde_json::json!("Integer preference description")));
+        assert_eq!(
+            int_meta.get("description"),
+            Some(&serde_json::json!("Integer preference description"))
+        );
         assert!(int_meta.get("updated_at").is_some());
 
         // Verify metadata for "key_bool" (should have null description)

@@ -1,13 +1,12 @@
 use crate::{SqliteManager, SqliteManagerError};
 use rusqlite::{params, Result};
 use serde_json;
-use shinkai_message_primitives::schemas::{
-    indexable_version::IndexableVersion, shinkai_tools::CodeLanguage,
-};
 #[cfg(test)]
 use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
+use shinkai_message_primitives::schemas::{indexable_version::IndexableVersion, shinkai_tools::CodeLanguage};
 use shinkai_tools_primitives::tools::{
-    tool_playground::{ToolPlayground, ToolPlaygroundMetadata}, tool_types::{OperatingSystem, RunnerType}
+    tool_playground::{ToolPlayground, ToolPlaygroundMetadata},
+    tool_types::{OperatingSystem, RunnerType},
 };
 
 impl SqliteManager {
@@ -385,7 +384,11 @@ mod tests {
     use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
     use shinkai_tools_primitives::tools::{
-        deno_tools::DenoTool, parameters::Parameters, shinkai_tool::ShinkaiTool, tool_output_arg::ToolOutputArg, tool_types::{OperatingSystem, RunnerType, ToolResult}
+        deno_tools::DenoTool,
+        parameters::Parameters,
+        shinkai_tool::ShinkaiTool,
+        tool_output_arg::ToolOutputArg,
+        tool_types::{OperatingSystem, RunnerType, ToolResult},
     };
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
@@ -394,8 +397,7 @@ mod tests {
         let temp_file = NamedTempFile::new().unwrap();
         let db_path = PathBuf::from(temp_file.path());
         let api_url = String::new();
-        let model_type =
-            EmbeddingModelType::default();
+        let model_type = EmbeddingModelType::default();
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }

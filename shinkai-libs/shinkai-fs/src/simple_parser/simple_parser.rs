@@ -15,7 +15,8 @@ use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use crate::shinkai_fs_error::ShinkaiFsError;
 
 use std::{
-    fmt, fs, path::{self, PathBuf}
+    fmt, fs,
+    path::{self, PathBuf},
 };
 
 use super::{local_parsing::LocalFileParser, text_group::TextGroup};

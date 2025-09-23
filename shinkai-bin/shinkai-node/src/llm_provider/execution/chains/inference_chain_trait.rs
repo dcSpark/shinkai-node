@@ -436,7 +436,14 @@ pub struct LLMInferenceResponse {
 }
 
 impl LLMInferenceResponse {
-    pub fn new(response_string: String, reasoning_content: Option<String>, json: JsonValue, function_calls: Vec<FunctionCall>, generated_files: Vec<ShinkaiPath>, tps: Option<f64>) -> Self {
+    pub fn new(
+        response_string: String,
+        reasoning_content: Option<String>,
+        json: JsonValue,
+        function_calls: Vec<FunctionCall>,
+        generated_files: Vec<ShinkaiPath>,
+        tps: Option<f64>,
+    ) -> Self {
         Self {
             response_string,
             reasoning_content,

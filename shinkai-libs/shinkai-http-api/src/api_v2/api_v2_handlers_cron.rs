@@ -2,10 +2,10 @@ use crate::{node_api_router::APIError, node_commands::NodeCommand};
 use async_channel::Sender;
 use serde::Deserialize;
 use shinkai_message_primitives::schemas::crontab::{CronTask, CronTaskAction};
+use std::collections::HashMap;
 use utoipa::OpenApi;
 use warp::http::StatusCode;
 use warp::Filter;
-use std::collections::HashMap;
 
 use super::api_v2_router::{create_success_response, with_sender};
 
@@ -210,15 +210,13 @@ pub async fn get_specific_cron_task_handler(
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
 
     // Extract cron_task_id from query parameters
-    let cron_task_id_str = query_params
-        .get("cron_task_id")
-        .ok_or_else(|| {
-            warp::reject::custom(APIError {
-                code: 400,
-                error: "Invalid Query".to_string(),
-                message: "The request query string is invalid.".to_string(),
-            })
-        })?;
+    let cron_task_id_str = query_params.get("cron_task_id").ok_or_else(|| {
+        warp::reject::custom(APIError {
+            code: 400,
+            error: "Invalid Query".to_string(),
+            message: "The request query string is invalid.".to_string(),
+        })
+    })?;
 
     // Parse cron_task_id to i64
     let cron_task_id: i64 = cron_task_id_str.parse().map_err(|_| {
@@ -272,15 +270,13 @@ pub async fn remove_cron_task_handler(
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
 
     // Extract cron_task_id from query parameters
-    let cron_task_id_str = query_params
-        .get("cron_task_id")
-        .ok_or_else(|| {
-            warp::reject::custom(APIError {
-                code: 400,
-                error: "Invalid Query".to_string(),
-                message: "The request query string is invalid.".to_string(),
-            })
-        })?;
+    let cron_task_id_str = query_params.get("cron_task_id").ok_or_else(|| {
+        warp::reject::custom(APIError {
+            code: 400,
+            error: "Invalid Query".to_string(),
+            message: "The request query string is invalid.".to_string(),
+        })
+    })?;
 
     // Parse cron_task_id to i64
     let cron_task_id: i64 = cron_task_id_str.parse().map_err(|_| {
@@ -334,15 +330,13 @@ pub async fn get_cron_task_logs_handler(
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
 
     // Extract cron_task_id from query parameters
-    let cron_task_id_str = query_params
-        .get("cron_task_id")
-        .ok_or_else(|| {
-            warp::reject::custom(APIError {
-                code: 400,
-                error: "Invalid Query".to_string(),
-                message: "The request query string is invalid.".to_string(),
-            })
-        })?;
+    let cron_task_id_str = query_params.get("cron_task_id").ok_or_else(|| {
+        warp::reject::custom(APIError {
+            code: 400,
+            error: "Invalid Query".to_string(),
+            message: "The request query string is invalid.".to_string(),
+        })
+    })?;
 
     // Parse cron_task_id to i64
     let cron_task_id: i64 = cron_task_id_str.parse().map_err(|_| {
@@ -444,15 +438,13 @@ pub async fn force_execute_cron_task_handler(
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
 
     // Extract cron_task_id from query parameters
-    let cron_task_id_str = query_params
-        .get("cron_task_id")
-        .ok_or_else(|| {
-            warp::reject::custom(APIError {
-                code: 400,
-                error: "Invalid Query".to_string(),
-                message: "The request query string is invalid.".to_string(),
-            })
-        })?;
+    let cron_task_id_str = query_params.get("cron_task_id").ok_or_else(|| {
+        warp::reject::custom(APIError {
+            code: 400,
+            error: "Invalid Query".to_string(),
+            message: "The request query string is invalid.".to_string(),
+        })
+    })?;
 
     // Parse cron_task_id to i64
     let cron_task_id: i64 = cron_task_id_str.parse().map_err(|_| {
@@ -549,7 +541,7 @@ pub async fn import_cron_task_handler(
         })
         .await
         .map_err(|_| warp::reject::reject())?;
-    
+
     let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
 
     match result {
@@ -624,11 +616,11 @@ pub async fn export_cron_task_handler(
         Err(error) => Ok(warp::reply::with_header(
             warp::reply::with_status(
                 error.message.as_bytes().to_vec(),
-                StatusCode::from_u16(error.code).unwrap()
+                StatusCode::from_u16(error.code).unwrap(),
             ),
             "Content-Type",
             "text/plain",
-        ))
+        )),
     }
 }
 

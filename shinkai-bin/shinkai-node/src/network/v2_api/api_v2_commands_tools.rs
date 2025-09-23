@@ -1,9 +1,19 @@
 use crate::{
-    llm_provider::job_manager::JobManager, managers::{tool_router::ToolRouter, IdentityManager}, network::{
-        node_error::NodeError, node_shareable_logic::{download_zip_from_url, ZipFileContents}, zip_export_import::zip_export_import::{generate_tool_zip, import_dependencies_tools, import_tool}, Node
-    }, tools::{
-        tool_definitions::definition_generation::{generate_tool_definitions, get_all_tools}, tool_execution::execution_coordinator::{execute_code, execute_mcp_tool_cmd, execute_tool_cmd}, tool_generation::v2_create_and_send_job_message, tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt}
-    }, utils::environment::NodeEnvironment
+    llm_provider::job_manager::JobManager,
+    managers::{tool_router::ToolRouter, IdentityManager},
+    network::{
+        node_error::NodeError,
+        node_shareable_logic::{download_zip_from_url, ZipFileContents},
+        zip_export_import::zip_export_import::{generate_tool_zip, import_dependencies_tools, import_tool},
+        Node,
+    },
+    tools::{
+        tool_definitions::definition_generation::{generate_tool_definitions, get_all_tools},
+        tool_execution::execution_coordinator::{execute_code, execute_mcp_tool_cmd, execute_tool_cmd},
+        tool_generation::v2_create_and_send_job_message,
+        tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt},
+    },
+    utils::environment::NodeEnvironment,
 };
 use async_channel::Sender;
 use base64::Engine;
@@ -16,17 +26,43 @@ use shinkai_embedding::embedding_generator::EmbeddingGenerator;
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_message_primitives::{
     schemas::{
-        identity::Identity, inbox_name::InboxName, indexable_version::IndexableVersion, job::JobLike, job_config::JobConfig, llm_providers::agent::Agent, shinkai_name::{ShinkaiName, ShinkaiSubidentityType}, shinkai_tools::{CodeLanguage, DynamicToolType}, tool_router_key::ToolRouterKey
-    }, shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, JobMessage, MessageSchemaType}, shinkai_utils::{
-        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key
-    }
+        identity::Identity,
+        inbox_name::InboxName,
+        indexable_version::IndexableVersion,
+        job::JobLike,
+        job_config::JobConfig,
+        llm_providers::agent::Agent,
+        shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
+        shinkai_tools::{CodeLanguage, DynamicToolType},
+        tool_router_key::ToolRouterKey,
+    },
+    shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, JobMessage, MessageSchemaType},
+    shinkai_utils::{
+        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder,
+        signatures::clone_signature_secret_key,
+    },
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
-    agent_tool_wrapper::AgentToolWrapper, deno_tools::DenoTool, error::ToolError, parameters::Parameters, python_tools::PythonTool, shinkai_tool::ShinkaiToolHeader, shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets}, tool_config::{OAuth, ToolConfig}, tool_output_arg::ToolOutputArg, tool_playground::{ToolPlayground, ToolPlaygroundMetadata}, tool_types::{OperatingSystem, RunnerType, ToolResult}
+    agent_tool_wrapper::AgentToolWrapper,
+    deno_tools::DenoTool,
+    error::ToolError,
+    parameters::Parameters,
+    python_tools::PythonTool,
+    shinkai_tool::ShinkaiToolHeader,
+    shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets},
+    tool_config::{OAuth, ToolConfig},
+    tool_output_arg::ToolOutputArg,
+    tool_playground::{ToolPlayground, ToolPlaygroundMetadata},
+    tool_types::{OperatingSystem, RunnerType, ToolResult},
 };
 use std::{
-    collections::HashMap, env, io::Read, path::{absolute, PathBuf}, sync::Arc, time::Instant
+    collections::HashMap,
+    env,
+    io::Read,
+    path::{absolute, PathBuf},
+    sync::Arc,
+    time::Instant,
 };
 use tokio::fs;
 use tokio::{process::Command, sync::Mutex};
@@ -2749,7 +2785,7 @@ impl Node {
 
         // Construct the full file path
         let mut file_path = PathBuf::from(&node_storage_path);
-        
+
         if user_name == node_name.get_node_name_string() {
             // Keep the current behavior (output files from tools)
             file_path.push("tools_storage");

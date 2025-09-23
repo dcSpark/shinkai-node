@@ -6,7 +6,8 @@ use serde::de::DeserializeOwned;
 
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::{
-    schemas::{identity::Identity, shinkai_name::ShinkaiName}, shinkai_message::{shinkai_message::ShinkaiMessage, shinkai_message_schemas::MessageSchemaType}
+    schemas::{identity::Identity, shinkai_name::ShinkaiName},
+    shinkai_message::{shinkai_message::ShinkaiMessage, shinkai_message_schemas::MessageSchemaType},
 };
 use tokio::sync::Mutex;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;

@@ -3,7 +3,10 @@ use comrak::{
     parse_document, Arena, Options,
 };
 
-use crate::{shinkai_fs_error::ShinkaiFsError, simple_parser::{file_parser_helper::ShinkaiFileParser, text_group::TextGroup}};
+use crate::{
+    shinkai_fs_error::ShinkaiFsError,
+    simple_parser::{file_parser_helper::ShinkaiFileParser, text_group::TextGroup},
+};
 
 use super::LocalFileParser;
 

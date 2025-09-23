@@ -37,39 +37,42 @@ pub fn deepseek_prepare_messages(
     let messages_json = match messages_json {
         PromptResultEnum::Value(messages) => {
             let messages_array = messages.as_array().unwrap();
-            let transformed_messages: Vec<serde_json::Value> = messages_array.iter().map(|message| {
-                let mut new_message = message.clone();
-                if message["role"] == "assistant" {
-                    if let Some(content) = message.get("content") {
-                        if let Some(content_array) = content.as_array() {
-                            if let Some(first_content) = content_array.first() {
-                                if let Some(text) = first_content.get("text") {
-                                    new_message["content"] = text.clone();
+            let transformed_messages: Vec<serde_json::Value> = messages_array
+                .iter()
+                .map(|message| {
+                    let mut new_message = message.clone();
+                    if message["role"] == "assistant" {
+                        if let Some(content) = message.get("content") {
+                            if let Some(content_array) = content.as_array() {
+                                if let Some(first_content) = content_array.first() {
+                                    if let Some(text) = first_content.get("text") {
+                                        new_message["content"] = text.clone();
+                                    }
                                 }
                             }
                         }
-                    }
-                    if let Some(function_call) = message.get("function_call") {
-                        new_message["tool_calls"] = serde_json::json!([{
-                            "function": function_call,
-                            "id": function_call["id"].clone().as_str().unwrap_or(session_id.as_str()),
-                            "type": "function"
-                        }]);
-                        if let Some(obj) = new_message.as_object_mut() {
-                            obj.remove("function_call");
+                        if let Some(function_call) = message.get("function_call") {
+                            new_message["tool_calls"] = serde_json::json!([{
+                                "function": function_call,
+                                "id": function_call["id"].clone().as_str().unwrap_or(session_id.as_str()),
+                                "type": "function"
+                            }]);
+                            if let Some(obj) = new_message.as_object_mut() {
+                                obj.remove("function_call");
+                            }
                         }
                     }
-                }
-                if message["role"] == "function" {
-                    new_message["role"] = serde_json::Value::String("tool".to_string());
-                    new_message["tool_call_id"] = if let Some(tool_call) = new_message.get("tool_call_id") {
-                        tool_call.clone()
-                    } else {
-                        serde_json::Value::String(session_id.clone())
-                    };
-                }
-                new_message
-            }).collect();
+                    if message["role"] == "function" {
+                        new_message["role"] = serde_json::Value::String("tool".to_string());
+                        new_message["tool_call_id"] = if let Some(tool_call) = new_message.get("tool_call_id") {
+                            tool_call.clone()
+                        } else {
+                            serde_json::Value::String(session_id.clone())
+                        };
+                    }
+                    new_message
+                })
+                .collect();
             PromptResultEnum::Value(serde_json::Value::Array(transformed_messages))
         }
         _ => messages_json,
@@ -87,7 +90,7 @@ pub fn deepseek_prepare_messages(
 mod tests {
     use super::*;
     use uuid::Uuid;
-    
+
     use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::DeepSeek;
     use shinkai_message_primitives::schemas::subprompts::{SubPrompt, SubPromptType};
 

@@ -3,7 +3,10 @@ use std::collections::HashMap;
 use regex::Regex;
 
 use super::LocalFileParser;
-use crate::{shinkai_fs_error::ShinkaiFsError, simple_parser::{file_parser_helper::ShinkaiFileParser, text_group::TextGroup}};
+use crate::{
+    shinkai_fs_error::ShinkaiFsError,
+    simple_parser::{file_parser_helper::ShinkaiFileParser, text_group::TextGroup},
+};
 
 impl LocalFileParser {
     /// Attempts to process the provided json file into a list of TextGroups.
@@ -32,19 +35,14 @@ impl LocalFileParser {
 
             if (parsed_line.len() as u64 + current_text.len() as u64) > max_node_text_size {
                 if !current_text.is_empty() {
-                    text_groups.push(
-                        TextGroup::new(current_text.clone(), current_metadata.clone(), None)
-                    );
+                    text_groups.push(TextGroup::new(current_text.clone(), current_metadata.clone(), None));
                     current_text.clear();
                     current_metadata.clear();
                 }
                 if parsed_line.len() as u64 > max_node_text_size {
                     // If the line itself exceeds max_node_text_size, split it into chunks.
                     let chunks = if parsed_any_metadata {
-                        ShinkaiFileParser::split_into_chunks_with_metadata(
-                            &line,
-                            max_node_text_size as usize
-                        )
+                        ShinkaiFileParser::split_into_chunks_with_metadata(&line, max_node_text_size as usize)
                     } else {
                         ShinkaiFileParser::split_into_chunks(&line, max_node_text_size as usize)
                     };
@@ -81,9 +79,7 @@ impl LocalFileParser {
     /// Given a piece of text, split it into a list of sentences, doing its best to respect punctuation
     /// and taking into account English-based exceptions.
     pub fn process_into_sentences(text: String) -> Vec<String> {
-        let punctuation_marks = [
-            ',', '.', ';', '-', '&', '(', '{', '<', '"', '\'', '`'
-        ];
+        let punctuation_marks = [',', '.', ';', '-', '&', '(', '{', '<', '"', '\'', '`'];
         text.split('\n')
             .filter(|line| !line.trim().is_empty() && line.trim().len() > 1)
             .flat_map(|line| {
@@ -97,15 +93,12 @@ impl LocalFileParser {
                         .unwrap_or(false);
 
                 // Ensure each line ends with punctuation, or default to a newline
-                let line_with_ending = if is_pure_metadata
-                    || punctuation_marks
-                        .iter()
-                        .any(|&mark| trimmed_line.ends_with(mark))
-                {
-                    trimmed_line.to_string()
-                } else {
-                    format!("{}\n", trimmed_line)
-                };
+                let line_with_ending =
+                    if is_pure_metadata || punctuation_marks.iter().any(|&mark| trimmed_line.ends_with(mark)) {
+                        trimmed_line.to_string()
+                    } else {
+                        format!("{}\n", trimmed_line)
+                    };
 
                 Self::split_line_into_sentences(&line_with_ending)
             })
@@ -119,11 +112,10 @@ impl LocalFileParser {
 
         // Common abbreviations in lowercase
         let exceptions = [
-            " mr.", " mrs.", " ms.", " dr.", " prof.", " gen.", " rep.", " sen.", " jr.", " sr.",
-            " ave.", " blvd.", " st.", " rd.", " ln.", " ter.", " ct.", " pl.", " p.o.", " a.m.",
-            " p.m.", " cm.", " kg.", " lb.", " oz.", " ft.", " in.", " mi.", " b.a.", " m.a.",
-            " ph.d.", " m.d.", " b.sc.", " m.sc.", " inc.", " ltd.", " co.", " corp.", " llc.",
-            " plc.", " et al.", " e.g.", " i.e.", " vs.", " viz.", " approx.", " dept.", " div.",
+            " mr.", " mrs.", " ms.", " dr.", " prof.", " gen.", " rep.", " sen.", " jr.", " sr.", " ave.", " blvd.",
+            " st.", " rd.", " ln.", " ter.", " ct.", " pl.", " p.o.", " a.m.", " p.m.", " cm.", " kg.", " lb.", " oz.",
+            " ft.", " in.", " mi.", " b.a.", " m.a.", " ph.d.", " m.d.", " b.sc.", " m.sc.", " inc.", " ltd.", " co.",
+            " corp.", " llc.", " plc.", " et al.", " e.g.", " i.e.", " vs.", " viz.", " approx.", " dept.", " div.",
             " est.",
         ];
 
@@ -164,7 +156,7 @@ mod tests {
 
         assert!(result.is_ok());
         let text_groups = result.unwrap();
-        
+
         // We expect more than one text group due to the low max_node_text_size
         assert!(text_groups.len() > 1);
 

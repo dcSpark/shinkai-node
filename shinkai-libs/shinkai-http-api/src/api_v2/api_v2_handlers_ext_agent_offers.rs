@@ -6,7 +6,9 @@ use warp::http::StatusCode;
 use warp::Filter;
 
 use shinkai_message_primitives::schemas::{
-    shinkai_tool_offering::{ShinkaiToolOffering, ToolPrice, UsageType}, wallet_mixed::{Asset, NetworkIdentifier}, x402_types::PaymentRequirements
+    shinkai_tool_offering::{ShinkaiToolOffering, ToolPrice, UsageType},
+    wallet_mixed::{Asset, NetworkIdentifier},
+    x402_types::PaymentRequirements,
 };
 
 use crate::{node_api_router::APIError, node_commands::NodeCommand};

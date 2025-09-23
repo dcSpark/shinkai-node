@@ -95,19 +95,33 @@ impl RustTool {
     }
 
     pub fn get_metadata(&self) -> ToolPlaygroundMetadata {
-        let (output_type, output_properties, output_required) = 
+        let (output_type, output_properties, output_required) =
             match serde_json::from_str::<serde_json::Value>(&self.output_arg.json) {
                 Ok(json_schema) => {
-                    let r#type = json_schema.get("type").and_then(|v| v.as_str()).unwrap_or("object").to_string();
-                    let properties = json_schema.get("properties").cloned().unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new()));
-                    let required_array = json_schema.get("required").and_then(|v| v.as_array()).cloned().unwrap_or_default();
-                    let required_vec = required_array.into_iter().filter_map(|v| v.as_str().map(String::from)).collect::<Vec<String>>();
+                    let r#type = json_schema
+                        .get("type")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("object")
+                        .to_string();
+                    let properties = json_schema
+                        .get("properties")
+                        .cloned()
+                        .unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new()));
+                    let required_array = json_schema
+                        .get("required")
+                        .and_then(|v| v.as_array())
+                        .cloned()
+                        .unwrap_or_default();
+                    let required_vec = required_array
+                        .into_iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect::<Vec<String>>();
                     (r#type, properties, required_vec)
                 }
                 Err(_) => (
-                    "object".to_string(), 
-                    serde_json::Value::Object(serde_json::Map::new()), 
-                    vec![]
+                    "object".to_string(),
+                    serde_json::Value::Object(serde_json::Map::new()),
+                    vec![],
                 ),
             };
 

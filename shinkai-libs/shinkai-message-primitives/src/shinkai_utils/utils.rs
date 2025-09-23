@@ -34,7 +34,7 @@ pub fn random_string() -> String {
 pub fn count_tokens_from_message_llama3(message: &str) -> usize {
     let mut token_count = 0;
     let mut alphabetic_count = 0; // Total count of alphabetic characters
-                             // ^ need to fix this
+                                  // ^ need to fix this
 
     // First pass: count alphabetic characters and spaces
     for c in message.chars() {

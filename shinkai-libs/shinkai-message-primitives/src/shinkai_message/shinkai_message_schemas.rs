@@ -304,8 +304,6 @@ pub struct ToolPlaygroundAction {
     pub code: String,
 }
 
-
-
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct APIGetMessagesFromInboxRequest {
     pub inbox: String,

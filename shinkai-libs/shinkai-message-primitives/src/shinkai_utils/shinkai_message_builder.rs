@@ -18,7 +18,9 @@ use crate::{
 };
 
 use super::{
-    encryption::{clone_static_secret_key, encryption_secret_key_to_string}, shinkai_time::ShinkaiStringTime, signatures::{clone_signature_secret_key, signature_secret_key_to_string}
+    encryption::{clone_static_secret_key, encryption_secret_key_to_string},
+    shinkai_time::ShinkaiStringTime,
+    signatures::{clone_signature_secret_key, signature_secret_key_to_string},
 };
 
 pub type ShinkaiNameString = String;

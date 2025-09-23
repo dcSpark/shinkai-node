@@ -1,5 +1,5 @@
 use shinkai_message_primitives::schemas::{
-    shinkai_name::ShinkaiName, shinkai_tool_offering::UsageType, tool_router_key::ToolRouterKey
+    shinkai_name::ShinkaiName, shinkai_tool_offering::UsageType, tool_router_key::ToolRouterKey,
 };
 
 use super::{error::ToolError, parameters::Parameters, tool_config::ToolConfig, tool_output_arg::ToolOutputArg};
@@ -45,12 +45,7 @@ impl NetworkTool {
         let tool_router_key = match tool_router_key {
             Some(key) => key,
             None => {
-                let key = ToolRouterKey::new(
-                    provider.to_string(),
-                    author.clone(),
-                    name.clone(),
-                    None,
-                );
+                let key = ToolRouterKey::new(provider.to_string(), author.clone(), name.clone(), None);
                 key.to_string_without_version()
             }
         };

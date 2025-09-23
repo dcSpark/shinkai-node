@@ -1,12 +1,12 @@
 #[cfg(test)]
 mod tests {
     use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-        LLMProviderInterface, OpenAI, SerializedLLMProvider
+        LLMProviderInterface, OpenAI, SerializedLLMProvider,
     };
     use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
     use shinkai_node::managers::model_capabilities_manager::{
-        ModelCapabilitiesManager, ModelCapability, ModelCost, ModelPrivacy
+        ModelCapabilitiesManager, ModelCapability, ModelCost, ModelPrivacy,
     };
     use std::env;
     use std::path::PathBuf;
@@ -20,8 +20,7 @@ mod tests {
         let temp_file = NamedTempFile::new().unwrap();
         let db_path = PathBuf::from(temp_file.path());
         let api_url = String::new();
-        let model_type =
-            EmbeddingModelType::default();
+        let model_type = EmbeddingModelType::default();
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }

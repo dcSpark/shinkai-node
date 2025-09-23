@@ -46,7 +46,7 @@ use shinkai_sqlite::SqliteManager;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
-use std::{io, net::SocketAddr, time::Duration, sync::atomic::AtomicBool};
+use std::{io, net::SocketAddr, sync::atomic::AtomicBool, time::Duration};
 use tokio::sync::Mutex;
 use tokio::time::Instant;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
@@ -454,7 +454,7 @@ impl Node {
 
         // Initialize embedding models
         self.initialize_embedding_models().await?;
-        
+
         {
             // Starting the WebSocket server
             if let (Some(ws_manager), Some(ws_address)) = (&self.ws_manager, self.ws_address) {
@@ -518,7 +518,6 @@ impl Node {
             let relay_address = {
                 let proxy_info = self.proxy_connection_info.lock().await;
                 if let Some(proxy) = proxy_info.as_ref() {
-
                     shinkai_log(
                         ShinkaiLogOption::Network,
                         ShinkaiLogLevel::Info,
@@ -536,7 +535,7 @@ impl Node {
                         Node::get_address_from_identity(
                             self.identity_manager.clone(),
                             &proxy.proxy_identity.get_node_name_string(),
-                        )
+                        ),
                     )
                     .await
                     {
@@ -556,7 +555,10 @@ impl Node {
                             shinkai_log(
                                 ShinkaiLogOption::Network,
                                 ShinkaiLogLevel::Error,
-                                &format!("Timeout while resolving relay address after {}s", resolution_timeout.as_secs()),
+                                &format!(
+                                    "Timeout while resolving relay address after {}s",
+                                    resolution_timeout.as_secs()
+                                ),
                             );
                             None
                         }
@@ -572,7 +574,7 @@ impl Node {
             };
 
             let mut libp2p_event_sender_for_update: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>> = None;
-            
+
             let message_handler = ShinkaiMessageHandler::new(
                 Arc::downgrade(&self.db),
                 self.node_name.clone(),
@@ -586,7 +588,15 @@ impl Node {
                 self.listen_address,
             );
 
-            match LibP2PManager::new(self.node_name.to_string(), self.identity_secret_key.clone(), listen_port, message_handler, relay_address).await {
+            match LibP2PManager::new(
+                self.node_name.to_string(),
+                self.identity_secret_key.clone(),
+                listen_port,
+                message_handler,
+                relay_address,
+            )
+            .await
+            {
                 Ok(libp2p_manager) => {
                     let event_sender = libp2p_manager.event_sender();
                     let libp2p_manager_arc = Arc::new(Mutex::new(libp2p_manager));
@@ -601,13 +611,13 @@ impl Node {
                                 &format!("LibP2P manager error: {}", e),
                             );
                         }
-                    });                 
+                    });
 
                     self.libp2p_manager = Some(libp2p_manager_arc);
                     self.libp2p_event_sender = Some(event_sender.clone());
                     self.libp2p_task = Some(libp2p_task);
                     libp2p_event_sender_for_update = Some(event_sender);
-                    
+
                     shinkai_log(
                         ShinkaiLogOption::Network,
                         ShinkaiLogLevel::Info,
@@ -615,14 +625,15 @@ impl Node {
                     );
                 }
                 Err(e) => {
-                    shinkai_log( // we'll show an error but not stop node initialization.
+                    shinkai_log(
+                        // we'll show an error but not stop node initialization.
                         ShinkaiLogOption::Network,
                         ShinkaiLogLevel::Error,
                         &format!("Failed to initialize LibP2P: {}", e),
                     );
                 }
             }
-            
+
             // Update the offerings managers with the libp2p event sender if initialized
             if let Some(event_sender) = libp2p_event_sender_for_update {
                 self.update_offerings_managers_with_libp2p(event_sender).await;
@@ -727,7 +738,10 @@ impl Node {
     }
 
     /// Update offerings managers with libp2p event sender
-    async fn update_offerings_managers_with_libp2p(&self, event_sender: tokio::sync::mpsc::UnboundedSender<NetworkEvent>) {
+    async fn update_offerings_managers_with_libp2p(
+        &self,
+        event_sender: tokio::sync::mpsc::UnboundedSender<NetworkEvent>,
+    ) {
         // Update the offerings managers with the libp2p event sender
         {
             let mut my_offerings_manager = self.my_agent_payments_manager.lock().await;
@@ -1064,8 +1078,6 @@ impl Node {
             }
         });
     }
-
-
 
     pub async fn save_to_db(
         am_i_sender: bool,

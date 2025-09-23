@@ -2,9 +2,9 @@ use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::llm_provider::providers::llm_cancellable_request::make_cancellable_request;
 use crate::llm_provider::providers::shared::ollama_api::{
-    ollama_conversation_prepare_messages_with_tooling, OllamaAPIStreamingResponse
+    ollama_conversation_prepare_messages_with_tooling, OllamaAPIStreamingResponse,
 };
-use crate::llm_provider::providers::shared::shared_model_logic::{send_ws_update, send_tool_ws_update};
+use crate::llm_provider::providers::shared::shared_model_logic::{send_tool_ws_update, send_ws_update};
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
 
 use super::super::error::LLMProviderError;
@@ -19,9 +19,7 @@ use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, Ollama};
 use shinkai_message_primitives::schemas::prompts::Prompt;
-use shinkai_message_primitives::schemas::ws_types::{
-    WSUpdateHandler
-};
+use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_sqlite::SqliteManager;
 use std::env;
@@ -275,7 +273,14 @@ async fn process_stream(
                 .await;
 
                 // Return early
-                return Ok(LLMInferenceResponse::new(response_text, None, json!({}), Vec::new(), Vec::new(), None));
+                return Ok(LLMInferenceResponse::new(
+                    response_text,
+                    None,
+                    json!({}),
+                    Vec::new(),
+                    Vec::new(),
+                    None,
+                ));
             }
         }
 
@@ -305,7 +310,7 @@ async fn process_stream(
                 match data_resp {
                     Ok(data) => {
                         previous_json_chunk = "".to_string();
-                        
+
                         // Handle thinking tokens
                         if let Some(thinking) = &data.message.thinking {
                             if !thinking.is_empty() {
@@ -323,7 +328,7 @@ async fn process_stream(
                                     )
                                     .await;
                                 }
-                                
+
                                 // Stream thinking content immediately via WebSocket
                                 let _ = send_ws_update(
                                     &ws_manager_trait,
@@ -335,15 +340,15 @@ async fn process_stream(
                                     None,
                                 )
                                 .await;
-                                
+
                                 // Also accumulate for final response
                                 thinking_content.push_str(thinking);
                             }
                         }
-                        
+
                         // Handle regular content tokens
                         if !data.message.content.is_empty() {
-                            // If we were processing thinking and now we have content, 
+                            // If we were processing thinking and now we have content,
                             // close the thinking tags
                             if thinking_started && !thinking_ended {
                                 thinking_ended = true;
@@ -405,7 +410,8 @@ async fn process_stream(
                                     format!("Tool Call Detected: Name: {}, Arguments: {:?}", name, arguments).as_str(),
                                 );
 
-                                let _ = send_tool_ws_update(&ws_manager_trait, inbox_name.clone(), &function_call).await;
+                                let _ =
+                                    send_tool_ws_update(&ws_manager_trait, inbox_name.clone(), &function_call).await;
                             }
                         }
 
@@ -476,7 +482,11 @@ async fn process_stream(
 
     Ok(LLMInferenceResponse::new(
         regular_content,
-        if thinking_content.is_empty() { None } else { Some(thinking_content) },
+        if thinking_content.is_empty() {
+            None
+        } else {
+            Some(thinking_content)
+        },
         json!({}),
         final_function_calls,
         Vec::new(),
@@ -537,13 +547,13 @@ async fn handle_non_streaming_response(
                         if let Some(content_str) = content.as_str() {
                             // Handle thinking content in non-streaming response
                             let mut final_content = String::new();
-                            
+
                             // Extract thinking content for separate handling
                             let thinking_content = message.get("thinking").and_then(|t| t.as_str()).filter(|s| !s.is_empty());
-                            
+
                             // Add regular content
                             final_content.push_str(content_str);
-                            
+
                             let mut function_calls = Vec::new();
 
                             if let Some(tool_calls) = message.get("tool_calls").and_then(|tc| tc.as_array()) {

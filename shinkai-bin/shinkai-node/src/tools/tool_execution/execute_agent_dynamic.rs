@@ -1,10 +1,8 @@
-
-
 use crate::llm_provider::job_manager::JobManager;
-use crate::tools::agent_execution::v2_create_and_send_job_message_for_agent;
-use crate::tools::tool_generation::v2_send_basic_job_message_for_existing_job;
 use crate::managers::IdentityManager;
 use crate::network::Node;
+use crate::tools::agent_execution::v2_create_and_send_job_message_for_agent;
+use crate::tools::tool_generation::v2_send_basic_job_message_for_existing_job;
 use ed25519_dalek::SigningKey;
 use serde_json::{Map, Value};
 use shinkai_message_primitives::schemas::{inbox_name::InboxName, shinkai_name::ShinkaiName};
@@ -12,7 +10,8 @@ use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::error::ToolError;
 use std::sync::Arc;
 use tokio::{
-    sync::Mutex, time::{sleep, Duration}
+    sync::Mutex,
+    time::{sleep, Duration},
 };
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;

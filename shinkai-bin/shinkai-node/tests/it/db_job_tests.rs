@@ -25,8 +25,7 @@ fn setup_test_db() -> SqliteManager {
     let temp_file = NamedTempFile::new().unwrap();
     let db_path = PathBuf::from(temp_file.path());
     let api_url = String::new();
-    let model_type =
-        EmbeddingModelType::default();
+    let model_type = EmbeddingModelType::default();
 
     SqliteManager::new(db_path, api_url, model_type).unwrap()
 }
@@ -73,10 +72,20 @@ mod tests {
     use super::*;
     use shinkai_message_primitives::{
         schemas::{
-            identity::{StandardIdentity, StandardIdentityType}, inbox_name::InboxName, inbox_permission::InboxPermission, job::ForkedJob, shinkai_name::ShinkaiName, subprompts::SubPrompt
-        }, shinkai_message::shinkai_message_schemas::{IdentityPermissions, JobMessage}, shinkai_utils::{
-            encryption::unsafe_deterministic_encryption_keypair, job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder, signatures::{clone_signature_secret_key, unsafe_deterministic_signature_keypair}
-        }
+            identity::{StandardIdentity, StandardIdentityType},
+            inbox_name::InboxName,
+            inbox_permission::InboxPermission,
+            job::ForkedJob,
+            shinkai_name::ShinkaiName,
+            subprompts::SubPrompt,
+        },
+        shinkai_message::shinkai_message_schemas::{IdentityPermissions, JobMessage},
+        shinkai_utils::{
+            encryption::unsafe_deterministic_encryption_keypair,
+            job_scope::MinimalJobScope,
+            shinkai_message_builder::ShinkaiMessageBuilder,
+            signatures::{clone_signature_secret_key, unsafe_deterministic_signature_keypair},
+        },
     };
     use shinkai_sqlite::errors::SqliteManagerError;
 

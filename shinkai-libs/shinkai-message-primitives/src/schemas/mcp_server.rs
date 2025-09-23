@@ -114,8 +114,12 @@ mod tests {
 
     #[test]
     fn test_same_command_same_hash() {
-        let server1 = create_test_server(Some("npx @modelcontextprotocol/server-everything@2025.9.12".to_string()));
-        let server2 = create_test_server(Some("npx @modelcontextprotocol/server-everything@2025.9.12".to_string()));
+        let server1 = create_test_server(Some(
+            "npx @modelcontextprotocol/server-everything@2025.9.12".to_string(),
+        ));
+        let server2 = create_test_server(Some(
+            "npx @modelcontextprotocol/server-everything@2025.9.12".to_string(),
+        ));
 
         let hash1 = server1.get_command_hash();
         let hash2 = server2.get_command_hash();

@@ -1,13 +1,13 @@
 use async_channel::Sender;
-use shinkai_message_primitives::schemas::identity::{Identity, IdentityType, StandardIdentity};
 use core::panic;
 use ed25519_dalek::SigningKey;
+use shinkai_http_api::node_api_router::APIError;
+use shinkai_http_api::node_commands::NodeCommand;
+use shinkai_message_primitives::schemas::identity::{Identity, IdentityType, StandardIdentity};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{IdentityPermissions, RegistrationCodeType};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
-use shinkai_http_api::node_commands::NodeCommand;
-use shinkai_http_api::node_api_router::APIError;
 use std::time::Duration;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -102,7 +102,10 @@ pub async fn local_registration_profile_node(
 
         // use GetAllSubidentitiesDevicesAndLLMProviders to check if the subidentity is registered
         #[allow(clippy::type_complexity)]
-        let (res_all_subidentities_devices_and_llm_providers_sender, res_all_subidentities_devices_and_llm_providers_receiver): (
+        let (
+            res_all_subidentities_devices_and_llm_providers_sender,
+            res_all_subidentities_devices_and_llm_providers_receiver,
+        ): (
             async_channel::Sender<Result<Vec<Identity>, APIError>>,
             async_channel::Receiver<Result<Vec<Identity>, APIError>>,
         ) = async_channel::bounded(1);
@@ -112,11 +115,12 @@ pub async fn local_registration_profile_node(
             ))
             .await
             .unwrap();
-        let node2_all_subidentities_devices_and_llm_providers = res_all_subidentities_devices_and_llm_providers_receiver
-            .recv()
-            .await
-            .unwrap()
-            .unwrap();
+        let node2_all_subidentities_devices_and_llm_providers =
+            res_all_subidentities_devices_and_llm_providers_receiver
+                .recv()
+                .await
+                .unwrap()
+                .unwrap();
 
         eprintln!(
             "{} subidentity: {:?}",

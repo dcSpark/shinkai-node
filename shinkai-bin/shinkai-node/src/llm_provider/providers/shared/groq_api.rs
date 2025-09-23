@@ -10,7 +10,7 @@ use super::openai_api::openai_prepare_messages;
 
 pub fn groq_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> Result<PromptResult, LLMProviderError> {
     let mut prompt_copy = prompt.clone();
-    
+
     // Collect the last omni assets
     let last_omni_assets = prompt_copy
         .sub_prompts

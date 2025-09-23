@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::wallet_complementary::WalletSource;
 use shinkai_message_primitives::schemas::wallet_mixed::{
-    Address, AddressBalanceList, Asset, Balance, PublicAddress, Transaction
+    Address, AddressBalanceList, Asset, Balance, PublicAddress, Transaction,
 };
 use shinkai_message_primitives::schemas::x402_types::{Network, PaymentRequirements};
 use shinkai_non_rust_code::functions::x402;
@@ -14,11 +14,11 @@ use crate::wallet::wallet_error::WalletError;
 use super::wallet_manager::WalletEnum;
 use super::wallet_traits::{CommonActions, IsWallet, PaymentWallet, ReceivingWallet, SendActions, TransactionHash};
 use shinkai_non_rust_code::functions::ethers_wallet::create_wallet::{
-    self as ethers_create_wallet, Input as EthersWalletInput
+    self as ethers_create_wallet, Input as EthersWalletInput,
 };
 use shinkai_non_rust_code::functions::ethers_wallet::get_balance;
 use shinkai_non_rust_code::functions::ethers_wallet::recover_wallet::{
-    self as ethers_recover_wallet, Input as EthersRecoverInput, RecoverySource
+    self as ethers_recover_wallet, Input as EthersRecoverInput, RecoverySource,
 };
 use shinkai_non_rust_code::functions::x402::create_payment::{self, Input};
 

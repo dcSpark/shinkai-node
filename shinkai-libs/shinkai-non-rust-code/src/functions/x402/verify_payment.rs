@@ -4,7 +4,7 @@ use serde_json::json;
 use crate::{NonRustCodeRunnerFactory, NonRustRuntime, RunError};
 
 use shinkai_message_primitives::schemas::x402_types::{
-    FacilitatorConfig, Network, PaymentPayload, PaymentRequirements, Price
+    FacilitatorConfig, Network, PaymentPayload, PaymentRequirements, Price,
 };
 
 #[derive(Debug, Serialize, Clone)]

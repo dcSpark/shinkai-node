@@ -268,7 +268,8 @@ impl ShinkaiMessage {
 #[cfg(test)]
 mod tests {
     use crate::{
-        shinkai_message::shinkai_message::{EncryptedShinkaiBody, ExternalMetadata, ShinkaiVersion}, shinkai_utils::{encryption::EncryptionMethod, signatures::unsafe_deterministic_signature_keypair}
+        shinkai_message::shinkai_message::{EncryptedShinkaiBody, ExternalMetadata, ShinkaiVersion},
+        shinkai_utils::{encryption::EncryptionMethod, signatures::unsafe_deterministic_signature_keypair},
     };
 
     use super::*;

@@ -3,8 +3,8 @@ use crate::network::Node;
 use async_channel::Sender;
 use reqwest::StatusCode;
 use serde_json::Value;
-use shinkai_sqlite::SqliteManager;
 use shinkai_http_api::node_api_router::APIError;
+use shinkai_sqlite::SqliteManager;
 use std::sync::Arc;
 
 impl Node {

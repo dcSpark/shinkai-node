@@ -2,7 +2,7 @@ use libp2p::{
     futures::StreamExt,
     identify::{self, Event as IdentifyEvent},
     noise, ping,
-    swarm::{NetworkBehaviour, SwarmEvent, Config},
+    swarm::{Config, NetworkBehaviour, SwarmEvent},
     tcp, yamux, Multiaddr, PeerId, Swarm, Transport,
 };
 use tokio::io::{self, AsyncBufReadExt};
@@ -38,18 +38,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ping = ping::Behaviour::new(ping::Config::new());
 
     // Create behaviour
-    let behaviour = ClientBehaviour {
-        identify,
-        ping,
-    };
+    let behaviour = ClientBehaviour { identify, ping };
 
     // Create swarm with proper configuration
     let mut swarm = Swarm::new(transport, behaviour, local_peer_id, Config::with_tokio_executor());
 
     // Connect to relay server
-    let relay_addr: Multiaddr = "/ip4/127.0.0.1/tcp/8080"
-        .parse()
-        .expect("Valid multiaddr");
+    let relay_addr: Multiaddr = "/ip4/127.0.0.1/tcp/8080".parse().expect("Valid multiaddr");
 
     println!("Connecting to relay at: {}", relay_addr);
     swarm.dial(relay_addr)?;
@@ -93,4 +88,4 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
-} 
+}

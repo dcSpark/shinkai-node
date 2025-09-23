@@ -1,8 +1,8 @@
 use log::info;
 use regex::Regex;
 use reqwest::{Client, StatusCode};
-use std::collections::HashSet;
 use serde_yaml::Value as YamlValue;
+use std::collections::HashSet;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -51,42 +51,25 @@ pub fn parse_github_url(url: &str) -> Result<GitHubRepo, GitHubMcpError> {
 }
 
 /// Fetch a file from a GitHub repository
-pub async fn fetch_github_file(
-    client: &Client,
-    owner: &str,
-    repo: &str,
-    path: &str,
-) -> Result<String, GitHubMcpError> {
-    let url = format!(
-        "https://raw.githubusercontent.com/{}/{}/main/{}",
-        owner, repo, path
-    );
+pub async fn fetch_github_file(client: &Client, owner: &str, repo: &str, path: &str) -> Result<String, GitHubMcpError> {
+    let url = format!("https://raw.githubusercontent.com/{}/{}/main/{}", owner, repo, path);
 
     info!("Fetching file from GitHub: {}", url);
 
     let response = client.get(&url).send().await.map_err(GitHubMcpError::RequestError)?;
     if response.status().is_success() {
-        return response
-            .text()
-            .await
-            .map_err(GitHubMcpError::RequestError);
+        return response.text().await.map_err(GitHubMcpError::RequestError);
     }
 
     // Try with master branch if main fails
-    let master_url = format!(
-        "https://raw.githubusercontent.com/{}/{}/master/{}",
-        owner, repo, path
-    );
+    let master_url = format!("https://raw.githubusercontent.com/{}/{}/master/{}", owner, repo, path);
     let master_response = client
         .get(&master_url)
         .send()
         .await
         .map_err(GitHubMcpError::RequestError)?;
     if master_response.status().is_success() {
-        return master_response
-            .text()
-            .await
-            .map_err(GitHubMcpError::RequestError);
+        return master_response.text().await.map_err(GitHubMcpError::RequestError);
     }
 
     Err(GitHubMcpError::HttpStatusError {

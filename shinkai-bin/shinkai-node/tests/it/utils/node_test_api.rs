@@ -8,7 +8,7 @@ use shinkai_message_primitives::schemas::identity::{Identity, IdentityType, Stan
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    IdentityPermissions, MessageSchemaType, RegistrationCodeType
+    IdentityPermissions, MessageSchemaType, RegistrationCodeType,
 };
 use shinkai_message_primitives::shinkai_utils::encryption::encryption_public_key_to_string;
 use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;

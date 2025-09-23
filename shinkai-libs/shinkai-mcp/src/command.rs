@@ -60,10 +60,7 @@ pub fn get_envs() -> HashMap<String, String> {
             }
         }
         Err(e) => {
-            error!(
-                "error executing default shell to grab environment variables: {}",
-                e
-            );
+            error!("error executing default shell to grab environment variables: {}", e);
             HashMap::new()
         }
     }
@@ -159,9 +156,16 @@ impl CommandWrappedInShellBuilder {
         I: IntoIterator<Item = (S, S)>,
         S: AsRef<OsStr>,
     {
-        self.envs = Some(envs.into_iter()
-            .map(|(k, v)| (k.as_ref().to_string_lossy().to_string(), v.as_ref().to_string_lossy().to_string()))
-            .collect());
+        self.envs = Some(
+            envs.into_iter()
+                .map(|(k, v)| {
+                    (
+                        k.as_ref().to_string_lossy().to_string(),
+                        v.as_ref().to_string_lossy().to_string(),
+                    )
+                })
+                .collect(),
+        );
         self
     }
 
@@ -260,7 +264,7 @@ impl CommandWrappedInShellBuilder {
         } else {
             self.program.clone()
         };
-        
+
         Self::wrapped_in_shell(command_with_args)
     }
 }

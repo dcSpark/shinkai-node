@@ -1,6 +1,7 @@
 use rusqlite::params;
 use shinkai_message_primitives::schemas::{
-    invoices::{Invoice, InvoiceRequestNetworkError}, shinkai_name::ShinkaiName
+    invoices::{Invoice, InvoiceRequestNetworkError},
+    shinkai_name::ShinkaiName,
 };
 
 use crate::{SqliteManager, SqliteManagerError};
@@ -426,7 +427,11 @@ mod tests {
     use super::*;
     use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use shinkai_message_primitives::schemas::{
-        invoices::InvoiceStatusEnum, shinkai_name::ShinkaiName, shinkai_tool_offering::{ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry}, wallet_mixed::{NetworkIdentifier, PublicAddress}, x402_types::Network
+        invoices::InvoiceStatusEnum,
+        shinkai_name::ShinkaiName,
+        shinkai_tool_offering::{ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry},
+        wallet_mixed::{NetworkIdentifier, PublicAddress},
+        x402_types::Network,
     };
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
@@ -435,8 +440,7 @@ mod tests {
         let temp_file = NamedTempFile::new().unwrap();
         let db_path = PathBuf::from(temp_file.path());
         let api_url = String::new();
-        let model_type =
-            EmbeddingModelType::default();
+        let model_type = EmbeddingModelType::default();
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }

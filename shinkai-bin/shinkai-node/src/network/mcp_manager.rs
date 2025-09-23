@@ -1,7 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::utils::github_mcp::{
-    extract_env_vars_from_smithery_yaml, extract_mcp_env_vars_from_readme, fetch_github_file, parse_github_url, GitHubMcpError, GitHubRepo
+    extract_env_vars_from_smithery_yaml, extract_mcp_env_vars_from_readme, fetch_github_file, parse_github_url,
+    GitHubMcpError, GitHubRepo,
 };
 use reqwest::Client;
 use rmcp::model::Tool;
@@ -9,7 +10,12 @@ use serde_json::Value;
 use shinkai_http_api::api_v2::api_v2_handlers_mcp_servers::AddMCPServerRequest;
 use shinkai_message_primitives::schemas::mcp_server::MCPServerType;
 use shinkai_tools_primitives::tools::{
-    mcp_server_tool::MCPServerTool, parameters::{Parameters, Property}, shinkai_tool::ShinkaiTool, tool_config::ToolConfig, tool_output_arg::ToolOutputArg, tool_types::ToolResult
+    mcp_server_tool::MCPServerTool,
+    parameters::{Parameters, Property},
+    shinkai_tool::ShinkaiTool,
+    tool_config::ToolConfig,
+    tool_output_arg::ToolOutputArg,
+    tool_types::ToolResult,
 };
 use toml::Table;
 

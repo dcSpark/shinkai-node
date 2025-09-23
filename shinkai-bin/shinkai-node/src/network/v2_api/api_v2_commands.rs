@@ -51,8 +51,8 @@ use shinkai_message_primitives::{
     },
     shinkai_utils::{
         encryption::{encryption_public_key_to_string, EncryptionMethod},
-        shinkai_message_builder::ShinkaiMessageBuilder,
         shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
+        shinkai_message_builder::ShinkaiMessageBuilder,
         signatures::signature_public_key_to_string,
     },
     shinkai_utils::{job_scope::MinimalJobScope, shinkai_time::ShinkaiStringTime},
@@ -71,7 +71,13 @@ use shinkai_tools_primitives::tools::{
 use std::collections::HashMap;
 use std::process::Command;
 use std::time::Instant;
-use std::{env, sync::{Arc, atomic::{AtomicBool, Ordering}}};
+use std::{
+    env,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+};
 use tokio::sync::Mutex;
 use tokio::time::Duration;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
@@ -879,8 +885,13 @@ impl Node {
             payload.force,
             Arc::clone(&is_migration_in_progress),
             true, // Check Ollama availability for API calls
-            Some((Arc::clone(&node_embedding_generator), Arc::clone(&node_default_embedding_model))), // Pass node references for update
-        ).await {
+            Some((
+                Arc::clone(&node_embedding_generator),
+                Arc::clone(&node_default_embedding_model),
+            )), // Pass node references for update
+        )
+        .await
+        {
             Ok(_) => {
                 // Migration started successfully
             }
@@ -934,16 +945,14 @@ impl Node {
             match Self::internal_scan_ollama_models().await {
                 Ok(available_models) => {
                     let model_name = target_model.to_string();
-                    let model_available = available_models.iter().any(|model| {
-                        model["name"].as_str()
-                            .map(|name| name == model_name)
-                            .unwrap_or(false)
-                    });
+                    let model_available = available_models
+                        .iter()
+                        .any(|model| model["name"].as_str().map(|name| name == model_name).unwrap_or(false));
 
                     if !model_available {
                         return Err(format!("Embedding model '{}' is not available in Ollama", model_name));
                     }
-                },
+                }
                 Err(_) => {
                     return Err("Cannot connect to Ollama to verify model availability".to_string());
                 }
@@ -964,7 +973,10 @@ impl Node {
 
         // Spawn migration task
         tokio::spawn(async move {
-            match db_clone.migrate_embeddings_to_new_model(&target_embedding_generator, &target_model_clone, force).await {
+            match db_clone
+                .migrate_embeddings_to_new_model(&target_embedding_generator, &target_model_clone, force)
+                .await
+            {
                 Ok(_) => {
                     shinkai_log(
                         ShinkaiLogOption::Node,
@@ -1020,9 +1032,10 @@ impl Node {
         }
 
         let is_migrating = is_migration_in_progress.load(Ordering::Relaxed);
-        
+
         // Get current embedding model for context
-        let current_model = db.get_default_embedding_model()
+        let current_model = db
+            .get_default_embedding_model()
             .unwrap_or_else(|_| EmbeddingModelType::default());
 
         let _ = res
@@ -1363,7 +1376,10 @@ impl Node {
                         return Ok(());
                     }
                 };
-                if let Err(err) = db.remove_tool(&tool.tool_router_key().to_string_without_version(), tool.tool_router_key().version().map(|v| v.to_string())) {
+                if let Err(err) = db.remove_tool(
+                    &tool.tool_router_key().to_string_without_version(),
+                    tool.tool_router_key().version().map(|v| v.to_string()),
+                ) {
                     eprintln!("Warning: Failed to remove agent tool: {}", err);
                 }
 
