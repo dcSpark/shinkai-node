@@ -1,6 +1,7 @@
 use shinkai_message_primitives::schemas::{
-    llm_message::{LlmMessage, DetailedFunctionCall}, llm_providers::serialized_llm_provider::LLMProviderInterface, prompts::Prompt
+    llm_message::LlmMessage, llm_providers::serialized_llm_provider::LLMProviderInterface, prompts::Prompt
 };
+use super::shared_model_logic::sanitize_tool_name;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -174,19 +175,7 @@ pub fn ollama_conversation_prepare_messages_with_tooling(
             .map(|mut tool| {
                 if let Some(functions) = tool.functions.as_mut() {
                     for function in functions {
-                        // Replace any characters that aren't alphanumeric, underscore, or hyphen
-                        function.name = function
-                            .name
-                            .chars()
-                            .map(|c| {
-                                if c.is_alphanumeric() || c == '_' || c == '-' {
-                                    c
-                                } else {
-                                    '_'
-                                }
-                            })
-                            .collect::<String>()
-                            .to_lowercase();
+                        function.name = sanitize_tool_name(&function.name);
                     }
                 }
                 tool
@@ -245,7 +234,7 @@ pub fn ollama_conversation_prepare_messages_with_tooling(
 mod tests {
     use serde_json::json;
     use shinkai_message_primitives::schemas::{
-        llm_providers::serialized_llm_provider::SerializedLLMProvider, subprompts::{SubPrompt, SubPromptAssetType, SubPromptType}
+        llm_message::DetailedFunctionCall, llm_providers::serialized_llm_provider::SerializedLLMProvider, subprompts::{SubPrompt, SubPromptAssetType, SubPromptType}
     };
 
     use super::*;

@@ -8,27 +8,7 @@ use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider:
 use shinkai_message_primitives::schemas::prompts::Prompt;
 use std::collections::HashMap;
 use uuid::Uuid;
-use super::shared_model_logic::get_image_type;
-
-fn sanitize_tool_name(name: &str) -> String {
-    let sanitized: String = name
-        .chars()
-        .map(|c| {
-            if c.is_alphanumeric() || c == '_' || c == '-' {
-                c.to_ascii_lowercase()
-            } else {
-                '_'
-            }
-        })
-        .collect();
-
-    // Ensure length is between 1 and 64 characters
-    if sanitized.is_empty() {
-        "tool".to_string()
-    } else {
-        sanitized.chars().take(64).collect()
-    }
-}
+use super::shared_model_logic::{get_image_type, sanitize_tool_name};
 
 pub fn claude_prepare_messages(
     model: &LLMProviderInterface,

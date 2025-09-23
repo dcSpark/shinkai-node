@@ -1,4 +1,4 @@
-use super::shared_model_logic::{get_image_type, get_video_type, get_audio_type};
+use super::shared_model_logic::{get_image_type, get_video_type, get_audio_type, sanitize_tool_name};
 use crate::llm_provider::error::LLMProviderError;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 use crate::managers::model_capabilities_manager::PromptResult;
@@ -301,9 +301,7 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
             }
 
             serde_json::json!({
-                "name": function.name.chars()
-                    .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c.to_ascii_lowercase() } else { '_' })
-                    .collect::<String>(),
+                "name": sanitize_tool_name(&function.name),
                 "description": function.description,
                 "parameters": function.parameters
             })
