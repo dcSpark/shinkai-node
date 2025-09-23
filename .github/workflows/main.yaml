@@ -37,7 +37,7 @@ jobs:
           ./scripts/update_tools.sh
 
       - name: Build testing image
-        run: docker build -t testing_image:${{ github.sha }} --build-arg COMMIT_SHA=${{ github.sha }} -f .github/Dockerfile .
+        run: docker build -t testing_image:${{ github.sha }} --build-arg COMMIT_SHA=${{ github.sha }} --build-arg AI_MODEL_CATALOG_BUILD=1 -f .github/Dockerfile .
 
   test-primitives:
     runs-on:

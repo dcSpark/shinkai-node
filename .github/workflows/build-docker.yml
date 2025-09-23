@@ -46,6 +46,7 @@ jobs:
           push: true
           build-args: |
             BUILD_TYPE=${{ inputs.build_type }}
+            AI_MODEL_CATALOG_BUILD=1
           tags: |
             dcspark/shinkai-node:${{ inputs.tag }}
             dcspark/shinkai-node:${{ inputs.build_type }}-latest
