@@ -24,6 +24,8 @@ jobs:
             key: linux-build-cargo-${{ hashFiles('**/Cargo.lock') }}
 
         - name: Build
+          env:
+            AI_MODEL_CATALOG_BUILD: 1
           run: cargo build --release
 
         - name: Upload binaries to release

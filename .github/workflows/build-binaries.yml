@@ -43,6 +43,8 @@ jobs:
 
 
       - name: Build
+        env:
+          AI_MODEL_CATALOG_BUILD: 1
         run: cargo build --release
 
       - name: Prepare bundle files
@@ -105,6 +107,7 @@ jobs:
           push: true
           build-args: |
             BUILD_TYPE=release
+            AI_MODEL_CATALOG_BUILD=1
           tags: |
             dcspark/shinkai-node:${{ github.ref_name }}
             dcspark/shinkai-node:release-latest
