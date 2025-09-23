@@ -7,9 +7,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{self};
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::LLMProviderInterface;
 use shinkai_message_primitives::schemas::prompts::Prompt;
-use shinkai_message_primitives::schemas::subprompts::{SubPrompt, SubPromptType};
 
-use super::shared_model_logic;
+use super::shared_model_logic::{self, sanitize_tool_name};
 
 #[derive(Debug, Deserialize)]
 pub struct OpenAIResponse {
@@ -140,30 +139,7 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
             .map(|mut tool| {
                 if let Some(functions) = tool.functions.as_mut() {
                     for function in functions {
-                        // Replace any characters that aren't alphanumeric, underscore, or hyphen
-                        let mut sanitized_name = function
-                            .name
-                            .chars()
-                            .map(|c| {
-                                if c.is_alphanumeric() || c == '_' || c == '-' {
-                                    c
-                                } else {
-                                    '_'
-                                }
-                            })
-                            .collect::<String>()
-                            .to_lowercase();
-                        
-                        // Truncate function name to OpenAI's 64-character limit
-                        // If name is too long, keep the end part (similar to agent_id truncation)
-                        let max_len = 64;
-                        if sanitized_name.len() > max_len {
-                            let chars: Vec<char> = sanitized_name.chars().collect();
-                            let start_index = chars.len() - max_len;
-                            sanitized_name = chars[start_index..].iter().collect();
-                        }
-                        
-                        function.name = sanitized_name;
+                        function.name = sanitize_tool_name(&function.name);
                     }
                 }
                 tool

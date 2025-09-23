@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 use shinkai_http_api::node_api_router::{APIError, SendResponseBody, SendResponseBodyData};
 use shinkai_message_primitives::{
     schemas::{
-        identity::Identity, inbox_name::InboxName, job::{ForkedJob, JobLike}, job_config::JobConfig, llm_providers::{common_agent_llm_provider::ProviderOrAgent, serialized_llm_provider::SerializedLLMProvider}, shinkai_name::{ShinkaiName, ShinkaiSubidentityType}, smart_inbox::{LLMProviderSubset, ProviderType, SmartInbox, V2SmartInbox}
+        identity::Identity, inbox_name::InboxName, inbox_permission::InboxPermission, job::{ForkedJob, JobLike}, job_config::JobConfig, llm_providers::{common_agent_llm_provider::ProviderOrAgent, serialized_llm_provider::SerializedLLMProvider}, shinkai_name::{ShinkaiName, ShinkaiSubidentityType}, smart_inbox::{LLMProviderSubset, ProviderType, SmartInbox, V2SmartInbox}
     }, shinkai_message::{
         shinkai_message::{MessageBody, MessageData}, shinkai_message_schemas::{
             APIChangeJobAgentRequest, ExportInboxMessagesFormat, JobCreationInfo, JobMessage, MessageSchemaType, V2ChatMessage
@@ -1371,7 +1371,7 @@ impl Node {
     pub async fn fork_job(
         db: Arc<SqliteManager>,
         _node_name: ShinkaiName,
-        _identity_manager: Arc<Mutex<IdentityManager>>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
         job_id: String,
         message_id: Option<String>,
         node_encryption_sk: EncryptionStaticKey,
@@ -1384,6 +1384,28 @@ impl Node {
             error: "Internal Server Error".to_string(),
             message: format!("Failed to retrieve job: {}", err),
         })?;
+
+        // Get the requesting identity to keep permissions aligned with the new forked job
+        let requesting_identity = {
+            let identity_manager = identity_manager.lock().await;
+            match identity_manager.get_main_identity() {
+                Some(Identity::Standard(identity)) => identity.clone(),
+                Some(_) => {
+                    return Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: "Main identity is not a standard identity".to_string(),
+                    });
+                }
+                None => {
+                    return Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: "Failed to get main identity".to_string(),
+                    });
+                }
+            }
+        };
 
         // Retrieve the message from the inbox
         let message_id = match message_id {
@@ -1455,6 +1477,24 @@ impl Node {
                 error: "Internal Server Error".to_string(),
                 message: format!("Failed to create new job: {}", err),
             })?;
+
+        let forked_inbox_name =
+            InboxName::get_job_inbox_name_from_params(forked_job_id.clone()).map_err(|err| APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to build forked inbox name: {}", err),
+            })?;
+
+        db.add_permission(
+            &forked_inbox_name.to_string(),
+            &requesting_identity,
+            InboxPermission::Admin,
+        )
+        .map_err(|err| APIError {
+            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            error: "Internal Server Error".to_string(),
+            message: format!("Failed to add permissions for forked job: {}", err),
+        })?;
 
         // Fork the messages
         let mut forked_message_map: HashMap<String, String> = HashMap::new();

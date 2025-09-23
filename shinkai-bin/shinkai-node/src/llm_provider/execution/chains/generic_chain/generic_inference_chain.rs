@@ -1289,34 +1289,51 @@ impl GenericInferenceChain {
                         }
                     };
 
+                    let original_response = function_response.response.clone();
                     let max_input_tokens = ModelCapabilitiesManager::get_max_input_tokens(&provider_interface);
                     let max_tokens_for_response = ((max_input_tokens as f64 * 0.9) as usize).max(1024); // Allow 90% of the context window, minimum 1024 tokens
-                    let response_tokens = count_tokens_from_message_llama3(&function_response.response);
-                    if response_tokens > max_tokens_for_response {
+                    let response_tokens = count_tokens_from_message_llama3(&original_response);
+                    let response_exceeded_limit = response_tokens > max_tokens_for_response;
+
+                    if response_exceeded_limit {
+                        // Tell the LLM why the tool response was skipped while keeping user visibility of the original output.
                         function_response.response = json!({
                             "max_tokens_for_response": max_tokens_for_response,
                             "max_input_tokens": max_input_tokens,
                             "response_tokens": response_tokens,
                             "response": "IMPORTANT: Function response exceeded model context window, try again with a smaller response or a more capable model.",
-                        }).to_string();
+                        })
+                        .to_string();
                     }
+
+                    let user_visible_response = if response_exceeded_limit {
+                        json!({
+                            "error": format!("This tool response exceeded the model context window ({} tokens > allowed {}).", response_tokens, max_tokens_for_response),
+                            "new_response": function_response.response,
+                            "original_response": original_response,
+                        }).to_string()
+                    } else {
+                        original_response.clone()
+                    };
 
                     let mut function_call_with_router_key = function_call.clone();
                     function_call_with_router_key.tool_router_key =
                         Some(shinkai_tool.tool_router_key().to_string_without_version());
-                    function_call_with_router_key.response = Some(function_response.response.clone());
+                    function_call_with_router_key.response = Some(user_visible_response.clone());
                     tool_calls_history.push(function_call_with_router_key);
 
-                    // Trigger WS update after receiving function_response
+                    // Trigger WS update after receiving function_response (show user the full tool output when available)
+                    let mut user_function_response = function_response.clone();
+                    user_function_response.response = user_visible_response.clone();
                     Self::trigger_ws_update(
                         &ws_manager_trait,
                         &Some(full_job.job_id.clone()),
-                        &function_response,
+                        &user_function_response,
                         shinkai_tool.tool_router_key().to_string_without_version(),
                     )
                     .await;
 
-                    // Store all function responses to use in the next prompt
+                    // Store all function responses to use in the next prompt (LLM sees the sanitized version if needed)
                     iteration_function_responses.push(function_response);
                 }
 

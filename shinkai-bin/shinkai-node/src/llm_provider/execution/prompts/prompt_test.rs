@@ -52,6 +52,7 @@ mod tests {
             ToolOutputArg::empty(),
             None,
             "local:::__official_shinkai:::concat_strings".to_string(),
+            "1.0.0".to_string(),
         );
         let shinkai_tool = ShinkaiTool::Rust(tool, true);
 
@@ -216,6 +217,7 @@ mod tests {
             ToolOutputArg::empty(),
             None,
             "local:::__official_shinkai:::concat_strings".to_string(),
+            "1.0.0".to_string(),
         );
         let shinkai_tool = ShinkaiTool::Rust(tool, true);
 
