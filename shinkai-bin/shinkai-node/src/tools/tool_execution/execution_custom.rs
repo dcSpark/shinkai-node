@@ -93,7 +93,7 @@ pub async fn try_to_execute_rust_tool(
             )
             .await
         }
-        s if s == "local:::__official_shinkai:::shinkai_code_execution_processor" => {
+        s if s == "local:::__official_shinkai:::shinkai_python_code_execution" => {
             tool_implementation::native_tools::code_execution_processor::CodeExecutionProcessorTool::execute(
                 bearer,
                 tool_id,

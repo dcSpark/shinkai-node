@@ -826,13 +826,13 @@ impl GenericInferenceChain {
             let web_search_tool_key = "local:::__official_shinkai:::web_search";
             let download_pages_tool_key = "local:::__official_shinkai:::download_pages";
             let pdf_text_extractor_tool_key = "local:::__official_shinkai:::pdf_text_extractor";
-            let code_execution_processor_tool_key = "local:::__official_shinkai:::shinkai_code_execution_processor";
+            let code_execution_processor_tool_key = "local:::__official_shinkai:::shinkai_python_code_execution";
 
             let web_search_tools = vec![
                 (web_search_tool_key, "Web search tool"),
                 (download_pages_tool_key, "Download pages tool"),
                 (pdf_text_extractor_tool_key, "PDF text extractor tool"),
-                (code_execution_processor_tool_key, "Code execution processor tool"),
+                (code_execution_processor_tool_key, "Python code execution tool"),
             ];
 
             for (tool_key, tool_description) in web_search_tools {
@@ -959,10 +959,23 @@ impl GenericInferenceChain {
                     - Niche Information: If the answer would benefit from detailed information not widely known or understood (which might be found on the internet), use web sources directly rather than relying on the distilled knowledge from pretraining.
                     - Accuracy: If the cost of a small mistake or outdated information is high (e.g., using an outdated version of a software library or not knowing the date of the next game for a sports team), then use the web search tool.
                     
-                    ## shinkai_code_execution_processor
-                    Use the shinkai_code_execution_processor tool to execute code present in a code block. We support Python and TypeScript, but always prefer Python to write code.
+                    ## shinkai_python_code_execution
+                    Use the shinkai_python_code_execution tool to execute Python code if a user asks a question that can be resolved with code of if explicitly asked to do so.
+
                     - Generated code must be self-contained and must not rely on external libraries preferably.
-                    - If you must use external libraries, declare them explicitly at the top of the code block:
+                    - At the start of the file add a commented toml code block with the dependencies used and required to be downloaded by pip.
+                    - Only add the dependencies that are required to be downloaded by pip, do not add the dependencies that are already available in the Python environment.
+                    - This is an example of the commented script block that MUST be present before any python code or imports:
+                    ```python
+                    # /// script
+                    # dependencies = [
+                    #   \"dependency_name\",
+                    #   \"dependency_name_2\",
+                    # ]
+                    # ///
+                    ```
+                    - The function signature where the code is executed MUST be: `async def run(config: CONFIG, inputs: INPUTS) -> OUTPUT`
+                    - Here is an example of how to declare external libraries and how to run a minimal program:
                     ```python
                     # /// script
                     # dependencies = [
@@ -972,8 +985,27 @@ impl GenericInferenceChain {
                     # ///
                     import numpy
                     import matplotlib
+                    from typing import Any
+                    from shinkai_local_support import get_home_path
 
-                    ... YOUR CODE ...
+                    def CONFIG:
+                        pass
+                    
+                    def INPUTS:
+                        pass
+                    
+                    def OUTPUT:
+                        result: Any
+
+                    async def run(config: CONFIG, inputs: INPUTS) -> OUTPUT:
+                        # Get home directory path to save files
+                        home_dir = await get_home_path()
+
+                        ... REST OF THE CODE ...
+
+                        output = OUTPUT()
+                        output.result = ... WRITE THE RESULT HERE ...
+                        return output
                     ```
                     - **Plots, figures, and images MUST be saved to disk, never shown interactively.**
                     - When generating multiple plots, save each one with a clear, unique filename (`plot1.png`, `plot2.png`, etc.).
