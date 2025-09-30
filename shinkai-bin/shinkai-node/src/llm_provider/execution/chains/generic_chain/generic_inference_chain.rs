@@ -826,11 +826,13 @@ impl GenericInferenceChain {
             let web_search_tool_key = "local:::__official_shinkai:::web_search";
             let download_pages_tool_key = "local:::__official_shinkai:::download_pages";
             let pdf_text_extractor_tool_key = "local:::__official_shinkai:::pdf_text_extractor";
+            let code_execution_processor_tool_key = "local:::__official_shinkai:::shinkai_code_execution_processor";
 
             let web_search_tools = vec![
                 (web_search_tool_key, "Web search tool"),
                 (download_pages_tool_key, "Download pages tool"),
                 (pdf_text_extractor_tool_key, "PDF text extractor tool"),
+                (code_execution_processor_tool_key, "Code execution processor tool"),
             ];
 
             for (tool_key, tool_description) in web_search_tools {
@@ -944,13 +946,60 @@ impl GenericInferenceChain {
             if tools_allowed && web_search_enabled {
                 let today = chrono::Utc::now().format("%B %d, %Y").to_string();
                 let web_search_instructions = format!(
-                    "Today is {}.
+                    "You are a highly capable, thoughtful, and precise assistant. Your goal is to deeply understand the user's intent, ask clarifying questions when needed, think step-by-step through complex problems, provide clear and accurate answers, and proactively anticipate helpful follow-up information. Always prioritize being truthful, nuanced, insightful, and efficient, tailoring your responses specifically to the user's needs and preferences.
+                    Current date: {}.
+
+                    # Tools always available to use
+
+                    ## web_search
                     Use the web search tool to access up-to-date information from the web or when responding to the user requires information about their location. Some examples of when to use the web search tool include:
                     
                     - Local Information: Use the web search tool to respond to questions that require information about the user's location, such as the weather, local businesses, or events.
                     - Freshness: If up-to-date information on a topic could potentially change or enhance the answer, call the web search tool any time you would otherwise refuse to answer a question because your knowledge might be out of date.
                     - Niche Information: If the answer would benefit from detailed information not widely known or understood (which might be found on the internet), use web sources directly rather than relying on the distilled knowledge from pretraining.
-                    - Accuracy: If the cost of a small mistake or outdated information is high (e.g., using an outdated version of a software library or not knowing the date of the next game for a sports team), then use the web search tool.",
+                    - Accuracy: If the cost of a small mistake or outdated information is high (e.g., using an outdated version of a software library or not knowing the date of the next game for a sports team), then use the web search tool.
+                    
+                    ## shinkai_code_execution_processor
+                    Use the shinkai_code_execution_processor tool to execute code present in a code block. We support Python and TypeScript, but always prefer Python to write code.
+                    - Generated code must be self-contained and must not rely on external libraries preferably.
+                    - If you must use external libraries, declare them explicitly at the top of the code block:
+                    ```python
+                    # /// script
+                    # dependencies = [
+                    #   \"numpy\",
+                    #   \"matplotlib\",
+                    # ]
+                    # ///
+                    import numpy
+                    import matplotlib
+
+                    ... YOUR CODE ...
+                    ```
+                    - **Plots, figures, and images MUST be saved to disk, never shown interactively.**
+                    - When generating multiple plots, save each one with a clear, unique filename (`plot1.png`, `plot2.png`, etc.).
+                    - Always use `matplotlib.pyplot.savefig()` instead of `plt.show()`.
+                    - Always save into the user's home path with `shinkai_local_support.get_home_path()`. Example:
+                    ```python
+                    import matplotlib.pyplot as plt
+                    from shinkai_local_support import get_home_path
+                    plt.plot([1,2,3],[1,4,9])
+                    path = await get_home_path() + \"/plot.png\"
+                    plt.savefig(path)
+                    print(\"Saved figure to:\", path)
+                    ```
+
+                    ## download_pages
+                    Use the download_pages tool to retrieve full HTML/text from a webpage when:
+                    - A web_search result snippet is incomplete, truncated, or unclear.
+                    - The user explicitly asks to “open,” “browse,” or “extract details” from a link.
+                    - The task requires reading tables, long documents, or structured data that is not shown in the snippet.
+                    - Always state the purpose of downloading (e.g., “download to extract the pricing table” or “download to capture the full article body”).
+
+                    ## pdf_text_extractor
+                    Use the pdf_text_extractor tool when:
+                    - The user provides a PDF link and asks for a summary, search, or extraction.
+                    - The task requires reading tables, charts, or text from the PDF. Always extract before summarizing or quoting content. For long PDFs, summarize in sections and let the user request deeper dives into specific parts.
+                    ",
                     today
                 );
 
@@ -1130,17 +1179,63 @@ impl GenericInferenceChain {
 
                     // 6) Call workflow or tooling
                     // Find the ShinkaiTool that has a tool with the function name
-                    let shinkai_tool = tools.iter().find(|tool| {
+                    let mut tool_index = tools.iter().position(|tool| {
                         ToolRouterKey::sanitize(&tool.tool_router_key().name) == function_call.name
                             || tool.tool_router_key().to_string_without_version()
                                 == function_call.tool_router_key.clone().unwrap_or_default()
                     });
 
-                    if shinkai_tool.is_none() {
+                    if tool_index.is_none() {
+                        if let Some(router) = &tool_router {
+                            let mut candidate_keys = Vec::new();
+                            if let Some(explicit_key) = function_call.tool_router_key.clone() {
+                                if !explicit_key.is_empty() {
+                                    candidate_keys.push(explicit_key);
+                                }
+                            }
+
+                            if candidate_keys.is_empty() {
+                                if let Ok(headers) = router.sqlite_manager.get_all_tool_headers() {
+                                    if let Some(header) = headers.into_iter().find(|header| {
+                                        ToolRouterKey::from_string(&header.tool_router_key)
+                                            .map(|key| ToolRouterKey::sanitize(&key.name) == function_call.name)
+                                            .unwrap_or(false)
+                                    }) {
+                                        candidate_keys.push(header.tool_router_key);
+                                    }
+                                }
+                            }
+
+                            for candidate in candidate_keys {
+                                let normalized_key = match ToolRouterKey::from_string(&candidate) {
+                                    Ok(key) => key.to_string_without_version(),
+                                    Err(_) => candidate.clone(),
+                                };
+
+                                match router.get_tool_by_name(&normalized_key).await {
+                                    Ok(Some(tool)) => {
+                                        tools.push(tool);
+                                        tool_index = Some(tools.len() - 1);
+                                        break;
+                                    }
+                                    Ok(None) => continue,
+                                    Err(e) => {
+                                        eprintln!(
+                                            "Error retrieving tool '{}' for function '{}': {:?}",
+                                            normalized_key, function_call.name, e
+                                        );
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    let Some(tool_idx) = tool_index else {
                         eprintln!("Function not found: {}", function_call.name);
                         return Err(LLMProviderError::FunctionNotFound(function_call.name.clone()));
-                    }
-                    let shinkai_tool = shinkai_tool.unwrap();
+                    };
+                    let shinkai_tool = &tools[tool_idx];
 
                     if let Some(ref msg_id) = message_hash_id {
                         let trace_info = json!({

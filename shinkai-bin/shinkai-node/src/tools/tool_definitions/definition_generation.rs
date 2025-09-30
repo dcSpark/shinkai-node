@@ -20,6 +20,8 @@ pub fn get_rust_tools() -> Vec<ShinkaiToolHeader> {
         tool_implementation::native_tools::typescript_unsafe_processor::TypescriptUnsafeProcessorTool::new().tool,
     );
     custom_tools
+        .push(tool_implementation::native_tools::code_execution_processor::CodeExecutionProcessorTool::new().tool);
+    custom_tools
         .push(tool_implementation::native_tools::llm_map_reduce_processor::LlmMapReduceProcessorTool::new().tool);
     custom_tools.push(tool_implementation::native_tools::llm_prompt_processor::LlmPromptProcessorTool::new().tool);
     custom_tools.push(tool_implementation::native_tools::agent_processor::AgentPromptProcessorTool::new().tool);
