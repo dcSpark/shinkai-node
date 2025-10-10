@@ -185,7 +185,73 @@ pub fn ollama_conversation_prepare_messages_with_tooling(
 
     // Convert messages_json and tools_json to Vec<serde_json::Value>
     let messages_vec = match messages_json {
-        serde_json::Value::Array(arr) => arr,
+        serde_json::Value::Array(arr) => arr
+            .into_iter()
+            .map(|mut message| {
+                // Convert function role to tool format (Ollama expects "tool" role for function results)
+                if message.get("role") == Some(&serde_json::Value::String("function".to_string())) {
+                    // For Ollama, tool results don't need tool_call_id, just change the role to "tool"
+                    if let Some(obj) = message.as_object_mut() {
+                        obj.insert("role".to_string(), serde_json::Value::String("tool".to_string()));
+                        // Remove the name field as it's not needed for Ollama tool results
+                        obj.remove("name");
+                    }
+                }
+
+                // Convert function_call to tool_calls format if needed
+                if message.get("role") == Some(&serde_json::Value::String("assistant".to_string()))
+                    && message.get("function_call").is_some()
+                    && message.get("tool_calls").is_none()
+                {
+                    if let Some(function_call) = message.get("function_call").cloned() {
+                        // Extract function details for Ollama format
+                        let name = function_call.get("name").and_then(|n| n.as_str()).unwrap_or("unknown").to_string();
+                        let arguments_str = function_call.get("arguments").and_then(|a| a.as_str()).unwrap_or("{}");
+                        
+                        // Parse arguments string to a JSON object
+                        let arguments = if let Ok(serde_json::Value::Object(args)) = serde_json::from_str(arguments_str) {
+                            args
+                        } else {
+                            serde_json::Map::new()
+                        };
+
+                        // Generate Ollama-specific tool calls structure
+                        let tool_calls = serde_json::json!([
+                            {
+                                "function": {
+                                    "name": name,
+                                    "arguments": arguments
+                                }
+                            }
+                        ]);
+
+                        // Add tool_calls to the message and ensure content is empty string (not null)
+                        if let Some(obj) = message.as_object_mut() {
+                            obj.insert("tool_calls".to_string(), tool_calls);
+                            // Ollama requires content to be a string, use empty string if null
+                            if obj.get("content").is_none() || obj.get("content") == Some(&serde_json::Value::Null) {
+                                obj.insert("content".to_string(), serde_json::Value::String(String::new()));
+                            }
+                            obj.remove("function_call");
+                        }
+                    }
+                }
+
+                // Also handle tool_calls that might need content field adjustment
+                if message.get("role") == Some(&serde_json::Value::String("assistant".to_string()))
+                    && message.get("tool_calls").is_some()
+                {
+                    if let Some(obj) = message.as_object_mut() {
+                        // Ensure content is empty string if null (Ollama requirement)
+                        if obj.get("content").is_none() || obj.get("content") == Some(&serde_json::Value::Null) {
+                            obj.insert("content".to_string(), serde_json::Value::String(String::new()));
+                        }
+                    }
+                }
+
+                message
+            })
+            .collect(),
         _ => vec![],
     };
 
@@ -365,5 +431,137 @@ mod tests {
 
         let result = from_chat_completion_messages(llm_messages).unwrap();
         assert_eq!(result, expected_messages);
+    }
+
+    #[test]
+    fn test_ollama_conversation_with_tooling_function_call_conversion() {
+        // Test that function_call is converted to tool_calls format
+        let sub_prompts = vec![
+            SubPrompt::Omni(
+                SubPromptType::User,
+                "What's the weather?".to_string(),
+                vec![],
+                100,
+            ),
+            SubPrompt::Omni(
+                SubPromptType::Assistant,
+                "".to_string(),
+                vec![],
+                100,
+            ),
+        ];
+
+        let mut prompt = Prompt::new();
+        prompt.add_sub_prompts(sub_prompts);
+
+        // Manually create an LlmMessage with function_call to test conversion
+        let test_messages = vec![
+            LlmMessage {
+                role: Some("user".to_string()),
+                content: Some("What's the weather?".to_string()),
+                name: None,
+                function_call: None,
+                functions: None,
+                images: None,
+                videos: None,
+                audios: None,
+                tool_calls: None,
+            },
+            LlmMessage {
+                role: Some("assistant".to_string()),
+                content: None,
+                name: None,
+                function_call: Some(DetailedFunctionCall {
+                    name: "get_weather".to_string(),
+                    arguments: "{\"location\":\"Tokyo\"}".to_string(),
+                    id: Some("call_123".to_string()),
+                }),
+                functions: None,
+                images: None,
+                videos: None,
+                audios: None,
+                tool_calls: None,
+            },
+            LlmMessage {
+                role: Some("function".to_string()),
+                content: Some("Sunny, 25°C".to_string()),
+                name: Some("get_weather".to_string()),
+                function_call: None,
+                functions: None,
+                images: None,
+                videos: None,
+                audios: None,
+                tool_calls: None,
+            },
+        ];
+
+        // Convert to JSON to simulate what ollama_conversation_prepare_messages_with_tooling does
+        let messages_json = serde_json::to_value(&test_messages).unwrap();
+        let messages_vec: Vec<serde_json::Value> = match messages_json {
+            serde_json::Value::Array(arr) => arr
+                .into_iter()
+                .map(|mut message| {
+                    // Apply the same transformations as in ollama_conversation_prepare_messages_with_tooling
+                    if message.get("role") == Some(&serde_json::Value::String("function".to_string())) {
+                        if let Some(obj) = message.as_object_mut() {
+                            obj.insert("role".to_string(), serde_json::Value::String("tool".to_string()));
+                            obj.remove("name");
+                        }
+                    }
+
+                    if message.get("role") == Some(&serde_json::Value::String("assistant".to_string()))
+                        && message.get("function_call").is_some()
+                        && message.get("tool_calls").is_none()
+                    {
+                        if let Some(function_call) = message.get("function_call").cloned() {
+                            let name = function_call.get("name").and_then(|n| n.as_str()).unwrap_or("unknown").to_string();
+                            let arguments_str = function_call.get("arguments").and_then(|a| a.as_str()).unwrap_or("{}");
+                            
+                            let arguments = if let Ok(serde_json::Value::Object(args)) = serde_json::from_str(arguments_str) {
+                                args
+                            } else {
+                                serde_json::Map::new()
+                            };
+
+                            let tool_calls = serde_json::json!([
+                                {
+                                    "function": {
+                                        "name": name,
+                                        "arguments": arguments
+                                    }
+                                }
+                            ]);
+
+                            if let Some(obj) = message.as_object_mut() {
+                                obj.insert("tool_calls".to_string(), tool_calls);
+                                if obj.get("content").is_none() || obj.get("content") == Some(&serde_json::Value::Null) {
+                                    obj.insert("content".to_string(), serde_json::Value::String(String::new()));
+                                }
+                                obj.remove("function_call");
+                            }
+                        }
+                    }
+
+                    message
+                })
+                .collect(),
+            _ => vec![],
+        };
+
+        // Verify the conversions
+        assert_eq!(messages_vec.len(), 3);
+        
+        // Check assistant message has tool_calls instead of function_call
+        let assistant_msg = &messages_vec[1];
+        assert_eq!(assistant_msg.get("role").and_then(|r| r.as_str()), Some("assistant"));
+        assert!(assistant_msg.get("function_call").is_none(), "function_call should be removed");
+        assert!(assistant_msg.get("tool_calls").is_some(), "tool_calls should be present");
+        assert_eq!(assistant_msg.get("content").and_then(|c| c.as_str()), Some(""));
+        
+        // Check function role was converted to tool role
+        let tool_msg = &messages_vec[2];
+        assert_eq!(tool_msg.get("role").and_then(|r| r.as_str()), Some("tool"));
+        assert!(tool_msg.get("name").is_none(), "name should be removed for tool role");
+        assert_eq!(tool_msg.get("content").and_then(|c| c.as_str()), Some("Sunny, 25°C"));
     }
 }
