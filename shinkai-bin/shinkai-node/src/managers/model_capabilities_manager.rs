@@ -133,34 +133,8 @@ impl ModelCapabilitiesManager {
     // Static method to get capabilities of an agent model
     pub fn get_llm_provider_capabilities(model: &LLMProviderInterface) -> Vec<ModelCapability> {
         match model {
-            LLMProviderInterface::OpenAI(openai) => match openai.model_type.as_str() {
-                "gpt-5" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
-                "gpt-5-mini" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
-                "gpt-5-nano" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
-                "gpt-5-chat-latest" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
-                "gpt-4o" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
-                "gpt-4o-mini" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
-                "gpt-4.1-nano" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
-                "gpt-4.1-mini" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
-                "gpt-4.1" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
-                "o1-mini" => vec![ModelCapability::TextInference],
-                "gpt-3.5-turbo-1106" => vec![ModelCapability::TextInference],
-                "gpt-4-1106-preview" => vec![ModelCapability::TextInference],
-                "gpt-4-vision-preview" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
-                "4o-preview" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
-                "4o-mini" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
-                "dall-e-3" => vec![ModelCapability::ImageGeneration],
-                "o3-mini" => vec![ModelCapability::TextInference],
-                "gpt-4o-audio-preview" => vec![ModelCapability::TextInference, ModelCapability::AudioAnalysis],
-                model_type if model_type.starts_with("o3") => {
-                    vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference]
-                }
-                model_type if model_type.starts_with("o4-mini") => {
-                    vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference]
-                }
-                model_type if model_type.starts_with("gpt-3.5") => vec![ModelCapability::TextInference],
-                _ => vec![ModelCapability::TextInference], // Default to text inference for all other OpenAI models
-            },
+            LLMProviderInterface::OpenAI(openai) => Self::get_openai_capabilities(&openai.model_type),
+            LLMProviderInterface::OpenAILegacy(openai) => Self::get_openai_capabilities(&openai.model_type),
             LLMProviderInterface::TogetherAI(togetherai) => match togetherai.model_type.as_str() {
                 "togethercomputer/llama-2-70b-chat" => vec![ModelCapability::TextInference],
                 "yorickvp/llava-13b" => vec![ModelCapability::ImageAnalysis],
@@ -243,6 +217,37 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("regex") => {
                 vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
             }
+            _ => vec![ModelCapability::TextInference],
+        }
+    }
+
+    fn get_openai_capabilities(model_type: &str) -> Vec<ModelCapability> {
+        match model_type {
+            "gpt-5" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
+            "gpt-5-mini" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
+            "gpt-5-nano" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
+            "gpt-5-chat-latest" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
+            "gpt-4o" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
+            "gpt-4o-mini" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
+            "gpt-4.1-nano" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
+            "gpt-4.1-mini" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
+            "gpt-4.1" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
+            "o1-mini" => vec![ModelCapability::TextInference],
+            "gpt-3.5-turbo-1106" => vec![ModelCapability::TextInference],
+            "gpt-4-1106-preview" => vec![ModelCapability::TextInference],
+            "gpt-4-vision-preview" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
+            "4o-preview" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
+            "4o-mini" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
+            "dall-e-3" => vec![ModelCapability::ImageGeneration],
+            "o3-mini" => vec![ModelCapability::TextInference],
+            "gpt-4o-audio-preview" => vec![ModelCapability::TextInference, ModelCapability::AudioAnalysis],
+            model_type if model_type.starts_with("o3") => {
+                vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference]
+            }
+            model_type if model_type.starts_with("o4-mini") => {
+                vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference]
+            }
+            model_type if model_type.starts_with("gpt-3.5") => vec![ModelCapability::TextInference],
             _ => vec![ModelCapability::TextInference],
         }
     }
@@ -355,6 +360,29 @@ impl ModelCapabilitiesManager {
         }
     }
 
+    fn get_openai_cost(model_type: &str) -> ModelCost {
+        match model_type {
+            "gpt-5" => ModelCost::GoodValue,
+            "gpt-5-mini" => ModelCost::Cheap,
+            "gpt-5-nano" => ModelCost::VeryCheap,
+            "gpt-5-chat-latest" => ModelCost::GoodValue,
+            "gpt-4o" => ModelCost::GoodValue,
+            "gpt-3.5-turbo-1106" => ModelCost::VeryCheap,
+            "gpt-4o-mini" => ModelCost::VeryCheap,
+            "gpt-4-1106-preview" => ModelCost::GoodValue,
+            "gpt-4-vision-preview" => ModelCost::GoodValue,
+            "gpt-4.1" => ModelCost::GoodValue,
+            "gpt-4.1-nano" => ModelCost::VeryCheap,
+            "gpt-4.1-mini" => ModelCost::Cheap,
+            "dall-e-3" => ModelCost::GoodValue,
+            "o3-mini" => ModelCost::Cheap,
+            "o4-mini" => ModelCost::Cheap,
+            "o1-mini" => ModelCost::Cheap,
+            model_type if model_type.starts_with("o3") => ModelCost::Expensive,
+            _ => ModelCost::Unknown,
+        }
+    }
+
     fn get_gemini_cost(model_type: &str) -> ModelCost {
         match model_type {
             // Gemini 2.5 models (preview/experimental - more expensive due to restricted limits)
@@ -450,26 +478,8 @@ impl ModelCapabilitiesManager {
     // Static method to get cost of an agent model
     pub fn get_llm_provider_cost(model: &LLMProviderInterface) -> ModelCost {
         match model {
-            LLMProviderInterface::OpenAI(openai) => match openai.model_type.as_str() {
-                "gpt-5" => ModelCost::GoodValue,
-                "gpt-5-mini" => ModelCost::Cheap,
-                "gpt-5-nano" => ModelCost::VeryCheap,
-                "gpt-5-chat-latest" => ModelCost::GoodValue,
-                "gpt-4o" => ModelCost::GoodValue,
-                "gpt-3.5-turbo-1106" => ModelCost::VeryCheap,
-                "gpt-4o-mini" => ModelCost::VeryCheap,
-                "gpt-4-1106-preview" => ModelCost::GoodValue,
-                "gpt-4-vision-preview" => ModelCost::GoodValue,
-                "gpt-4.1" => ModelCost::GoodValue,
-                "gpt-4.1-nano" => ModelCost::VeryCheap,
-                "gpt-4.1-mini" => ModelCost::Cheap,
-                "dall-e-3" => ModelCost::GoodValue,
-                "o3-mini" => ModelCost::Cheap,
-                "o4-mini" => ModelCost::Cheap,
-                "o1-mini" => ModelCost::Cheap,
-                model_type if model_type.starts_with("o3") => ModelCost::Expensive,
-                _ => ModelCost::Unknown,
-            },
+            LLMProviderInterface::OpenAI(openai) => Self::get_openai_cost(&openai.model_type),
+            LLMProviderInterface::OpenAILegacy(openai) => Self::get_openai_cost(&openai.model_type),
             LLMProviderInterface::TogetherAI(togetherai) => match togetherai.model_type.as_str() {
                 "togethercomputer/llama-2-70b-chat" => ModelCost::Cheap,
                 "togethercomputer/llama3" => ModelCost::Cheap,
@@ -527,6 +537,7 @@ impl ModelCapabilitiesManager {
     pub fn get_llm_provider_privacy(model: &LLMProviderInterface) -> ModelPrivacy {
         match model {
             LLMProviderInterface::OpenAI(_) => ModelPrivacy::RemoteGreedy,
+            LLMProviderInterface::OpenAILegacy(_) => ModelPrivacy::RemoteGreedy,
             LLMProviderInterface::TogetherAI(_) => ModelPrivacy::RemoteGreedy,
             LLMProviderInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type().as_str() {
                 "FREE_TEXT_INFERENCE" => ModelPrivacy::RemoteGreedy,
@@ -575,19 +586,26 @@ impl ModelCapabilitiesManager {
         capabilities.iter().any(|(_, _, p)| p == &privacy)
     }
 
+    fn route_openai_prompt(
+        model: &LLMProviderInterface,
+        model_type: &str,
+        prompt: Prompt,
+    ) -> Result<PromptResult, ModelCapabilitiesManagerError> {
+        if model_type.starts_with("gpt-") {
+            let tiktoken_messages = openai_prepare_messages(model, prompt)?;
+            Ok(tiktoken_messages)
+        } else {
+            Err(ModelCapabilitiesManagerError::NotImplemented(model_type.to_string()))
+        }
+    }
+
     pub async fn route_prompt_with_model(
         prompt: Prompt,
         model: &LLMProviderInterface,
     ) -> Result<PromptResult, ModelCapabilitiesManagerError> {
         match model {
-            LLMProviderInterface::OpenAI(openai) => {
-                if openai.model_type.starts_with("gpt-") {
-                    let tiktoken_messages = openai_prepare_messages(model, prompt)?;
-                    Ok(tiktoken_messages)
-                } else {
-                    Err(ModelCapabilitiesManagerError::NotImplemented(openai.model_type.clone()))
-                }
-            }
+            LLMProviderInterface::OpenAI(openai) => Self::route_openai_prompt(model, &openai.model_type, prompt),
+            LLMProviderInterface::OpenAILegacy(openai) => Self::route_openai_prompt(model, &openai.model_type, prompt),
             LLMProviderInterface::TogetherAI(togetherai) => {
                 if togetherai.model_type.starts_with("togethercomputer/llama-2")
                     || togetherai.model_type.starts_with("meta-llama/Llama-3")
@@ -665,31 +683,34 @@ impl ModelCapabilitiesManager {
         }
     }
 
+    fn get_openai_max_tokens(model_type: &str) -> usize {
+        if model_type.starts_with("gpt-4o")
+            || model_type.starts_with("gpt-4-1106-preview")
+            || model_type.starts_with("gpt-4o-mini")
+            || model_type.starts_with("4o-mini")
+            || model_type.starts_with("gpt-4-vision-preview")
+            || model_type.starts_with("o1-mini")
+            || model_type.starts_with("o1-preview")
+        {
+            128_000
+        } else if model_type.starts_with("gpt-4.1") {
+            1_047_576
+        } else if model_type.starts_with("o3") || model_type.starts_with("o4-mini") {
+            200_000
+        } else if model_type.starts_with("gpt-5") {
+            400_000
+        } else if model_type.starts_with("gpt-3.5") {
+            16_384
+        } else {
+            200_000 // New default for OpenAI models
+        }
+    }
+
     /// Returns the maximum number of tokens allowed for the given model.
     pub fn get_max_tokens(model: &LLMProviderInterface) -> usize {
         match model {
-            LLMProviderInterface::OpenAI(openai) => {
-                if openai.model_type.starts_with("gpt-4o")
-                    || openai.model_type.starts_with("gpt-4-1106-preview")
-                    || openai.model_type.starts_with("gpt-4o-mini")
-                    || openai.model_type.starts_with("4o-mini")
-                    || openai.model_type.starts_with("gpt-4-vision-preview")
-                    || openai.model_type.starts_with("o1-mini")
-                    || openai.model_type.starts_with("o1-preview")
-                {
-                    128_000
-                } else if openai.model_type.starts_with("gpt-4.1") {
-                    1_047_576
-                } else if openai.model_type.starts_with("o3") || openai.model_type.starts_with("o4-mini") {
-                    200_000
-                } else if openai.model_type.starts_with("gpt-5") {
-                    400_000
-                } else if openai.model_type.starts_with("gpt-3.5") {
-                    16_384
-                } else {
-                    200_000 // New default for OpenAI models
-                }
-            }
+            LLMProviderInterface::OpenAI(openai) => Self::get_openai_max_tokens(&openai.model_type),
+            LLMProviderInterface::OpenAILegacy(openai) => Self::get_openai_max_tokens(&openai.model_type),
             LLMProviderInterface::TogetherAI(togetherai) => {
                 // Fill in the appropriate logic for GenericAPI
                 if togetherai.model_type == "mistralai/Mixtral-8x7B-Instruct-v0.1" {
@@ -852,31 +873,34 @@ impl ModelCapabilitiesManager {
         }
     }
 
+    fn get_openai_max_output_tokens(model_type: &str) -> usize {
+        if model_type.contains("4o-mini") || model_type.starts_with("gpt-4o") {
+            16_384
+        } else if model_type.starts_with("o1-preview") || model_type.starts_with("gpt-4.1") {
+            32768
+        } else if model_type.starts_with("o1-mini") {
+            65_536
+        } else if model_type.starts_with("o3") || model_type.starts_with("o4-mini") {
+            100_000
+        } else if model_type.starts_with("gpt-5-chat-latest") {
+            16_384
+        } else if model_type.starts_with("gpt-5-mini") {
+            128_000
+        } else if model_type.starts_with("gpt-5-nano") {
+            128_000
+        } else if model_type.starts_with("gpt-5") {
+            128_000
+        } else if model_type.starts_with("gpt-3.5") {
+            4096
+        } else {
+            32_000 // New default output tokens for OpenAI models
+        }
+    }
+
     pub fn get_max_output_tokens(model: &LLMProviderInterface) -> usize {
         match model {
-            LLMProviderInterface::OpenAI(openai) => {
-                if openai.model_type.contains("4o-mini") || openai.model_type.starts_with("gpt-4o") {
-                    16_384
-                } else if openai.model_type.starts_with("o1-preview") || openai.model_type.starts_with("gpt-4.1") {
-                    32768
-                } else if openai.model_type.starts_with("o1-mini") {
-                    65_536
-                } else if openai.model_type.starts_with("o3") || openai.model_type.starts_with("o4-mini") {
-                    100_000
-                } else if openai.model_type.starts_with("gpt-5-chat-latest") {
-                    16_384
-                } else if openai.model_type.starts_with("gpt-5-mini") {
-                    128_000
-                } else if openai.model_type.starts_with("gpt-5-nano") {
-                    128_000
-                } else if openai.model_type.starts_with("gpt-5") {
-                    128_000
-                } else if openai.model_type.starts_with("gpt-3.5") {
-                    4096
-                } else {
-                    32_000 // New default output tokens for OpenAI models
-                }
-            }
+            LLMProviderInterface::OpenAI(openai) => Self::get_openai_max_output_tokens(&openai.model_type),
+            LLMProviderInterface::OpenAILegacy(openai) => Self::get_openai_max_output_tokens(&openai.model_type),
             LLMProviderInterface::TogetherAI(_) => {
                 if Self::get_max_tokens(model) <= 8000 {
                     2800
@@ -1054,21 +1078,24 @@ impl ModelCapabilitiesManager {
         }
     }
 
+    fn openai_has_tool_capabilities(model_type: &str) -> bool {
+        // o1-mini and gpt-5-chat specifically does not support function calling
+        if model_type.starts_with("o1-mini") {
+            false
+        } else if model_type.starts_with("gpt-5-chat-latest") {
+            false
+        } else {
+            true
+        }
+    }
+
     /// Returns whether the given model supports tool/function calling
     /// capabilities
     pub fn has_tool_capabilities(model: &LLMProviderInterface, _stream: Option<bool>) -> bool {
         eprintln!("has tool capabilities model: {:?}", model);
         match model {
-            LLMProviderInterface::OpenAI(openai) => {
-                // o1-mini and gpt-5-chat specifically does not support function calling
-                if openai.model_type.starts_with("o1-mini") {
-                    false
-                } else if openai.model_type.starts_with("gpt-5-chat-latest") {
-                    false
-                } else {
-                    true
-                }
-            }
+            LLMProviderInterface::OpenAI(openai) => Self::openai_has_tool_capabilities(&openai.model_type),
+            LLMProviderInterface::OpenAILegacy(openai) => Self::openai_has_tool_capabilities(&openai.model_type),
             LLMProviderInterface::Ollama(model) => {
                 // For Ollama, check model type and respect the passed stream parameter
                 model.model_type.starts_with("llama3.1")
@@ -1148,15 +1175,18 @@ impl ModelCapabilitiesManager {
         }
     }
 
+    fn openai_has_reasoning_capabilities(model_type: &str) -> bool {
+        model_type.starts_with("o1")
+            || model_type.starts_with("o3")
+            || model_type.starts_with("o4")
+            || (model_type.starts_with("gpt-5") && model_type != "gpt-5-chat-latest")
+    }
+
     /// Returns whether the given model has reasoning capabilities
     pub fn has_reasoning_capabilities(model: &LLMProviderInterface) -> bool {
         match model {
-            LLMProviderInterface::OpenAI(openai) => {
-                openai.model_type.starts_with("o1")
-                    || openai.model_type.starts_with("o3")
-                    || openai.model_type.starts_with("o4")
-                    || (openai.model_type.starts_with("gpt-5") && openai.model_type != "gpt-5-chat-latest")
-            }
+            LLMProviderInterface::OpenAI(openai) => Self::openai_has_reasoning_capabilities(&openai.model_type),
+            LLMProviderInterface::OpenAILegacy(openai) => Self::openai_has_reasoning_capabilities(&openai.model_type),
             LLMProviderInterface::Ollama(ollama) => {
                 ollama.model_type.starts_with("deepseek-r1")
                     || ollama.model_type.starts_with("magistral")

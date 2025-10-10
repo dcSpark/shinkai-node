@@ -21,6 +21,7 @@ impl SerializedLLMProvider {
     pub fn get_provider_string(&self) -> String {
         match &self.model {
             LLMProviderInterface::OpenAI(_) => "openai",
+            LLMProviderInterface::OpenAILegacy(_) => "openai-legacy",
             LLMProviderInterface::TogetherAI(_) => "togetherai",
             LLMProviderInterface::Ollama(_) => "ollama",
             LLMProviderInterface::ShinkaiBackend(_) => "shinkai-backend",
@@ -39,6 +40,7 @@ impl SerializedLLMProvider {
     pub fn baml_provider_string(&self) -> String {
         match &self.model {
             LLMProviderInterface::OpenAI(_) => "openai".to_string(),
+            LLMProviderInterface::OpenAILegacy(_) => "openai".to_string(),
             LLMProviderInterface::TogetherAI(_) => "openai-generic".to_string(),
             LLMProviderInterface::Ollama(_) => "ollama".to_string(),
             LLMProviderInterface::ShinkaiBackend(_) => "shinkai-backend".to_string(),
@@ -56,6 +58,7 @@ impl SerializedLLMProvider {
     pub fn get_model_string(&self) -> String {
         match &self.model {
             LLMProviderInterface::OpenAI(openai) => openai.model_type.clone(),
+            LLMProviderInterface::OpenAILegacy(openailegacy) => openailegacy.model_type.clone(),
             LLMProviderInterface::TogetherAI(togetherai) => togetherai.model_type.clone(),
             LLMProviderInterface::Ollama(ollama) => ollama.model_type.clone(),
             LLMProviderInterface::ShinkaiBackend(shinkaibackend) => shinkaibackend.model_type.clone(),
@@ -118,6 +121,7 @@ impl SerializedLLMProvider {
 #[derive(Debug, Clone, PartialEq, ToSchema)]
 pub enum LLMProviderInterface {
     OpenAI(OpenAI),
+    OpenAILegacy(OpenAILegacy),
     TogetherAI(TogetherAI),
     Ollama(Ollama),
     ShinkaiBackend(ShinkaiBackend),
@@ -212,6 +216,11 @@ pub struct OpenAI {
     pub model_type: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
+pub struct OpenAILegacy {
+    pub model_type: String,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct OpenRouter {
     pub model_type: String,
@@ -257,6 +266,9 @@ impl FromStr for LLMProviderInterface {
         if s.starts_with("openai:") {
             let model_type = s.strip_prefix("openai:").unwrap_or("").to_string();
             Ok(LLMProviderInterface::OpenAI(OpenAI { model_type }))
+        } else if s.starts_with("openai-legacy:") {
+            let model_type = s.strip_prefix("openai-legacy:").unwrap_or("").to_string();
+            Ok(LLMProviderInterface::OpenAILegacy(OpenAILegacy { model_type }))
         } else if s.starts_with("togetherai:") {
             let model_type = s.strip_prefix("togetherai:").unwrap_or("").to_string();
             Ok(LLMProviderInterface::TogetherAI(TogetherAI { model_type }))
@@ -304,6 +316,10 @@ impl Serialize for LLMProviderInterface {
         match self {
             LLMProviderInterface::OpenAI(openai) => {
                 let model_type = format!("openai:{}", openai.model_type);
+                serializer.serialize_str(&model_type)
+            }
+            LLMProviderInterface::OpenAILegacy(openai) => {
+                let model_type = format!("openai-legacy:{}", openai.model_type);
                 serializer.serialize_str(&model_type)
             }
             LLMProviderInterface::TogetherAI(togetherai) => {
@@ -372,6 +388,9 @@ impl<'de> Visitor<'de> for LLMProviderInterfaceVisitor {
             "openai" => Ok(LLMProviderInterface::OpenAI(OpenAI {
                 model_type: parts.get(1).unwrap_or(&"").to_string(),
             })),
+            "openai-legacy" => Ok(LLMProviderInterface::OpenAILegacy(OpenAILegacy {
+                model_type: parts.get(1).unwrap_or(&"").to_string(),
+            })),
             "togetherai" => Ok(LLMProviderInterface::TogetherAI(TogetherAI {
                 model_type: parts.get(1).unwrap_or(&"").to_string(),
             })),
@@ -409,6 +428,7 @@ impl<'de> Visitor<'de> for LLMProviderInterfaceVisitor {
                 value,
                 &[
                     "openai",
+                    "openai-legacy",
                     "togetherai",
                     "ollama",
                     "shinkai-backend",
