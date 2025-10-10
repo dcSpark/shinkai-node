@@ -1,8 +1,10 @@
 use std::sync::Arc;
 
 use super::super::error::LLMProviderError;
+use super::LLMService;
 use super::shared::openai_api::openai_prepare_messages;
 use super::shared::shared_model_logic::{send_tool_ws_update, send_ws_update};
+use async_trait::async_trait;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
@@ -22,148 +24,151 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 #[allow(clippy::too_many_arguments)]
-pub async fn call_api(
-    openai: &OpenAI,
-    client: &Client,
-    url: Option<&String>,
-    api_key: Option<&String>,
-    prompt: Prompt,
-    model: LLMProviderInterface,
-    inbox_name: Option<InboxName>,
-    ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-    config: Option<JobConfig>,
-    _llm_stopper: Arc<LLMStopper>,
-    db: Arc<SqliteManager>,
-    tracing_message_id: Option<String>,
-) -> Result<LLMInferenceResponse, LLMProviderError> {
-    // Generate a per-request session ID so websocket chunks can be grouped by clients
-    let session_id = Uuid::new_v4().to_string();
-    if let Some(base_url) = url {
-        if let Some(key) = api_key {
-            // Use the Responses API endpoint
-            let url = format!("{}{}", base_url, "/v1/responses");
+#[async_trait]
+impl LLMService for OpenAI {
+    async fn call_api(
+        &self,
+        client: &Client,
+        url: Option<&String>,
+        api_key: Option<&String>,
+        prompt: Prompt,
+        model: LLMProviderInterface,
+        inbox_name: Option<InboxName>,
+        ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        config: Option<JobConfig>,
+        _llm_stopper: Arc<LLMStopper>,
+        db: Arc<SqliteManager>,
+        tracing_message_id: Option<String>,
+    ) -> Result<LLMInferenceResponse, LLMProviderError> {
+        // Generate a per-request session ID so websocket chunks can be grouped by clients
+        let session_id = Uuid::new_v4().to_string();
+        if let Some(base_url) = url {
+            if let Some(key) = api_key {
+                // Use the Responses API endpoint
+                let url = format!("{}{}", base_url, "/v1/responses");
 
-            // Enable streaming if requested (SSE)
-            let is_stream = config.as_ref().and_then(|c| c.stream).unwrap_or(true);
+                // Enable streaming if requested (SSE)
+                let is_stream = config.as_ref().and_then(|c| c.stream).unwrap_or(true);
 
-            // Prepare messages as before (role/content), then map to Responses 'input'
-            let result = openai_prepare_messages(&model, prompt)?;
-            let messages_json = match result.messages {
-                PromptResultEnum::Value(v) => v,
-                _ => {
-                    return Err(LLMProviderError::UnexpectedPromptResultVariant(
-                        "Expected Value variant in PromptResultEnum".to_string(),
-                    ))
-                }
-            };
-
-            // Transform Chat-style messages into Responses-style input blocks
-            let input_messages = transform_input_messages_for_responses(messages_json);
-
-            // Extract tools_json from the result
-            let tools_json = result.functions.unwrap_or_else(Vec::new);
-
-            // Responses API prefers 'max_output_tokens'
-            let mut payload = json!({
-                "model": openai.model_type,
-                "input": input_messages,
-                "max_output_tokens": result.remaining_output_tokens,
-                "stream": is_stream,
-            });
-
-            if !tools_json.is_empty() {
-                // Normalize tool definitions for Responses API: {type:function, name, description?, parameters?}
-                let mut tools_for_responses: Vec<JsonValue> = Vec::new();
-                for tool in tools_json.iter() {
-                    // Try to read name/description/parameters from either top-level or nested under "function"
-                    let fn_obj = tool.get("function");
-                    let name = tool
-                        .get("name")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string())
-                        .or_else(|| {
-                            fn_obj
-                                .and_then(|f| f.get("name"))
-                                .and_then(|v| v.as_str())
-                                .map(|s| s.to_string())
-                        });
-
-                    // Skip malformed tool entries with no name to avoid API errors
-                    let Some(name) = name else { continue };
-
-                    let description = tool
-                        .get("description")
-                        .cloned()
-                        .or_else(|| fn_obj.and_then(|f| f.get("description")).cloned());
-                    let parameters = tool
-                        .get("parameters")
-                        .cloned()
-                        .or_else(|| fn_obj.and_then(|f| f.get("parameters")).cloned())
-                        .unwrap_or_else(|| json!({"type":"object","properties":{}}));
-
-                    let mut obj = serde_json::Map::new();
-                    obj.insert("type".to_string(), json!("function"));
-                    obj.insert("name".to_string(), json!(name));
-                    if let Some(desc) = description {
-                        obj.insert("description".to_string(), desc);
+                // Prepare messages as before (role/content), then map to Responses 'input'
+                let result = openai_prepare_messages(&model, prompt)?;
+                let messages_json = match result.messages {
+                    PromptResultEnum::Value(v) => v,
+                    _ => {
+                        return Err(LLMProviderError::UnexpectedPromptResultVariant(
+                            "Expected Value variant in PromptResultEnum".to_string(),
+                        ))
                     }
-                    obj.insert("parameters".to_string(), parameters);
-                    tools_for_responses.push(JsonValue::Object(obj));
+                };
+
+                // Transform Chat-style messages into Responses-style input blocks
+                let input_messages = transform_input_messages_for_responses(messages_json);
+
+                // Extract tools_json from the result
+                let tools_json = result.functions.unwrap_or_else(Vec::new);
+
+                // Responses API prefers 'max_output_tokens'
+                let mut payload = json!({
+                    "model": self.model_type,
+                    "input": input_messages,
+                    "max_output_tokens": result.remaining_output_tokens,
+                    "stream": is_stream,
+                });
+
+                if !tools_json.is_empty() {
+                    // Normalize tool definitions for Responses API: {type:function, name, description?, parameters?}
+                    let mut tools_for_responses: Vec<JsonValue> = Vec::new();
+                    for tool in tools_json.iter() {
+                        // Try to read name/description/parameters from either top-level or nested under "function"
+                        let fn_obj = tool.get("function");
+                        let name = tool
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string())
+                            .or_else(|| {
+                                fn_obj
+                                    .and_then(|f| f.get("name"))
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.to_string())
+                            });
+
+                        // Skip malformed tool entries with no name to avoid API errors
+                        let Some(name) = name else { continue };
+
+                        let description = tool
+                            .get("description")
+                            .cloned()
+                            .or_else(|| fn_obj.and_then(|f| f.get("description")).cloned());
+                        let parameters = tool
+                            .get("parameters")
+                            .cloned()
+                            .or_else(|| fn_obj.and_then(|f| f.get("parameters")).cloned())
+                            .unwrap_or_else(|| json!({"type":"object","properties":{}}));
+
+                        let mut obj = serde_json::Map::new();
+                        obj.insert("type".to_string(), json!("function"));
+                        obj.insert("name".to_string(), json!(name));
+                        if let Some(desc) = description {
+                            obj.insert("description".to_string(), desc);
+                        }
+                        obj.insert("parameters".to_string(), parameters);
+                        tools_for_responses.push(JsonValue::Object(obj));
+                    }
+
+                    if !tools_for_responses.is_empty() {
+                        payload["tools"] = serde_json::Value::Array(tools_for_responses);
+                        payload["tool_choice"] = json!("auto");
+                    }
                 }
 
-                if !tools_for_responses.is_empty() {
-                    payload["tools"] = serde_json::Value::Array(tools_for_responses);
-                    payload["tool_choice"] = json!("auto");
+                // Add common sampling/options, reusing existing helper semantics
+                let is_reasoning_model = ModelCapabilitiesManager::has_reasoning_capabilities(&model);
+                add_options_to_payload_responses(&mut payload, config.as_ref(), is_reasoning_model);
+
+                let mut payload_log = payload.clone();
+                truncate_image_url_in_payload(&mut payload_log);
+
+                if let Some(ref msg_id) = tracing_message_id {
+                    if let Err(e) = db.add_tracing(
+                        msg_id,
+                        inbox_name.as_ref().map(|i| i.get_value()).as_deref(),
+                        "llm_payload",
+                        &payload_log,
+                    ) {
+                        // ignore tracing failures
+                    }
                 }
-            }
 
-            // Add common sampling/options, reusing existing helper semantics
-            let is_reasoning_model = ModelCapabilitiesManager::has_reasoning_capabilities(&model);
-            add_options_to_payload_responses(&mut payload, config.as_ref(), is_reasoning_model);
-
-            let mut payload_log = payload.clone();
-            truncate_image_url_in_payload(&mut payload_log);
-
-            if let Some(ref msg_id) = tracing_message_id {
-                if let Err(e) = db.add_tracing(
-                    msg_id,
-                    inbox_name.as_ref().map(|i| i.get_value()).as_deref(),
-                    "llm_payload",
-                    &payload_log,
-                ) {
-                    // ignore tracing failures
+                if is_stream {
+                    handle_streaming_response_responses(
+                        client,
+                        url,
+                        payload,
+                        key.to_string(),
+                        inbox_name,
+                        ws_manager_trait,
+                        _llm_stopper,
+                        session_id,
+                    )
+                    .await
+                } else {
+                    handle_non_streaming_response_responses(
+                        client,
+                        url,
+                        payload,
+                        key.to_string(),
+                        inbox_name,
+                        ws_manager_trait,
+                        session_id,
+                    )
+                    .await
                 }
-            }
-
-            if is_stream {
-                handle_streaming_response_responses(
-                    client,
-                    url,
-                    payload,
-                    key.to_string(),
-                    inbox_name,
-                    ws_manager_trait,
-                    _llm_stopper,
-                    session_id,
-                )
-                .await
             } else {
-                handle_non_streaming_response_responses(
-                    client,
-                    url,
-                    payload,
-                    key.to_string(),
-                    inbox_name,
-                    ws_manager_trait,
-                    session_id,
-                )
-                .await
+                Err(LLMProviderError::ApiKeyNotSet)
             }
         } else {
-            Err(LLMProviderError::ApiKeyNotSet)
+            Err(LLMProviderError::UrlNotSet)
         }
-    } else {
-        Err(LLMProviderError::UrlNotSet)
     }
 }
 

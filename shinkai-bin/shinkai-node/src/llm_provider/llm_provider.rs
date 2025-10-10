@@ -3,7 +3,6 @@ use std::sync::Arc;
 use super::error::LLMProviderError;
 use super::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use super::llm_stopper::LLMStopper;
-use super::providers::openai_responses;
 use super::providers::LLMService;
 use reqwest::Client;
 use serde_json::{Map, Value as JsonValue};
@@ -107,22 +106,39 @@ impl LLMProvider {
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         let response = match &self.model {
             LLMProviderInterface::OpenAI(openai) => {
-                openai_responses::call_api(
-                    openai,
-                    &self.client,
-                    self.external_url.as_ref(),
-                    self.api_key.as_ref(),
-                    prompt.clone(),
-                    self.model.clone(),
-                    inbox_name,
-                    ws_manager_trait,
-                    config,
-                    llm_stopper,
-                    self.db.clone(),
-                    tracing_message_id,
-                )
-                .await
+                openai
+                    .call_api(
+                        &self.client,
+                        self.external_url.as_ref(),
+                        self.api_key.as_ref(),
+                        prompt.clone(),
+                        self.model.clone(),
+                        inbox_name,
+                        ws_manager_trait,
+                        config,
+                        llm_stopper,
+                        self.db.clone(),
+                        tracing_message_id,
+                    )
+                    .await
             }
+            LLMProviderInterface::OpenAILegacy(openai) => {
+                openai
+                    .call_api(
+                        &self.client,
+                        self.external_url.as_ref(),
+                        self.api_key.as_ref(),
+                        prompt.clone(),
+                        self.model.clone(),
+                        inbox_name,
+                        ws_manager_trait,
+                        config,
+                        llm_stopper,
+                        self.db.clone(),
+                        tracing_message_id,
+                    )
+                    .await
+            }            
             LLMProviderInterface::TogetherAI(togetherai) => {
                 togetherai
                     .call_api(

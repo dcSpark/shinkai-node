@@ -16,7 +16,7 @@ use serde_json::Value as JsonValue;
 use serde_json::{self};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job_config::JobConfig;
-use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI};
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAILegacy};
 use shinkai_message_primitives::schemas::prompts::Prompt;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -58,7 +58,7 @@ pub struct PartialFunctionCall {
 }
 
 #[async_trait]
-impl LLMService for OpenAI {
+impl LLMService for OpenAILegacy {
     async fn call_api(
         &self,
         client: &Client,
@@ -212,6 +212,7 @@ impl LLMService for OpenAI {
         }
     }
 }
+
 fn finalize_function_call_sync(
     partial_fc: &mut PartialFunctionCall,
     function_calls: &mut Vec<FunctionCall>,
