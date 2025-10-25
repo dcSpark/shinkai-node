@@ -4,7 +4,7 @@ use std::str::FromStr;
 
 use shinkai_embedding::model_type::EmbeddingModelType;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-    LLMProviderInterface, SerializedLLMProvider,
+    LLMProviderInterface, SerializedLLMProvider
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
@@ -49,6 +49,7 @@ pub fn fetch_llm_provider_env(global_identity: String) -> Vec<SerializedLLMProvi
         .or_else(|_| env::var("INITIAL_LLM_PROVIDER_API_KEYS"))
         .unwrap_or_else(|_| "".to_string())
         .split(',')
+        .filter(|s| !s.is_empty())
         .map(|s| s.to_string())
         .collect();
 
@@ -56,6 +57,7 @@ pub fn fetch_llm_provider_env(global_identity: String) -> Vec<SerializedLLMProvi
         .or_else(|_| env::var("INITIAL_LLM_PROVIDER_URLS"))
         .unwrap_or_else(|_| "".to_string())
         .split(',')
+        .filter(|s| !s.is_empty())
         .map(|s| s.to_string())
         .collect();
 
@@ -63,6 +65,7 @@ pub fn fetch_llm_provider_env(global_identity: String) -> Vec<SerializedLLMProvi
         .or_else(|_| env::var("INITIAL_LLM_PROVIDER_MODELS"))
         .unwrap_or_else(|_| "".to_string())
         .split(',')
+        .filter(|s| !s.is_empty())
         .map(|s| s.to_string())
         .collect();
 
