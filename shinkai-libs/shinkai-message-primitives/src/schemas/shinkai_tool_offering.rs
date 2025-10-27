@@ -5,7 +5,7 @@ use utoipa::ToSchema;
 
 use super::x402_types::PaymentRequirements;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq, ToSchema)]
 pub enum UsageTypeInquiry {
     PerUse,
 }
