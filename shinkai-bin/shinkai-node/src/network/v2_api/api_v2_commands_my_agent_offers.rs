@@ -104,6 +104,7 @@ impl Node {
         bearer: String,
         invoice_id: String,
         data_for_tool: Value,
+        payment_header: Option<String>,
         node_name: ShinkaiName,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
@@ -213,7 +214,13 @@ impl Node {
         let payment = match my_agent_offerings_manager
             .lock()
             .await
-            .pay_invoice_and_send_receipt(invoice_id, data_for_tool, node_name.clone(), None)
+            .pay_invoice_and_send_receipt(
+                invoice_id,
+                data_for_tool,
+                payment_header.clone(),
+                node_name.clone(),
+                None,
+            )
             .await
         {
             Ok(payment) => payment,

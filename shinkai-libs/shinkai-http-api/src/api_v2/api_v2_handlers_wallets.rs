@@ -2,7 +2,11 @@ use async_channel::Sender;
 use serde::Deserialize;
 use serde_json::Value;
 use shinkai_message_primitives::schemas::{
-    coinbase_mpc_config::CoinbaseMPCWalletConfig, shinkai_tool_offering::UsageTypeInquiry, wallet_complementary::{WalletRole, WalletSource}, wallet_mixed::{Address, Asset, NetworkProtocolFamilyEnum}, x402_types::Network
+    coinbase_mpc_config::CoinbaseMPCWalletConfig,
+    shinkai_tool_offering::UsageTypeInquiry,
+    wallet_complementary::{WalletRole, WalletSource},
+    wallet_mixed::{Address, Asset, NetworkProtocolFamilyEnum},
+    x402_types::Network,
 };
 use utoipa::{OpenApi, ToSchema};
 use warp::Filter;
@@ -171,6 +175,8 @@ pub async fn create_local_wallet_handler(
 pub struct PayInvoiceRequest {
     pub invoice_id: String,
     pub data_for_tool: Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payment_header: Option<String>,
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -206,6 +212,7 @@ pub async fn pay_invoice_handler(
             bearer,
             invoice_id: payload.invoice_id,
             data_for_tool: payload.data_for_tool,
+            payment_header: payload.payment_header,
             res: res_sender,
         })
         .await

@@ -138,7 +138,7 @@ impl LLMProvider {
                         tracing_message_id,
                     )
                     .await
-            }            
+            }
             LLMProviderInterface::TogetherAI(togetherai) => {
                 togetherai
                     .call_api(
