@@ -4,7 +4,7 @@ use std::str::FromStr;
 
 use shinkai_embedding::model_type::EmbeddingModelType;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-    LLMProviderInterface, SerializedLLMProvider
+    LLMProviderInterface, SerializedLLMProvider,
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 

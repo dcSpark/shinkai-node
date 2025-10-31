@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
 use super::super::error::LLMProviderError;
-use super::LLMService;
 use super::shared::openai_api::openai_prepare_messages;
 use super::shared::shared_model_logic::{send_tool_ws_update, send_ws_update};
-use async_trait::async_trait;
+use super::LLMService;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
+use async_trait::async_trait;
 use futures::StreamExt;
 use reqwest::Client;
 use serde_json::json;

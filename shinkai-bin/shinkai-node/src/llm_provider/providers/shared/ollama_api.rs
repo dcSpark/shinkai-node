@@ -205,11 +205,16 @@ pub fn ollama_conversation_prepare_messages_with_tooling(
                 {
                     if let Some(function_call) = message.get("function_call").cloned() {
                         // Extract function details for Ollama format
-                        let name = function_call.get("name").and_then(|n| n.as_str()).unwrap_or("unknown").to_string();
+                        let name = function_call
+                            .get("name")
+                            .and_then(|n| n.as_str())
+                            .unwrap_or("unknown")
+                            .to_string();
                         let arguments_str = function_call.get("arguments").and_then(|a| a.as_str()).unwrap_or("{}");
-                        
+
                         // Parse arguments string to a JSON object
-                        let arguments = if let Ok(serde_json::Value::Object(args)) = serde_json::from_str(arguments_str) {
+                        let arguments = if let Ok(serde_json::Value::Object(args)) = serde_json::from_str(arguments_str)
+                        {
                             args
                         } else {
                             serde_json::Map::new()
@@ -437,18 +442,8 @@ mod tests {
     fn test_ollama_conversation_with_tooling_function_call_conversion() {
         // Test that function_call is converted to tool_calls format
         let sub_prompts = vec![
-            SubPrompt::Omni(
-                SubPromptType::User,
-                "What's the weather?".to_string(),
-                vec![],
-                100,
-            ),
-            SubPrompt::Omni(
-                SubPromptType::Assistant,
-                "".to_string(),
-                vec![],
-                100,
-            ),
+            SubPrompt::Omni(SubPromptType::User, "What's the weather?".to_string(), vec![], 100),
+            SubPrompt::Omni(SubPromptType::Assistant, "".to_string(), vec![], 100),
         ];
 
         let mut prompt = Prompt::new();
@@ -514,14 +509,19 @@ mod tests {
                         && message.get("tool_calls").is_none()
                     {
                         if let Some(function_call) = message.get("function_call").cloned() {
-                            let name = function_call.get("name").and_then(|n| n.as_str()).unwrap_or("unknown").to_string();
+                            let name = function_call
+                                .get("name")
+                                .and_then(|n| n.as_str())
+                                .unwrap_or("unknown")
+                                .to_string();
                             let arguments_str = function_call.get("arguments").and_then(|a| a.as_str()).unwrap_or("{}");
-                            
-                            let arguments = if let Ok(serde_json::Value::Object(args)) = serde_json::from_str(arguments_str) {
-                                args
-                            } else {
-                                serde_json::Map::new()
-                            };
+
+                            let arguments =
+                                if let Ok(serde_json::Value::Object(args)) = serde_json::from_str(arguments_str) {
+                                    args
+                                } else {
+                                    serde_json::Map::new()
+                                };
 
                             let tool_calls = serde_json::json!([
                                 {
@@ -534,7 +534,8 @@ mod tests {
 
                             if let Some(obj) = message.as_object_mut() {
                                 obj.insert("tool_calls".to_string(), tool_calls);
-                                if obj.get("content").is_none() || obj.get("content") == Some(&serde_json::Value::Null) {
+                                if obj.get("content").is_none() || obj.get("content") == Some(&serde_json::Value::Null)
+                                {
                                     obj.insert("content".to_string(), serde_json::Value::String(String::new()));
                                 }
                                 obj.remove("function_call");
@@ -550,14 +551,20 @@ mod tests {
 
         // Verify the conversions
         assert_eq!(messages_vec.len(), 3);
-        
+
         // Check assistant message has tool_calls instead of function_call
         let assistant_msg = &messages_vec[1];
         assert_eq!(assistant_msg.get("role").and_then(|r| r.as_str()), Some("assistant"));
-        assert!(assistant_msg.get("function_call").is_none(), "function_call should be removed");
-        assert!(assistant_msg.get("tool_calls").is_some(), "tool_calls should be present");
+        assert!(
+            assistant_msg.get("function_call").is_none(),
+            "function_call should be removed"
+        );
+        assert!(
+            assistant_msg.get("tool_calls").is_some(),
+            "tool_calls should be present"
+        );
         assert_eq!(assistant_msg.get("content").and_then(|c| c.as_str()), Some(""));
-        
+
         // Check function role was converted to tool role
         let tool_msg = &messages_vec[2];
         assert_eq!(tool_msg.get("role").and_then(|r| r.as_str()), Some("tool"));

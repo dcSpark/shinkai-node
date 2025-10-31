@@ -609,6 +609,7 @@ pub enum NodeCommand {
         bearer: String,
         invoice_id: String,
         data_for_tool: Value,
+        payment_header: Option<String>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiRejectInvoice {

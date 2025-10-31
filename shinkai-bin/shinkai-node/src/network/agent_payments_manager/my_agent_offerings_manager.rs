@@ -280,6 +280,7 @@ impl MyAgentOfferingsManager {
     pub async fn pay_invoice(
         &self,
         invoice: &Invoice,
+        payment_header: Option<String>,
         node_name: ShinkaiName,
     ) -> Result<Payment, AgentOfferingManagerError> {
         // Mocking the payment process
@@ -309,6 +310,30 @@ impl MyAgentOfferingsManager {
             );
 
             println!("Free tool payment created: {:?}", payment);
+            return Ok(payment);
+        }
+
+        // If a payment header (EIP-7702 authorization) was provided, use it instead of the node's wallet
+        if let Some(header) = payment_header {
+            let trimmed_header = header.trim().to_string();
+            if trimmed_header.is_empty() {
+                return Err(AgentOfferingManagerError::OperationFailed(
+                    "Provided payment header is empty".to_string(),
+                ));
+            }
+
+            println!(
+                "Using external x402 payment authorization for invoice {}",
+                invoice.invoice_id
+            );
+
+            let payment = Payment::new(
+                trimmed_header,
+                invoice.invoice_id.clone(),
+                Some(chrono::Utc::now().to_rfc3339()),
+                shinkai_message_primitives::schemas::invoices::PaymentStatusEnum::Signed,
+            );
+
             return Ok(payment);
         }
 
@@ -567,6 +592,7 @@ impl MyAgentOfferingsManager {
         &self,
         invoice_id: String,
         tool_data: Value,
+        payment_header: Option<String>,
         node_name: ShinkaiName,
         tracing_message_id: Option<String>,
     ) -> Result<Invoice, AgentOfferingManagerError> {
@@ -591,7 +617,9 @@ impl MyAgentOfferingsManager {
         }
 
         // Step 2: Pay the invoice
-        let payment = self.pay_invoice(&invoice, node_name.clone()).await?;
+        let payment = self
+            .pay_invoice(&invoice, payment_header.clone(), node_name.clone())
+            .await?;
 
         // Create a new updated invoice with the payment information
         let mut updated_invoice = invoice.clone();
@@ -675,7 +703,7 @@ impl MyAgentOfferingsManager {
         }
 
         // Step 2: Pay the invoice
-        let payment = self.pay_invoice(&invoice, node_name.clone()).await?;
+        let payment = self.pay_invoice(&invoice, None, node_name.clone()).await?;
 
         // Create a new updated invoice with the payment information
         let mut updated_invoice = invoice.clone();

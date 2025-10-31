@@ -883,6 +883,7 @@ fn micropayment_flow_test() {
                         bearer: api_v2_key.to_string(),
                         invoice_id: invoice_id.clone(),
                         data_for_tool: serde_json::json!({ "message": "Hello, Shinkai!" }),
+                        payment_header: None,
                         res: sender,
                     })
                     .await

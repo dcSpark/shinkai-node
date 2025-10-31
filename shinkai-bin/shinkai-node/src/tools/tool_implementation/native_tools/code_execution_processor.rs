@@ -1,10 +1,7 @@
 use async_trait::async_trait;
 use ed25519_dalek::SigningKey;
 use serde_json::{Map, Value};
-use shinkai_message_primitives::schemas::{
-    shinkai_name::ShinkaiName,
-    shinkai_tools::DynamicToolType,
-};
+use shinkai_message_primitives::schemas::{shinkai_name::ShinkaiName, shinkai_tools::DynamicToolType};
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::error::ToolError;
 use shinkai_tools_primitives::tools::parameters::Parameters;
