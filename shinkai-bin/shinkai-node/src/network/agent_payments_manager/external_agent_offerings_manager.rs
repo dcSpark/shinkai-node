@@ -902,9 +902,6 @@ impl ExtAgentOfferingsManager {
             local_invoice.result_str = Some(result);
             local_invoice.status = InvoiceStatusEnum::Processed;
             local_invoice.response_date_time = Some(Utc::now());
-
-            db.set_invoice(&local_invoice)
-                .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to set invoice: {:?}", e)))?;
         }
 
         // Step 4: if we got a successful result, we settle the payment
@@ -958,6 +955,28 @@ impl ExtAgentOfferingsManager {
                 ));
             }
         }
+
+        if let Some(resp) = settlement_response.as_ref() {
+            let updated_result = match &local_invoice.result_str {
+                Some(result_str) => {
+                    if let Ok(mut json_value) = serde_json::from_str::<serde_json::Value>(result_str) {
+                        json_value["payment_response"] = serde_json::Value::String(resp.clone());
+                        serde_json::to_string(&json_value).unwrap_or_else(|_| result_str.clone())
+                    } else {
+                        serde_json::json!({
+                            "result": result_str,
+                            "payment_response": resp
+                        })
+                        .to_string()
+                    }
+                }
+                None => serde_json::json!({ "payment_response": resp }).to_string(),
+            };
+            local_invoice.result_str = Some(updated_result);
+        }
+
+        db.set_invoice(&local_invoice)
+            .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to set invoice: {:?}", e)))?;
 
         // Old stuff below
 
@@ -1017,27 +1036,6 @@ impl ExtAgentOfferingsManager {
                 invoice.requester_name.to_string()
             };
 
-            let metadata_for_message = if let Some(resp) = &settlement_response {
-                if let Some(mut meta) = external_metadata.clone() {
-                    meta.other = resp.clone();
-                    if meta.intra_sender.is_empty() {
-                        meta.intra_sender = requester_node_name.to_string();
-                    }
-                    Some(meta)
-                } else {
-                    Some(ExternalMetadata {
-                        sender: self.node_name.to_string(),
-                        recipient: requester_node_name.to_string(),
-                        scheduled_time: Utc::now().to_rfc3339(),
-                        signature: String::new(),
-                        intra_sender: requester_node_name.to_string(),
-                        other: resp.clone(),
-                    })
-                }
-            } else {
-                external_metadata.clone()
-            };
-
             // Send result back to requester
             let message = ShinkaiMessageBuilder::create_generic_invoice_message(
                 local_invoice.clone(),
@@ -1049,7 +1047,7 @@ impl ExtAgentOfferingsManager {
                 "".to_string(),
                 receiver_node_name,
                 "main".to_string(),
-                metadata_for_message,
+                external_metadata.clone(),
             )
             .map_err(|e| AgentOfferingManagerError::OperationFailed(e.to_string()))?;
 
