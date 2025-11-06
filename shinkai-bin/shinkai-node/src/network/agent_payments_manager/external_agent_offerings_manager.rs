@@ -772,7 +772,7 @@ impl ExtAgentOfferingsManager {
         _requester_node_name: ShinkaiName,
         invoice: Invoice,
         // prehash_validation: String, // TODO: connect later on
-    ) -> Result<Invoice, AgentOfferingManagerError> {
+    ) -> Result<(Invoice, Option<String>), AgentOfferingManagerError> {
         // Step 1: verify that the invoice is actually real
         let db = self
             .db
@@ -902,14 +902,13 @@ impl ExtAgentOfferingsManager {
             local_invoice.result_str = Some(result);
             local_invoice.status = InvoiceStatusEnum::Processed;
             local_invoice.response_date_time = Some(Utc::now());
-
-            db.set_invoice(&local_invoice)
-                .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to set invoice: {:?}", e)))?;
         }
 
         // Step 4: if we got a successful result, we settle the payment
         // For testing maybe we can add a flag to avoid this step
         let is_testing = std::env::var("IS_TESTING").ok().map(|v| v == "1").unwrap_or(false);
+        let mut settlement_response: Option<String> = None;
+
         if !is_testing && !is_free_tool {
             let output = output_opt.as_ref().expect("Missing verification output");
             // Extract decoded_payment for settlement
@@ -931,7 +930,15 @@ impl ExtAgentOfferingsManager {
             let settle_result = settle_payment(settle_input).await.map_err(|e| {
                 AgentOfferingManagerError::OperationFailed(format!("Payment settlement failed: {:?}", e))
             })?;
-            if settle_result.valid.is_none() {
+            let shinkai_non_rust_code::functions::x402::settle_payment::Output { valid, invalid } =
+                settle_result;
+            if let Some(valid_output) = valid {
+                println!(
+                    "✅ Settlement succeeded for invoice {}. payment_response: {}",
+                    local_invoice.invoice_id, valid_output.payment_response
+                );
+                settlement_response = Some(valid_output.payment_response.clone());
+            } else if let Some(invalid_output) = invalid {
                 local_invoice.status = InvoiceStatusEnum::Failed;
                 db.set_invoice(&local_invoice).map_err(|e| {
                     AgentOfferingManagerError::OperationFailed(format!(
@@ -940,10 +947,36 @@ impl ExtAgentOfferingsManager {
                     ))
                 })?;
                 return Err(AgentOfferingManagerError::OperationFailed(
-                    "Payment settlement failed".to_string(),
+                    format!("Payment settlement failed: {}", invalid_output.error),
+                ));
+            } else {
+                return Err(AgentOfferingManagerError::OperationFailed(
+                    "Payment settlement returned no output".to_string(),
                 ));
             }
         }
+
+        if let Some(resp) = settlement_response.as_ref() {
+            let updated_result = match &local_invoice.result_str {
+                Some(result_str) => {
+                    if let Ok(mut json_value) = serde_json::from_str::<serde_json::Value>(result_str) {
+                        json_value["payment_response"] = serde_json::Value::String(resp.clone());
+                        serde_json::to_string(&json_value).unwrap_or_else(|_| result_str.clone())
+                    } else {
+                        serde_json::json!({
+                            "result": result_str,
+                            "payment_response": resp
+                        })
+                        .to_string()
+                    }
+                }
+                None => serde_json::json!({ "payment_response": resp }).to_string(),
+            };
+            local_invoice.result_str = Some(updated_result);
+        }
+
+        db.set_invoice(&local_invoice)
+            .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to set invoice: {:?}", e)))?;
 
         // Old stuff below
 
@@ -957,7 +990,7 @@ impl ExtAgentOfferingsManager {
         // payment? What happens if the job is done, but the requester is not happy with the result? should we
         // refund the payment?
 
-        Ok(local_invoice)
+        Ok((local_invoice, settlement_response))
     }
 
     ///
@@ -979,7 +1012,7 @@ impl ExtAgentOfferingsManager {
     ) -> Result<(), AgentOfferingManagerError> {
         eprintln!("💸 network_confirm_invoice_payment_and_process, requester_node_name: {:?}, invoice: {:?}, external_metadata: {:?}", requester_node_name, invoice, external_metadata);
         // Call confirm_invoice_payment_and_process to process the invoice
-        let local_invoice = self
+        let (local_invoice, settlement_response) = self
             .confirm_invoice_payment_and_process(requester_node_name.clone(), invoice.clone())
             .await?;
 
@@ -1014,7 +1047,7 @@ impl ExtAgentOfferingsManager {
                 "".to_string(),
                 receiver_node_name,
                 "main".to_string(),
-                external_metadata,
+                external_metadata.clone(),
             )
             .map_err(|e| AgentOfferingManagerError::OperationFailed(e.to_string()))?;
 

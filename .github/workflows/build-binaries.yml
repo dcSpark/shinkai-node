@@ -81,7 +81,9 @@ jobs:
           overwrite: true
   build-docker-image:
     name: Build and push Docker image to Docker Hub
-    runs-on: ubuntu-latest
+    runs-on:
+      group: Shinkai Runners
+      labels: self-hosted      
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

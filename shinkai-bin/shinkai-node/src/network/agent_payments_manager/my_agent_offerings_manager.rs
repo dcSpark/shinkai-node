@@ -57,6 +57,7 @@ pub struct MyAgentOfferingsManager {
     // pub crypto_invoice_manager: Arc<Option<Box<dyn CryptoInvoiceManagerTrait + Send + Sync>>>,
     pub libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
     pub agent_network_offerings: Arc<DashMap<String, (Value, DateTime<Utc>)>>,
+    pub invoice_payment_responses: Arc<DashMap<String, String>>,
 }
 
 impl MyAgentOfferingsManager {
@@ -83,6 +84,7 @@ impl MyAgentOfferingsManager {
             wallet_manager,
             libp2p_event_sender,
             agent_network_offerings: Arc::new(DashMap::new()),
+            invoice_payment_responses: Arc::new(DashMap::new()),
         }
     }
 
@@ -507,7 +509,75 @@ impl MyAgentOfferingsManager {
     /// # Returns
     ///
     /// * `Result<(), AgentOfferingManagerError>` - Ok if successful, otherwise an error.
-    pub async fn store_invoice_result(&self, invoice: &Invoice) -> Result<(), AgentOfferingManagerError> {
+    pub fn store_payment_response(&self, invoice_id: &str, response: String) {
+        println!(
+            "💾 Inserting payment response for {}: {}",
+            invoice_id, response
+        );
+        self.invoice_payment_responses.insert(invoice_id.to_string(), response);
+    }
+
+    pub fn get_payment_response(&self, invoice_id: &str) -> Option<String> {
+        self.invoice_payment_responses
+            .get(invoice_id)
+            .map(|entry| entry.value().clone())
+    }
+
+    fn extract_payment_response_from_result(result_str: &str) -> Option<String> {
+        fn search_value(value: &serde_json::Value) -> Option<String> {
+            if let Some(found) = value.get("payment_response").and_then(|v| v.as_str()) {
+                return Some(found.to_string());
+            }
+
+            match value {
+                serde_json::Value::Object(map) => {
+                    for child in map.values() {
+                        match child {
+                            serde_json::Value::Object(_) | serde_json::Value::Array(_) => {
+                                if let Some(found) = search_value(child) {
+                                    return Some(found);
+                                }
+                            }
+                            serde_json::Value::String(s) => {
+                                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(s) {
+                                    if let Some(found) = search_value(&parsed) {
+                                        return Some(found);
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    None
+                }
+                serde_json::Value::Array(items) => {
+                    for item in items {
+                        if let Some(found) = search_value(item) {
+                            return Some(found);
+                        }
+                    }
+                    None
+                }
+                serde_json::Value::String(s) => {
+                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(s) {
+                        search_value(&parsed)
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            }
+        }
+
+        serde_json::from_str::<serde_json::Value>(result_str)
+            .ok()
+            .and_then(|value| search_value(&value))
+    }
+
+    pub async fn store_invoice_result(
+        &self,
+        invoice: &Invoice,
+    ) -> Result<(), AgentOfferingManagerError> {
         let db = self
             .db
             .upgrade()
@@ -516,7 +586,21 @@ impl MyAgentOfferingsManager {
 
         db_write
             .set_invoice(invoice)
-            .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to store invoice: {:?}", e)))
+            .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to store invoice: {:?}", e)))?;
+
+        if let Some(result_str) = invoice.result_str.as_ref() {
+            if let Some(response) = Self::extract_payment_response_from_result(result_str) {
+                if !response.is_empty() {
+                    println!(
+                        "💾 Storing payment response for invoice {}: {}",
+                        invoice.invoice_id, response
+                    );
+                    self.store_payment_response(&invoice.invoice_id, response);
+                }
+            }
+        }
+
+        Ok(())
     }
 
     pub async fn request_agent_network_offering(

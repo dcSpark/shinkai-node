@@ -315,6 +315,7 @@ impl Node {
 
     pub async fn v2_api_list_invoices(
         db: Arc<SqliteManager>,
+        my_agent_offerings_manager: Arc<Mutex<MyAgentOfferingsManager>>,
         bearer: String,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
@@ -326,19 +327,32 @@ impl Node {
         // Fetch the list of invoices from the database
         match db.get_all_invoices() {
             Ok(invoices) => {
-                let invoices_value = match serde_json::to_value(invoices) {
-                    Ok(value) => value,
-                    Err(e) => {
-                        let api_error = APIError {
-                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                            error: "Internal Server Error".to_string(),
-                            message: format!("Failed to serialize invoices: {}", e),
-                        };
-                        let _ = res.send(Err(api_error)).await;
-                        return Ok(());
+                let manager_guard = my_agent_offerings_manager.lock().await;
+                let mut enriched_invoices = Vec::with_capacity(invoices.len());
+                for invoice in invoices {
+                    let mut invoice_value = match serde_json::to_value(&invoice) {
+                        Ok(value) => value,
+                        Err(e) => {
+                            let api_error = APIError {
+                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                error: "Internal Server Error".to_string(),
+                                message: format!("Failed to serialize invoice: {}", e),
+                            };
+                            let _ = res.send(Err(api_error)).await;
+                            return Ok(());
+                        }
+                    };
+
+                    if let Some(obj) = invoice_value.as_object_mut() {
+                        if let Some(response) = manager_guard.get_payment_response(&invoice.invoice_id) {
+                            obj.insert("payment_response".to_string(), Value::String(response));
+                        }
                     }
-                };
-                let _ = res.send(Ok(invoices_value)).await;
+                    enriched_invoices.push(invoice_value);
+                }
+                drop(manager_guard);
+
+                let _ = res.send(Ok(Value::Array(enriched_invoices))).await;
             }
             Err(e) => {
                 let api_error = APIError {
