@@ -19,7 +19,9 @@ on:
 
 jobs:
   build-docker-image:
-    runs-on: ubuntu-latest
+    runs-on:
+      group: Shinkai Runners
+      labels: self-hosted      
     name: Build Docker image
     steps:
       - name: Checkout repository
