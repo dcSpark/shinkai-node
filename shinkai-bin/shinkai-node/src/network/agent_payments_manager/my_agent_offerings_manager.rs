@@ -57,6 +57,7 @@ pub struct MyAgentOfferingsManager {
     // pub crypto_invoice_manager: Arc<Option<Box<dyn CryptoInvoiceManagerTrait + Send + Sync>>>,
     pub libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
     pub agent_network_offerings: Arc<DashMap<String, (Value, DateTime<Utc>)>>,
+    pub invoice_payment_responses: Arc<DashMap<String, String>>,
 }
 
 impl MyAgentOfferingsManager {
@@ -83,6 +84,7 @@ impl MyAgentOfferingsManager {
             wallet_manager,
             libp2p_event_sender,
             agent_network_offerings: Arc::new(DashMap::new()),
+            invoice_payment_responses: Arc::new(DashMap::new()),
         }
     }
 
@@ -507,16 +509,139 @@ impl MyAgentOfferingsManager {
     /// # Returns
     ///
     /// * `Result<(), AgentOfferingManagerError>` - Ok if successful, otherwise an error.
-    pub async fn store_invoice_result(&self, invoice: &Invoice) -> Result<(), AgentOfferingManagerError> {
+    pub fn store_payment_response(&self, invoice_id: &str, response: String) {
+        println!(
+            "💾 Inserting payment response for {}: {}",
+            invoice_id, response
+        );
+        self.invoice_payment_responses.insert(invoice_id.to_string(), response);
+    }
+
+    pub fn get_payment_response(&self, invoice_id: &str) -> Option<String> {
+        self.invoice_payment_responses
+            .get(invoice_id)
+            .map(|entry| entry.value().clone())
+    }
+
+    pub async fn store_invoice_result(
+        &self,
+        invoice: &Invoice,
+        payment_response: Option<String>,
+    ) -> Result<(), AgentOfferingManagerError> {
         let db = self
             .db
             .upgrade()
             .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
         let db_write = db;
 
+        let existing_invoice = db_write.get_invoice(&invoice.invoice_id).ok();
+
         db_write
             .set_invoice(invoice)
-            .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to store invoice: {:?}", e)))
+            .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to store invoice: {:?}", e)))?;
+
+        let mut final_response = payment_response;
+        if final_response.is_none() {
+            let payment_opt = if let Some(existing) = existing_invoice {
+                existing.payment.or_else(|| invoice.payment.clone())
+            } else {
+                invoice.payment.clone()
+            };
+
+            if let Some(payment) = payment_opt.as_ref() {
+                if payment.status == shinkai_message_primitives::schemas::invoices::PaymentStatusEnum::Signed {
+                    if let Some(price) = invoice.shinkai_offering.get_price_for_usage(&invoice.usage_type_inquiry) {
+                        if let shinkai_message_primitives::schemas::shinkai_tool_offering::ToolPrice::Payment(reqs) =
+                            price
+                        {
+                            let payment_requirements = reqs.clone();
+                            if let Some(first_req) = payment_requirements.first() {
+                                let verify_input = if first_req.asset.to_lowercase() == "usdc"
+                                    || first_req.asset == "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+                                    || first_req.asset == "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+                                {
+                                    let (address, decimals) = match first_req.network {
+                                        shinkai_message_primitives::schemas::x402_types::Network::BaseSepolia => {
+                                            ("0x036CbD53842c5426634e7929541eC2318f3dCF7e", 6)
+                                        }
+                                        shinkai_message_primitives::schemas::x402_types::Network::Base => {
+                                            ("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", 6)
+                                        }
+                                        _ => (first_req.asset.as_str(), 6),
+                                    };
+                                    let erc20_asset = shinkai_message_primitives::schemas::x402_types::ERC20Asset {
+                                        address: address.to_string(),
+                                        decimals,
+                                        eip712: shinkai_message_primitives::schemas::x402_types::EIP712 {
+                                            name: "USDC".to_string(),
+                                            version: "2".to_string(),
+                                        },
+                                    };
+                                    shinkai_non_rust_code::functions::x402::verify_payment::Input {
+                                        price: shinkai_message_primitives::schemas::x402_types::Price::ERC20TokenAmount(
+                                            shinkai_message_primitives::schemas::x402_types::ERC20TokenAmount {
+                                                amount: first_req.max_amount_required.clone(),
+                                                asset: erc20_asset,
+                                            },
+                                        ),
+                                        network: first_req.network.clone(),
+                                        pay_to: first_req.pay_to.clone(),
+                                        payment: Some(payment.transaction_signed.clone()),
+                                        x402_version: 1,
+                                        facilitator: shinkai_message_primitives::schemas::x402_types::FacilitatorConfig::default(),
+                                    }
+                                } else {
+                                    shinkai_non_rust_code::functions::x402::verify_payment::Input {
+                                        price: shinkai_message_primitives::schemas::x402_types::Price::Money(
+                                            first_req.max_amount_required.parse::<f64>().unwrap_or(0.0),
+                                        ),
+                                        network: first_req.network.clone(),
+                                        pay_to: first_req.pay_to.clone(),
+                                        payment: Some(payment.transaction_signed.clone()),
+                                        x402_version: 1,
+                                        facilitator: shinkai_message_primitives::schemas::x402_types::FacilitatorConfig::default(),
+                                    }
+                                };
+
+                                if let Ok(verify_output) =
+                                    shinkai_non_rust_code::functions::x402::verify_payment::verify_payment(verify_input).await
+                                {
+                                    if let Some(valid) = verify_output.valid {
+                                        let settle_input = shinkai_non_rust_code::functions::x402::settle_payment::Input {
+                                            payment: valid.decoded_payment,
+                                            accepts: payment_requirements.clone(),
+                                            facilitator: shinkai_message_primitives::schemas::x402_types::FacilitatorConfig::default(),
+                                        };
+                                        if let Ok(settle_output) =
+                                            shinkai_non_rust_code::functions::x402::settle_payment::settle_payment(settle_input).await
+                                        {
+                                            if let Some(valid_resp) = settle_output.valid {
+                                                final_response = Some(valid_resp.payment_response);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if final_response.is_none() {
+                    final_response = Some(payment.transaction_signed.clone());
+                }
+            }
+        }
+
+        if let Some(response) = final_response {
+            if !response.is_empty() {
+                println!(
+                    "💾 Storing payment response for invoice {}: {}",
+                    invoice.invoice_id, response
+                );
+                self.store_payment_response(&invoice.invoice_id, response);
+            }
+        }
+
+        Ok(())
     }
 
     pub async fn request_agent_network_offering(

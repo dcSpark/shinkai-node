@@ -1652,8 +1652,15 @@ impl Node {
             }
             NodeCommand::V2ApiListInvoices { bearer, res } => {
                 let db_clone = Arc::clone(&self.db);
+                let my_agent_payments_manager_clone = self.my_agent_payments_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_list_invoices(db_clone, bearer, res).await;
+                    let _ = Node::v2_api_list_invoices(
+                        db_clone,
+                        my_agent_payments_manager_clone,
+                        bearer,
+                        res,
+                    )
+                    .await;
                 });
             }
             NodeCommand::V2ApiAddCustomPrompt { bearer, prompt, res } => {

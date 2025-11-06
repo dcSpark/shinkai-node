@@ -747,8 +747,19 @@ pub async fn handle_network_message_cases(
                     match serde_json::from_str::<Invoice>(&content) {
                         Ok(invoice_result) => {
                             println!("Invoice result received: {:?}", invoice_result);
+                            let payment_response = {
+                                let value = message.external_metadata.other.clone();
+                                if value.is_empty() {
+                                    None
+                                } else {
+                                    Some(value)
+                                }
+                            };
                             let my_agent_offering_manager = my_agent_offering_manager.lock().await;
-                            if let Err(e) = my_agent_offering_manager.store_invoice_result(&invoice_result).await {
+                            if let Err(e) = my_agent_offering_manager
+                                .store_invoice_result(&invoice_result, payment_response)
+                                .await
+                            {
                                 shinkai_log(
                                     ShinkaiLogOption::Network,
                                     ShinkaiLogLevel::Error,
