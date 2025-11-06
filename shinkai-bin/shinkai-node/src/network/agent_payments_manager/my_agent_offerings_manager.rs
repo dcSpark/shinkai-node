@@ -524,15 +524,59 @@ impl MyAgentOfferingsManager {
     }
 
     fn extract_payment_response_from_result(result_str: &str) -> Option<String> {
+        fn search_value(value: &serde_json::Value) -> Option<String> {
+            if let Some(found) = value.get("payment_response").and_then(|v| v.as_str()) {
+                return Some(found.to_string());
+            }
+
+            match value {
+                serde_json::Value::Object(map) => {
+                    for child in map.values() {
+                        match child {
+                            serde_json::Value::Object(_) | serde_json::Value::Array(_) => {
+                                if let Some(found) = search_value(child) {
+                                    return Some(found);
+                                }
+                            }
+                            serde_json::Value::String(s) => {
+                                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(s) {
+                                    if let Some(found) = search_value(&parsed) {
+                                        return Some(found);
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    None
+                }
+                serde_json::Value::Array(items) => {
+                    for item in items {
+                        if let Some(found) = search_value(item) {
+                            return Some(found);
+                        }
+                    }
+                    None
+                }
+                serde_json::Value::String(s) => {
+                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(s) {
+                        search_value(&parsed)
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            }
+        }
+
         serde_json::from_str::<serde_json::Value>(result_str)
             .ok()
-            .and_then(|value| value.get("payment_response").and_then(|v| v.as_str()).map(|s| s.to_string()))
+            .and_then(|value| search_value(&value))
     }
 
     pub async fn store_invoice_result(
         &self,
         invoice: &Invoice,
-        payment_response: Option<String>,
     ) -> Result<(), AgentOfferingManagerError> {
         let db = self
             .db
@@ -544,27 +588,15 @@ impl MyAgentOfferingsManager {
             .set_invoice(invoice)
             .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to store invoice: {:?}", e)))?;
 
-        let mut final_response = payment_response
-            .or_else(|| {
-                invoice
-                    .result_str
-                    .as_ref()
-                    .and_then(|result| Self::extract_payment_response_from_result(result))
-            });
-
-        if final_response.is_none() {
-            if let Some(payment) = invoice.payment.as_ref() {
-                final_response = Some(payment.transaction_signed.clone());
-            }
-        }
-
-        if let Some(response) = final_response {
-            if !response.is_empty() {
-                println!(
-                    "💾 Storing payment response for invoice {}: {}",
-                    invoice.invoice_id, response
-                );
-                self.store_payment_response(&invoice.invoice_id, response);
+        if let Some(result_str) = invoice.result_str.as_ref() {
+            if let Some(response) = Self::extract_payment_response_from_result(result_str) {
+                if !response.is_empty() {
+                    println!(
+                        "💾 Storing payment response for invoice {}: {}",
+                        invoice.invoice_id, response
+                    );
+                    self.store_payment_response(&invoice.invoice_id, response);
+                }
             }
         }
 
