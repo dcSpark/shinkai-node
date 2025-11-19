@@ -255,6 +255,15 @@ impl ModelCapabilitiesManager {
 
     fn get_gemini_capabilities(model_type: &str) -> Vec<ModelCapability> {
         match model_type {
+            // Gemini 3 models
+            model_type if model_type.starts_with("gemini-3-pro") => {
+                vec![
+                    ModelCapability::TextInference,
+                    ModelCapability::ImageAnalysis,
+                    ModelCapability::VideoAnalysis,
+                    ModelCapability::AudioAnalysis,
+                ]
+            }
             // Gemini 2.5 models
             model_type if model_type.starts_with("gemini-2.5-flash-preview-tts") => {
                 vec![ModelCapability::TextInference]
@@ -387,6 +396,8 @@ impl ModelCapabilitiesManager {
 
     fn get_gemini_cost(model_type: &str) -> ModelCost {
         match model_type {
+            // Gemini 3 models
+            model_type if model_type.starts_with("gemini-3-pro") => ModelCost::Expensive,
             // Gemini 2.5 models (preview/experimental - more expensive due to restricted limits)
             model_type if model_type.starts_with("gemini-2.5-flash-preview") => ModelCost::GoodValue,
             model_type if model_type.starts_with("gemini-2.5-pro-preview") => ModelCost::Expensive,
@@ -407,6 +418,8 @@ impl ModelCapabilitiesManager {
 
     fn get_gemini_max_tokens(model_type: &str) -> usize {
         match model_type {
+            // Gemini 3 models
+            model_type if model_type.starts_with("gemini-3-pro") => 1_048_576,
             // Gemini 2.5 models
             model_type if model_type.starts_with("gemini-2.5-flash-preview-05-20") => 1_048_576,
             model_type if model_type.starts_with("gemini-2.5-flash-preview-native-audio-dialog") => 128_000,
@@ -431,6 +444,8 @@ impl ModelCapabilitiesManager {
 
     fn get_gemini_max_output_tokens(model_type: &str) -> usize {
         match model_type {
+            // Gemini 3 models
+            model_type if model_type.starts_with("gemini-3-pro") => 65_536,
             // Gemini 2.5 models
             model_type if model_type.starts_with("gemini-2.5-flash-preview-05-20") => 65_536,
             model_type if model_type.starts_with("gemini-2.5-flash-preview-native-audio-dialog") => 8_000,
@@ -455,6 +470,8 @@ impl ModelCapabilitiesManager {
 
     fn gemini_has_tool_capabilities(model_type: &str) -> bool {
         match model_type {
+            // Gemini 3 models
+            model_type if model_type.starts_with("gemini-3-pro") => true,
             // Gemini 2.5 models - TTS models don't support function calling
             model_type if model_type.starts_with("gemini-2.5-flash-preview-tts") => false,
             model_type if model_type.starts_with("gemini-2.5-flash-image-preview") => false,
@@ -1214,6 +1231,7 @@ impl ModelCapabilitiesManager {
                     || gemini.model_type == "gemini-2.5-flash"
                     || gemini.model_type == "gemini-2.5-pro"
                     || gemini.model_type == "gemini-2.0-flash-exp"
+                    || gemini.model_type.starts_with("gemini-3-pro")
             }
             LLMProviderInterface::ShinkaiBackend(shinkai_backend) => {
                 shinkai_backend.model_type().starts_with("FREE_TEXT_INFERENCE")
