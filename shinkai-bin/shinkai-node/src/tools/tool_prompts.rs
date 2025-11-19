@@ -80,6 +80,8 @@ pub async fn generate_code_prompt(
   * Only if required any additional notes, comments or explanation should be included in /* ... */ blocks.
   * Write a single implementation file, only one typescript code block.
   * Implements the code in {language} for the following input_command tag.
+  * Include as well all the inputs and configs details in comments (possible values and defaults)
+  * Implement as well input validation checks and informative messages in case of error
 </agent_code_implementation>
 
 <agent_libraries_documentation>
@@ -210,6 +212,8 @@ class OUTPUT:
   * Write a single implementation file, only one typescript code block.
   * When building the return OUTPUT, assign fields with dots as `output = OUTPUT()\nouput.key1 = value1` because the OUTPUT class does not have a constructor.
   * Implements the code in {language} for the following input_command tag
+  * Include as well all the inputs and configs details in comments (possible values and defaults)
+  * Implement as well input validation checks and informative messages in case of error
 </agent_code_implementation>
 
 <agent_pip_requirements>
