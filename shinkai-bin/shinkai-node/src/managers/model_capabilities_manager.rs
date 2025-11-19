@@ -224,6 +224,7 @@ impl ModelCapabilitiesManager {
     fn get_openai_capabilities(model_type: &str) -> Vec<ModelCapability> {
         match model_type {
             "gpt-5" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
+            "gpt-5.1" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
             "gpt-5-mini" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
             "gpt-5-nano" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
             "gpt-5-chat-latest" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
@@ -363,6 +364,7 @@ impl ModelCapabilitiesManager {
     fn get_openai_cost(model_type: &str) -> ModelCost {
         match model_type {
             "gpt-5" => ModelCost::GoodValue,
+            "gpt-5.1" => ModelCost::GoodValue,
             "gpt-5-mini" => ModelCost::Cheap,
             "gpt-5-nano" => ModelCost::VeryCheap,
             "gpt-5-chat-latest" => ModelCost::GoodValue,
