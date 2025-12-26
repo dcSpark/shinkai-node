@@ -75,6 +75,7 @@ impl ShinkaiToolHeader {
 impl ShinkaiTool {
     /// Generate a ShinkaiToolHeader from a ShinkaiTool
     pub fn to_header(&self) -> ShinkaiToolHeader {
+        let config = self.get_config();
         ShinkaiToolHeader {
             name: self.name(),
             description: self.description(),
@@ -87,7 +88,7 @@ impl ShinkaiTool {
             mcp_enabled: Some(self.is_mcp_enabled()),
             input_args: self.input_args(),
             output_arg: self.output_arg(),
-            config: self.get_js_tool_config().cloned(),
+            config: if config.is_empty() { None } else { Some(config) },
             usage_type: self.get_usage_type(),
             tool_offering: None,
         }

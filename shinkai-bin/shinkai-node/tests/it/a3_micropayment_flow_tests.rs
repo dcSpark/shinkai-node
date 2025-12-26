@@ -444,7 +444,7 @@ fn micropayment_flow_test() {
                 author: "@@localhost.sep-shinkai".to_string(),
                 version: "1.0.0".to_string(),
                 enabled: true,
-                config: Some(vec![]),
+                config: None,
                 usage_type: None,
                 tool_offering: Some(shinkai_tool_offering.clone()),
             };
