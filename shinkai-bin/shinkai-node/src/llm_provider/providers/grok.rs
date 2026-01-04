@@ -169,13 +169,38 @@ async fn handle_streaming_response(
     session_id: String,
     tools: Option<Vec<JsonValue>>, // Add tools parameter
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
-    let res = client
+    // Use tokio::select! to allow cancellation during the initial request phase
+    let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(500));
+    let response_fut = client
         .post(url)
         .bearer_auth(api_key)
         .header("Content-Type", "application/json")
         .json(&payload)
-        .send()
-        .await?;
+        .send();
+    let mut response_fut = Box::pin(response_fut);
+
+    // Wait for response or cancellation
+    let res = loop {
+        tokio::select! {
+            _ = interval.tick() => {
+                if let Some(ref inbox_name) = inbox_name {
+                    if llm_stopper.should_stop(&inbox_name.to_string()) {
+                        shinkai_log(
+                            ShinkaiLogOption::JobExecution,
+                            ShinkaiLogLevel::Info,
+                            "LLM job stopped by user request before response arrived",
+                        );
+                        llm_stopper.reset(&inbox_name.to_string());
+
+                        return Ok(LLMInferenceResponse::new("".to_string(), None, json!({}), Vec::new(), Vec::new(), None));
+                    }
+                }
+            },
+            response = &mut response_fut => {
+                break response?;
+            }
+        }
+    };
 
     // Check if it's an error response
     let status = res.status();
