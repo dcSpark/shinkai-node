@@ -1639,7 +1639,16 @@ impl Node {
             }
         };
 
-        // Remove the job
+        // Get the job folder name BEFORE removing from DB (get_job_folder_name queries the jobs table)
+        let job_chat_folder = match db.get_job_folder_name(&job_id) {
+            Ok(folder) => Some(folder),
+            Err(_) => {
+                // If we can't get the folder name, log but continue - the job might not have a folder yet
+                None
+            }
+        };
+
+        // Remove the job from database
         match db.remove_job(&job_id) {
             Ok(_) => {}
             Err(err) => {
@@ -1653,16 +1662,28 @@ impl Node {
             }
         }
 
+        // Remove the chat files folder (filesystem/Chat Files/{formatted_name})
+        if let Some(chat_folder) = job_chat_folder {
+            use shinkai_fs::shinkai_file_manager::ShinkaiFileManager;
+            if chat_folder.exists() {
+                if let Err(err) = ShinkaiFileManager::remove_folder(chat_folder, &db) {
+                    // Log the error but don't fail the request since DB removal succeeded
+                    eprintln!("Warning: Failed to remove job chat folder: {}", err);
+                }
+            }
+        }
+
+        // Remove the tools_storage folder (tools_storage/{job_id}) - used for tool execution files
         let node_env = fetch_node_environment();
         let node_storage_path = node_env.node_storage_path.unwrap_or_default();
-        let job_folder_path = PathBuf::from(&node_storage_path)
+        let tools_storage_path = PathBuf::from(&node_storage_path)
             .join("tools_storage")
             .join(&job_id);
 
-        if job_folder_path.exists() {
-            if let Err(err) = std::fs::remove_dir_all(&job_folder_path) {
+        if tools_storage_path.exists() {
+            if let Err(err) = std::fs::remove_dir_all(&tools_storage_path) {
                 // Log the error but don't fail the request since DB removal succeeded
-                eprintln!("Warning: Failed to remove job folder at {:?}: {}", job_folder_path, err);
+                eprintln!("Warning: Failed to remove tools_storage folder at {:?}: {}", tools_storage_path, err);
             }
         }
 
