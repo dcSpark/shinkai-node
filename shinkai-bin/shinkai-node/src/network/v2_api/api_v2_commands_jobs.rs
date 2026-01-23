@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc, usize};
+use std::{collections::HashMap, path::PathBuf, sync::Arc, usize};
 
 use async_channel::Sender;
 use ed25519_dalek::SigningKey;
@@ -40,6 +40,7 @@ use crate::{
     llm_provider::job_manager::JobManager,
     managers::IdentityManager,
     network::{node_error::NodeError, Node},
+    utils::environment::fetch_node_environment,
 };
 
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
@@ -1649,6 +1650,19 @@ impl Node {
                 };
                 let _ = res.send(Err(api_error)).await;
                 return Ok(());
+            }
+        }
+
+        let node_env = fetch_node_environment();
+        let node_storage_path = node_env.node_storage_path.unwrap_or_default();
+        let job_folder_path = PathBuf::from(&node_storage_path)
+            .join("tools_storage")
+            .join(&job_id);
+
+        if job_folder_path.exists() {
+            if let Err(err) = std::fs::remove_dir_all(&job_folder_path) {
+                // Log the error but don't fail the request since DB removal succeeded
+                eprintln!("Warning: Failed to remove job folder at {:?}: {}", job_folder_path, err);
             }
         }
 
