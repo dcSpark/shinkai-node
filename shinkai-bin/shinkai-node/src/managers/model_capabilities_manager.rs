@@ -180,6 +180,9 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("mistral-small3.2") || model_type.starts_with("mistral-small3.1") => {
                 vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
             }
+            model_type if model_type.starts_with("ministral-3") => {
+                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+            }
             model_type if model_type.starts_with("llama3.2-vision") => {
                 vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
             }
@@ -807,6 +810,9 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("mistral-nemo") => 128_000,
             model_type if model_type.starts_with("mistral-small3.2") || model_type.starts_with("mistral-small3.1") => {
                 128_000
+            }
+            model_type if model_type.starts_with("ministral-3") => {
+                256_000
             }
             model_type if model_type.starts_with("mistral-small") => 128_000,
             model_type if model_type.starts_with("mistral-large") => 128_000,
