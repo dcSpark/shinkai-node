@@ -180,6 +180,9 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("mistral-small3.2") || model_type.starts_with("mistral-small3.1") => {
                 vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
             }
+            model_type if model_type.starts_with("ministral-3") => {
+                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+            }
             model_type if model_type.starts_with("llama3.2-vision") => {
                 vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
             }
@@ -808,6 +811,9 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("mistral-small3.2") || model_type.starts_with("mistral-small3.1") => {
                 128_000
             }
+            model_type if model_type.starts_with("ministral-3") => {
+                256_000
+            }
             model_type if model_type.starts_with("mistral-small") => 128_000,
             model_type if model_type.starts_with("mistral-large") => 128_000,
             model_type if model_type.starts_with("mixtral:8x7b-instruct-v0.1") => 16_000,
@@ -1158,6 +1164,7 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("mistral-small")
                     || model.model_type.starts_with("mistral-large")
                     || model.model_type.starts_with("mistral-pixtral")
+                    || model.model_type.starts_with("ministral-3")
                     || model.model_type.starts_with("qwen2.5-coder")
                     || model.model_type.starts_with("qwen2.5vl")
                     || model.model_type.starts_with("qwq")
@@ -1213,6 +1220,7 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("mistral-small")
                     || model.model_type.starts_with("mistral-large")
                     || model.model_type.starts_with("mistral-pixtral")
+                    || model.model_type.starts_with("ministral-3")
                     || model.model_type.starts_with("magistral")
                     || model.model_type.starts_with("gpt-oss")
             }
