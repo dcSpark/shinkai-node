@@ -1158,6 +1158,7 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("mistral-small")
                     || model.model_type.starts_with("mistral-large")
                     || model.model_type.starts_with("mistral-pixtral")
+                    || model.model_type.starts_with("ministral-3")
                     || model.model_type.starts_with("qwen2.5-coder")
                     || model.model_type.starts_with("qwen2.5vl")
                     || model.model_type.starts_with("qwq")
@@ -1213,6 +1214,7 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("mistral-small")
                     || model.model_type.starts_with("mistral-large")
                     || model.model_type.starts_with("mistral-pixtral")
+                    || model.model_type.starts_with("ministral-3")
                     || model.model_type.starts_with("magistral")
                     || model.model_type.starts_with("gpt-oss")
             }
