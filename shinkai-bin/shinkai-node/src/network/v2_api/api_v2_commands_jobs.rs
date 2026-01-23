@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc, usize};
+use std::{collections::HashMap, path::PathBuf, sync::Arc, usize};
 
 use async_channel::Sender;
 use ed25519_dalek::SigningKey;
@@ -40,6 +40,7 @@ use crate::{
     llm_provider::job_manager::JobManager,
     managers::IdentityManager,
     network::{node_error::NodeError, Node},
+    utils::environment::fetch_node_environment,
 };
 
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
@@ -1638,7 +1639,16 @@ impl Node {
             }
         };
 
-        // Remove the job
+        // Get the job folder name BEFORE removing from DB (get_job_folder_name queries the jobs table)
+        let job_chat_folder = match db.get_job_folder_name(&job_id) {
+            Ok(folder) => Some(folder),
+            Err(_) => {
+                // If we can't get the folder name, log but continue - the job might not have a folder yet
+                None
+            }
+        };
+
+        // Remove the job from database
         match db.remove_job(&job_id) {
             Ok(_) => {}
             Err(err) => {
@@ -1649,6 +1659,31 @@ impl Node {
                 };
                 let _ = res.send(Err(api_error)).await;
                 return Ok(());
+            }
+        }
+
+        // Remove the chat files folder (filesystem/Chat Files/{formatted_name})
+        if let Some(chat_folder) = job_chat_folder {
+            use shinkai_fs::shinkai_file_manager::ShinkaiFileManager;
+            if chat_folder.exists() {
+                if let Err(err) = ShinkaiFileManager::remove_folder(chat_folder, &db) {
+                    // Log the error but don't fail the request since DB removal succeeded
+                    eprintln!("Warning: Failed to remove job chat folder: {}", err);
+                }
+            }
+        }
+
+        // Remove the tools_storage folder (tools_storage/{job_id}) - used for tool execution files
+        let node_env = fetch_node_environment();
+        let node_storage_path = node_env.node_storage_path.unwrap_or_default();
+        let tools_storage_path = PathBuf::from(&node_storage_path)
+            .join("tools_storage")
+            .join(&job_id);
+
+        if tools_storage_path.exists() {
+            if let Err(err) = std::fs::remove_dir_all(&tools_storage_path) {
+                // Log the error but don't fail the request since DB removal succeeded
+                eprintln!("Warning: Failed to remove tools_storage folder at {:?}: {}", tools_storage_path, err);
             }
         }
 
