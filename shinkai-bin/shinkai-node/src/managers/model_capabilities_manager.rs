@@ -183,6 +183,23 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("ministral-3") => {
                 vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
             }
+            model_type if model_type.starts_with("functiongemma") => vec![ModelCapability::TextInference],
+            model_type if model_type.starts_with("translategemma") => {
+                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+            }
+            model_type if model_type.starts_with("glm-4.7-flash") => vec![ModelCapability::TextInference],
+            model_type if model_type.starts_with("nemotron-3-nano") => vec![ModelCapability::TextInference],
+            model_type if model_type.starts_with("qwen3-vl") => {
+                vec![
+                    ModelCapability::TextInference,
+                    ModelCapability::ImageAnalysis,
+                    ModelCapability::VideoAnalysis,
+                ]
+            }
+            model_type if model_type.starts_with("deepseek-ocr") => {
+                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+            }
+            model_type if model_type.starts_with("granite4") => vec![ModelCapability::TextInference],
             model_type if model_type.starts_with("llama3.2-vision") => {
                 vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
             }
@@ -903,8 +920,17 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("gemma3:12b") => 128_000,
             model_type if model_type.starts_with("gemma3:27b") => 128_000,
             model_type if model_type.starts_with("gemma3") => 128_000,
+            // qwen3-vl must precede qwen3 (vision+video, 256K) — ollama.com/library/qwen3-vl
+            model_type if model_type.starts_with("qwen3-vl") => 256_000,
             model_type if model_type.starts_with("qwen3") => 32_000,
             model_type if model_type.starts_with("magistral") => 39_000,
+            model_type if model_type.starts_with("functiongemma") => 32_000,
+            model_type if model_type.starts_with("translategemma") => 128_000,
+            model_type if model_type.starts_with("glm-4.7-flash") => 198_000,
+            model_type if model_type.starts_with("nemotron-3-nano") => 1_000_000,
+            model_type if model_type.starts_with("deepseek-ocr") => 8_192,
+            model_type if model_type.starts_with("granite4:350m") => 32_000,
+            model_type if model_type.starts_with("granite4") => 128_000,
             _ => 4096, // Default token count if no specific model type matches
         }
     }
@@ -1165,6 +1191,11 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("mistral-large")
                     || model.model_type.starts_with("mistral-pixtral")
                     || model.model_type.starts_with("ministral-3")
+                    || model.model_type.starts_with("functiongemma")
+                    || model.model_type.starts_with("glm-4.7-flash")
+                    || model.model_type.starts_with("nemotron-3-nano")
+                    || model.model_type.starts_with("qwen3-vl")
+                    || model.model_type.starts_with("granite4")
                     || model.model_type.starts_with("qwen2.5-coder")
                     || model.model_type.starts_with("qwen2.5vl")
                     || model.model_type.starts_with("qwq")
@@ -1221,6 +1252,11 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("mistral-large")
                     || model.model_type.starts_with("mistral-pixtral")
                     || model.model_type.starts_with("ministral-3")
+                    || model.model_type.starts_with("functiongemma")
+                    || model.model_type.starts_with("glm-4.7-flash")
+                    || model.model_type.starts_with("nemotron-3-nano")
+                    || model.model_type.starts_with("qwen3-vl")
+                    || model.model_type.starts_with("granite4")
                     || model.model_type.starts_with("magistral")
                     || model.model_type.starts_with("gpt-oss")
             }
