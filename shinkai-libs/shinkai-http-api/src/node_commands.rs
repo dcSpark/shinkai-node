@@ -289,6 +289,11 @@ pub enum NodeCommand {
         job_id: String,
         res: Sender<Result<SendResponseBody, APIError>>,
     },
+    V2ApiRemoveJobs {
+        bearer: String,
+        job_ids: Vec<String>,
+        res: Sender<Result<Value, APIError>>,
+    },
     V2ApiVecFSRetrievePathSimplifiedJson {
         bearer: String,
         payload: APIVecFsRetrievePathSimplifiedJson,

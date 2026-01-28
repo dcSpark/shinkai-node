@@ -1697,6 +1697,80 @@ impl Node {
         Ok(())
     }
 
+    pub async fn v2_remove_jobs(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        job_ids: Vec<String>,
+        res: Sender<Result<serde_json::Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let mut succeeded: Vec<String> = Vec::new();
+        let mut failed: Vec<serde_json::Value> = Vec::new();
+
+        for job_id in job_ids {
+            // Get the job folder name BEFORE removing from DB (get_job_folder_name queries the jobs table)
+            let job_chat_folder = match db.get_job_folder_name(&job_id) {
+                Ok(folder) => Some(folder),
+                Err(_) => {
+                    // If we can't get the folder name, log but continue - the job might not have a folder yet
+                    None
+                }
+            };
+
+            // Remove the job from database
+            match db.remove_job(&job_id) {
+                Ok(_) => {
+                    // Remove the chat files folder (filesystem/Chat Files/{formatted_name})
+                    if let Some(chat_folder) = job_chat_folder {
+                        use shinkai_fs::shinkai_file_manager::ShinkaiFileManager;
+                        if chat_folder.exists() {
+                            if let Err(err) = ShinkaiFileManager::remove_folder(chat_folder, &db) {
+                                // Log the error but don't fail since DB removal succeeded
+                                eprintln!("Warning: Failed to remove job chat folder for {}: {}", job_id, err);
+                            }
+                        }
+                    }
+
+                    // Remove the tools_storage folder (tools_storage/{job_id}) - used for tool execution files
+                    let node_env = fetch_node_environment();
+                    let node_storage_path = node_env.node_storage_path.unwrap_or_default();
+                    let tools_storage_path = PathBuf::from(&node_storage_path)
+                        .join("tools_storage")
+                        .join(&job_id);
+
+                    if tools_storage_path.exists() {
+                        if let Err(err) = std::fs::remove_dir_all(&tools_storage_path) {
+                            // Log the error but don't fail since DB removal succeeded
+                            eprintln!("Warning: Failed to remove tools_storage folder at {:?}: {}", tools_storage_path, err);
+                        }
+                    }
+
+                    succeeded.push(job_id);
+                }
+                Err(err) => {
+                    failed.push(serde_json::json!({
+                        "job_id": job_id,
+                        "error": format!("Failed to remove job: {}", err)
+                    }));
+                }
+            }
+        }
+
+        let _ = res
+            .send(Ok(serde_json::json!({
+                "status": if failed.is_empty() { "success" } else { "partial" },
+                "message": format!("{} job(s) removed successfully, {} failed", succeeded.len(), failed.len()),
+                "succeeded": succeeded,
+                "failed": failed
+            })))
+            .await;
+        Ok(())
+    }
+
     pub async fn v2_export_messages_from_inbox(
         db: Arc<SqliteManager>,
         bearer: String,
