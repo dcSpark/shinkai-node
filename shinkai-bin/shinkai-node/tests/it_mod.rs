@@ -30,5 +30,6 @@ mod it {
     mod echo_tool_router_key_test;
     mod job_code_duplicate;
     mod native_tool_tests;
+    mod network_tool_list_tests;
     mod tool_config_override_test;
 }
