@@ -853,6 +853,11 @@ pub enum NodeCommand {
         tool_key: String,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiRemoveNetworkTool {
+        bearer: String,
+        tool_key: String,
+        res: Sender<Result<Value, APIError>>,
+    },
     V2ApiResolveShinkaiFileProtocol {
         bearer: String,
         shinkai_file_protocol: String,
