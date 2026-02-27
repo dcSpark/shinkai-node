@@ -724,7 +724,9 @@ pub async fn handle_streaming_response(
     tools: Option<Vec<JsonValue>>,
     headers: Option<JsonValue>,
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
-    let res = client
+    // Use tokio::select! to allow cancellation during the initial request phase
+    let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(500));
+    let response_fut = client
         .post(url)
         .bearer_auth(api_key)
         .header("Content-Type", "application/json")
@@ -776,8 +778,43 @@ pub async fn handle_streaming_response(
                 .unwrap_or(""),
         )
         .json(&payload)
-        .send()
-        .await?;
+        .send();
+    let mut response_fut = Box::pin(response_fut);
+
+    // Wait for response or cancellation
+    let res = loop {
+        tokio::select! {
+            _ = interval.tick() => {
+                if let Some(ref inbox_name) = inbox_name {
+                    if llm_stopper.should_stop(&inbox_name.to_string()) {
+                        shinkai_log(
+                            ShinkaiLogOption::JobExecution,
+                            ShinkaiLogLevel::Info,
+                            "LLM job stopped by user request before response arrived",
+                        );
+                        llm_stopper.reset(&inbox_name.to_string());
+
+                        // Send WS message indicating the job is done
+                        let _ = send_ws_update(
+                            &ws_manager_trait,
+                            Some(inbox_name.clone()),
+                            &session_id,
+                            "".to_string(),
+                            false,
+                            true,
+                            Some("Stopped by user request".to_string()),
+                        )
+                        .await;
+
+                        return Ok(LLMInferenceResponse::new("".to_string(), None, json!({}), Vec::new(), Vec::new(), None));
+                    }
+                }
+            },
+            response = &mut response_fut => {
+                break response?;
+            }
+        }
+    };
 
     // Check if it's an error response
     if !res.status().is_success() {

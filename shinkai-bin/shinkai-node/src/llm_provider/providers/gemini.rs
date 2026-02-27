@@ -137,7 +137,7 @@ impl LLMService for Gemini {
         inbox_name: Option<InboxName>,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         config: Option<JobConfig>,
-        _llm_stopper: Arc<LLMStopper>,
+        llm_stopper: Arc<LLMStopper>,
         db: Arc<SqliteManager>,
         tracing_message_id: Option<String>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
@@ -236,12 +236,38 @@ impl LLMService for Gemini {
                     }
                 }
 
-                let res = client
+                // Use tokio::select! to allow cancellation during the initial request phase
+                let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(500));
+                let response_fut = client
                     .post(&url)
                     .header("Content-Type", "application/json")
                     .json(&payload)
-                    .send()
-                    .await?;
+                    .send();
+                let mut response_fut = Box::pin(response_fut);
+
+                // Wait for response or cancellation
+                let res = loop {
+                    tokio::select! {
+                        _ = interval.tick() => {
+                            if let Some(ref inbox_name) = inbox_name {
+                                if llm_stopper.should_stop(&inbox_name.to_string()) {
+                                    shinkai_log(
+                                        ShinkaiLogOption::JobExecution,
+                                        ShinkaiLogLevel::Info,
+                                        "LLM job stopped by user request before response arrived",
+                                    );
+                                    llm_stopper.reset(&inbox_name.to_string());
+
+                                    return Ok(LLMInferenceResponse::new("".to_string(), None, json!({}), Vec::new(), Vec::new(), None));
+                                }
+                            }
+                        },
+                        response = &mut response_fut => {
+                            break response?;
+                        }
+                    }
+                };
+
                 shinkai_log(
                     ShinkaiLogOption::JobExecution,
                     ShinkaiLogLevel::Debug,
@@ -260,6 +286,39 @@ impl LLMService for Gemini {
                 let mut thinking_started = false;
 
                 while let Some(item) = stream.next().await {
+                    // Check if we need to stop the LLM job
+                    if let Some(ref inbox_name) = inbox_name {
+                        if llm_stopper.should_stop(&inbox_name.to_string()) {
+                            shinkai_log(
+                                ShinkaiLogOption::JobExecution,
+                                ShinkaiLogLevel::Info,
+                                "LLM job stopped by user request during streaming",
+                            );
+                            llm_stopper.reset(&inbox_name.to_string());
+
+                            // Send WS message indicating the job is done
+                            let _ = send_ws_update(
+                                &ws_manager_trait,
+                                Some(inbox_name.clone()),
+                                &session_id,
+                                regular_content.clone(),
+                                false,
+                                true,
+                                Some("Stopped by user request".to_string()),
+                            )
+                            .await;
+
+                            return Ok(LLMInferenceResponse::new(
+                                regular_content,
+                                if thinking_content.is_empty() { None } else { Some(thinking_content) },
+                                json!({}),
+                                function_calls,
+                                generated_files,
+                                None,
+                            ));
+                        }
+                    }
+
                     match item {
                         Ok(chunk) => {
                             process_chunk(
