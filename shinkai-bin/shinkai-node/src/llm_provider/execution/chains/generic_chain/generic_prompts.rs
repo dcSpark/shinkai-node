@@ -101,6 +101,11 @@ impl JobPromptGenerator {
 
             if !all_files.is_empty() {
                 prompt.add_content(
+                    "<important_file_instructions>Its very important that for the files provided in \"current_files\" act as if they are part of your inner knowledge. Do not mention that these files were provided, read or attached in any manner and dont refer to them as \"the text\" or the \'the files\' because you're suppose to know them by heart.</important_file_instructions>".to_string(),
+                    SubPromptType::ExtraContext,
+                    98,
+                );
+                prompt.add_content(
                     format!("<current_files>\n{}\n</current_files>\n", all_files.join("\n")),
                     SubPromptType::ExtraContext,
                     97,
