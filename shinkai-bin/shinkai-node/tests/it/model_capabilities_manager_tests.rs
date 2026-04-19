@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-        LLMProviderInterface, OpenAI, SerializedLLMProvider,
+        Claude, DeepSeek, Gemini, Grok, LLMProviderInterface, OpenAI, SerializedLLMProvider,
     };
     use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
@@ -134,5 +134,68 @@ mod tests {
         assert!(manager.has_capability(ModelCapability::TextInference).await);
         assert!(!manager.has_capability(ModelCapability::ImageAnalysis).await);
         assert!(!manager.has_capability(ModelCapability::ImageGeneration).await);
+    }
+
+    #[test]
+    fn test_latest_openai_model_limits() {
+        let gpt_5_4 = LLMProviderInterface::OpenAI(OpenAI {
+            model_type: "gpt-5.4".to_string(),
+        });
+        let gpt_5_pro = LLMProviderInterface::OpenAI(OpenAI {
+            model_type: "gpt-5-pro".to_string(),
+        });
+        let o3_pro = LLMProviderInterface::OpenAI(OpenAI {
+            model_type: "o3-pro".to_string(),
+        });
+
+        assert_eq!(ModelCapabilitiesManager::get_max_tokens(&gpt_5_4), 1_050_000);
+        assert_eq!(ModelCapabilitiesManager::get_max_output_tokens(&gpt_5_4), 128_000);
+        assert!(ModelCapabilitiesManager::has_reasoning_capabilities(&gpt_5_4));
+
+        assert_eq!(ModelCapabilitiesManager::get_max_tokens(&gpt_5_pro), 400_000);
+        assert_eq!(ModelCapabilitiesManager::get_max_output_tokens(&gpt_5_pro), 272_000);
+        assert!(ModelCapabilitiesManager::has_reasoning_capabilities(&gpt_5_pro));
+
+        assert_eq!(ModelCapabilitiesManager::get_max_tokens(&o3_pro), 200_000);
+        assert_eq!(ModelCapabilitiesManager::get_max_output_tokens(&o3_pro), 100_000);
+        assert!(ModelCapabilitiesManager::has_reasoning_capabilities(&o3_pro));
+    }
+
+    #[test]
+    fn test_latest_claude_and_gemini_limits() {
+        let claude = LLMProviderInterface::Claude(Claude {
+            model_type: "claude-opus-4-7".to_string(),
+        });
+        let gemini = LLMProviderInterface::Gemini(Gemini {
+            model_type: "gemini-3.1-pro-preview".to_string(),
+        });
+
+        assert_eq!(ModelCapabilitiesManager::get_max_tokens(&claude), 1_000_000);
+        assert_eq!(ModelCapabilitiesManager::get_max_output_tokens(&claude), 128_000);
+        assert!(ModelCapabilitiesManager::has_reasoning_capabilities(&claude));
+        assert!(ModelCapabilitiesManager::has_tool_capabilities(&claude, None));
+
+        assert_eq!(ModelCapabilitiesManager::get_max_tokens(&gemini), 1_048_576);
+        assert_eq!(ModelCapabilitiesManager::get_max_output_tokens(&gemini), 65_536);
+        assert!(ModelCapabilitiesManager::has_reasoning_capabilities(&gemini));
+        assert!(ModelCapabilitiesManager::has_tool_capabilities(&gemini, None));
+    }
+
+    #[test]
+    fn test_latest_grok_and_deepseek_limits() {
+        let grok = LLMProviderInterface::Grok(Grok {
+            model_type: "grok-4.20-reasoning".to_string(),
+        });
+        let deepseek = LLMProviderInterface::DeepSeek(DeepSeek {
+            model_type: "deepseek-reasoner".to_string(),
+        });
+
+        assert_eq!(ModelCapabilitiesManager::get_max_tokens(&grok), 2_000_000);
+        assert!(ModelCapabilitiesManager::has_reasoning_capabilities(&grok));
+        assert!(ModelCapabilitiesManager::has_tool_capabilities(&grok, None));
+
+        assert_eq!(ModelCapabilitiesManager::get_max_tokens(&deepseek), 128_000);
+        assert_eq!(ModelCapabilitiesManager::get_max_output_tokens(&deepseek), 64_000);
+        assert!(ModelCapabilitiesManager::has_reasoning_capabilities(&deepseek));
     }
 }

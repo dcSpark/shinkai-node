@@ -2,7 +2,7 @@ use crate::llm_provider::{
     error::LLMProviderError,
     providers::shared::{openai_api::openai_prepare_messages, shared_model_logic::llama_prepare_messages},
 };
-use ai_model_catalog::{get_openrouter_model, providers::openrouter};
+use ai_model_catalog::get_openrouter_model;
 use shinkai_message_primitives::{
     schemas::{
         llm_message::LlmMessage,
@@ -226,6 +226,18 @@ impl ModelCapabilitiesManager {
 
     fn get_openai_capabilities(model_type: &str) -> Vec<ModelCapability> {
         match model_type {
+            model_type if model_type.starts_with("gpt-5.4-mini") => {
+                vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference]
+            }
+            model_type if model_type.starts_with("gpt-5.4-nano") => {
+                vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference]
+            }
+            model_type if model_type.starts_with("gpt-5.4") => {
+                vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference]
+            }
+            model_type if model_type.starts_with("gpt-5-pro") => {
+                vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference]
+            }
             "gpt-5" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
             "gpt-5.1" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
             "gpt-5.2" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
@@ -260,6 +272,23 @@ impl ModelCapabilitiesManager {
 
     fn get_gemini_capabilities(model_type: &str) -> Vec<ModelCapability> {
         match model_type {
+            // Gemini 3.1 models
+            model_type if model_type.starts_with("gemini-3.1-pro-preview") => {
+                vec![
+                    ModelCapability::TextInference,
+                    ModelCapability::ImageAnalysis,
+                    ModelCapability::VideoAnalysis,
+                    ModelCapability::AudioAnalysis,
+                ]
+            }
+            model_type if model_type.starts_with("gemini-3.1-flash-lite-preview") => {
+                vec![
+                    ModelCapability::TextInference,
+                    ModelCapability::ImageAnalysis,
+                    ModelCapability::VideoAnalysis,
+                    ModelCapability::AudioAnalysis,
+                ]
+            }
             // Gemini 3 models
             model_type if model_type.starts_with("gemini-3-flash") => {
                 vec![
@@ -303,6 +332,14 @@ impl ModelCapabilitiesManager {
                     ModelCapability::TextInference,
                     ModelCapability::ImageAnalysis,
                     ModelCapability::ImageGeneration,
+                ]
+            }
+            model_type if model_type.starts_with("gemini-2.5-flash-lite") => {
+                vec![
+                    ModelCapability::TextInference,
+                    ModelCapability::ImageAnalysis,
+                    ModelCapability::VideoAnalysis,
+                    ModelCapability::AudioAnalysis,
                 ]
             }
             model_type if model_type.starts_with("gemini-2.5-flash") => {
@@ -385,6 +422,10 @@ impl ModelCapabilitiesManager {
 
     fn get_openai_cost(model_type: &str) -> ModelCost {
         match model_type {
+            model_type if model_type.starts_with("gpt-5.4-mini") => ModelCost::Cheap,
+            model_type if model_type.starts_with("gpt-5.4-nano") => ModelCost::VeryCheap,
+            model_type if model_type.starts_with("gpt-5.4") => ModelCost::GoodValue,
+            model_type if model_type.starts_with("gpt-5-pro") => ModelCost::Expensive,
             "gpt-5" => ModelCost::GoodValue,
             "gpt-5.1" => ModelCost::GoodValue,
             "gpt-5.2" => ModelCost::GoodValue,
@@ -411,12 +452,18 @@ impl ModelCapabilitiesManager {
 
     fn get_gemini_cost(model_type: &str) -> ModelCost {
         match model_type {
+            // Gemini 3.1 models
+            model_type if model_type.starts_with("gemini-3.1-pro-preview") => ModelCost::Expensive,
+            model_type if model_type.starts_with("gemini-3.1-flash-lite-preview") => ModelCost::VeryCheap,
             // Gemini 3 models
             model_type if model_type.starts_with("gemini-3-flash") => ModelCost::Cheap,
             model_type if model_type.starts_with("gemini-3-pro") => ModelCost::Expensive,
-            // Gemini 2.5 models (preview/experimental - more expensive due to restricted limits)
+            // Gemini 2.5 models
+            model_type if model_type.starts_with("gemini-2.5-flash-lite") => ModelCost::VeryCheap,
             model_type if model_type.starts_with("gemini-2.5-flash-preview") => ModelCost::GoodValue,
+            model_type if model_type.starts_with("gemini-2.5-flash") => ModelCost::Cheap,
             model_type if model_type.starts_with("gemini-2.5-pro-preview") => ModelCost::Expensive,
+            model_type if model_type.starts_with("gemini-2.5-pro") => ModelCost::Expensive,
             model_type if model_type.starts_with("gemini-2.5-flash-image-preview") => ModelCost::Expensive,
             // Gemini 2.0 models
             model_type if model_type.starts_with("gemini-2.0-flash-lite") => ModelCost::VeryCheap,
@@ -434,6 +481,9 @@ impl ModelCapabilitiesManager {
 
     fn get_gemini_max_tokens(model_type: &str) -> usize {
         match model_type {
+            // Gemini 3.1 models
+            model_type if model_type.starts_with("gemini-3.1-pro-preview") => 1_048_576,
+            model_type if model_type.starts_with("gemini-3.1-flash-lite-preview") => 1_048_576,
             // Gemini 3 models
             model_type if model_type.starts_with("gemini-3-flash") => 1_048_576,
             model_type if model_type.starts_with("gemini-3-pro") => 1_048_576,
@@ -445,6 +495,9 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("gemini-2.5-flash-image-preview") => 32_768,
             model_type if model_type.starts_with("gemini-2.5-pro-preview-06-05") => 1_048_576,
             model_type if model_type.starts_with("gemini-2.5-pro-preview-tts") => 8_000,
+            model_type if model_type.starts_with("gemini-2.5-flash-lite") => 1_048_576,
+            model_type if model_type.starts_with("gemini-2.5-flash") => 1_048_576,
+            model_type if model_type.starts_with("gemini-2.5-pro") => 1_048_576,
             // Gemini 2.0 models
             model_type if model_type.starts_with("gemini-2.0-flash-preview-image-generation") => 32_000,
             model_type if model_type.starts_with("gemini-2.0-flash-lite") => 1_048_576,
@@ -461,6 +514,9 @@ impl ModelCapabilitiesManager {
 
     fn get_gemini_max_output_tokens(model_type: &str) -> usize {
         match model_type {
+            // Gemini 3.1 models
+            model_type if model_type.starts_with("gemini-3.1-pro-preview") => 65_536,
+            model_type if model_type.starts_with("gemini-3.1-flash-lite-preview") => 65_536,
             // Gemini 3 models
             model_type if model_type.starts_with("gemini-3-flash") => 65_536,
             model_type if model_type.starts_with("gemini-3-pro") => 65_536,
@@ -472,6 +528,9 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("gemini-2.5-flash-image-preview") => 32_768,
             model_type if model_type.starts_with("gemini-2.5-pro-preview-06-05") => 65_536,
             model_type if model_type.starts_with("gemini-2.5-pro-preview-tts") => 16_000,
+            model_type if model_type.starts_with("gemini-2.5-flash-lite") => 65_536,
+            model_type if model_type.starts_with("gemini-2.5-flash") => 65_536,
+            model_type if model_type.starts_with("gemini-2.5-pro") => 65_536,
             // Gemini 2.0 models
             model_type if model_type.starts_with("gemini-2.0-flash-preview-image-generation") => 8_192,
             model_type if model_type.starts_with("gemini-2.0-flash-lite") => 8_192,
@@ -488,6 +547,9 @@ impl ModelCapabilitiesManager {
 
     fn gemini_has_tool_capabilities(model_type: &str) -> bool {
         match model_type {
+            // Gemini 3.1 models
+            model_type if model_type.starts_with("gemini-3.1-pro-preview") => true,
+            model_type if model_type.starts_with("gemini-3.1-flash-lite-preview") => true,
             // Gemini 3 models
             model_type if model_type.starts_with("gemini-3-flash") => true,
             model_type if model_type.starts_with("gemini-3-pro") => true,
@@ -499,6 +561,9 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("gemini-2.5-flash-preview-native-audio") => true,
             model_type if model_type.starts_with("gemini-2.5-flash-exp-native-audio") => true,
             model_type if model_type.starts_with("gemini-2.5-pro-preview") => true,
+            model_type if model_type.starts_with("gemini-2.5-flash-lite") => true,
+            model_type if model_type.starts_with("gemini-2.5-flash") => true,
+            model_type if model_type.starts_with("gemini-2.5-pro") => true,
             // Gemini 2.0 models - Image generation model doesn't support function calling
             model_type if model_type.starts_with("gemini-2.0-flash-preview-image-generation") => false,
             model_type if model_type.starts_with("gemini-2.0-flash-lite") => true,
@@ -536,7 +601,9 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Exo(_) => ModelCost::Cheap,
             LLMProviderInterface::OpenRouter(_) => ModelCost::Free,
             LLMProviderInterface::Grok(grok) => {
-                if grok.model_type.starts_with("grok-4.1-fast") {
+                if grok.model_type.starts_with("grok-4.20") {
+                    ModelCost::GoodValue
+                } else if grok.model_type.starts_with("grok-4.1-fast") {
                     ModelCost::GoodValue
                 } else if grok.model_type.starts_with("grok-4") {
                     ModelCost::GoodValue
@@ -553,6 +620,9 @@ impl ModelCapabilitiesManager {
                 }
             }
             LLMProviderInterface::Claude(claude) => match claude.model_type.as_str() {
+                "claude-opus-4-7" => ModelCost::Expensive,
+                "claude-sonnet-4-6" => ModelCost::Cheap,
+                "claude-haiku-4-5-20251001" | "claude-haiku-4.5" | "claude-haiku-4-5" => ModelCost::VeryCheap,
                 "claude-opus-4.5" | "claude-opus-4-5" => ModelCost::Expensive,
                 "claude-opus-4-1-20250805" | "claude-opus-4-1" => ModelCost::Expensive,
                 "claude-opus-4-20250514" | "claude-opus-4-0" => ModelCost::Expensive,
@@ -560,7 +630,6 @@ impl ModelCapabilitiesManager {
                 "claude-sonnet-4-20250514" | "claude-sonnet-4-0" => ModelCost::Cheap,
                 "claude-3-7-sonnet-20250219" | "claude-3-7-sonnet-latest" => ModelCost::Cheap,
                 "claude-3-5-sonnet-20241022" | "claude-3-5-sonnet-latest" => ModelCost::Cheap,
-                "claude-haiku-4.5" | "claude-haiku-4-5" => ModelCost::VeryCheap,
                 "claude-3-5-haiku-20241022" | "claude-3-5-haiku-latest" => ModelCost::VeryCheap,
                 "claude-3-opus-20240229" | "claude-3-opus-latest" => ModelCost::Expensive,
                 "claude-3-haiku-20240307" => ModelCost::VeryCheap,
@@ -727,7 +796,11 @@ impl ModelCapabilitiesManager {
     }
 
     fn get_openai_max_tokens(model_type: &str) -> usize {
-        if model_type.starts_with("gpt-4o")
+        if model_type.starts_with("gpt-5.4") {
+            1_050_000
+        } else if model_type.starts_with("gpt-5-pro") {
+            400_000
+        } else if model_type.starts_with("gpt-4o")
             || model_type.starts_with("gpt-4-1106-preview")
             || model_type.starts_with("gpt-4o-mini")
             || model_type.starts_with("4o-mini")
@@ -782,7 +855,9 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Exo(exo) => Self::get_max_tokens_for_model_type(&exo.model_type),
             LLMProviderInterface::Groq(groq) => Self::get_max_tokens_for_model_type(&groq.model_type),
             LLMProviderInterface::Grok(grok) => {
-                if grok.model_type.starts_with("grok-4.1-fast") {
+                if grok.model_type.starts_with("grok-4.20") {
+                    2_000_000
+                } else if grok.model_type.starts_with("grok-4.1-fast") {
                     256_000
                 } else if grok.model_type.starts_with("grok-4") {
                     256_000
@@ -797,8 +872,16 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::OpenRouter(openrouter) => get_openrouter_model(&openrouter.model_type)
                 .and_then(|m| m.context_length)
                 .unwrap_or(4096) as usize,
-            LLMProviderInterface::Claude(_) => 200_000, // All Claude models now have 200K context window
-            LLMProviderInterface::DeepSeek(_) => 64_000,
+            LLMProviderInterface::Claude(claude) => {
+                if claude.model_type.starts_with("claude-opus-4-7")
+                    || claude.model_type.starts_with("claude-sonnet-4-6")
+                {
+                    1_000_000
+                } else {
+                    200_000
+                }
+            }
+            LLMProviderInterface::DeepSeek(_) => 128_000,
             LLMProviderInterface::LocalRegex(_) => 128_000,
         }
     }
@@ -811,9 +894,7 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("mistral-small3.2") || model_type.starts_with("mistral-small3.1") => {
                 128_000
             }
-            model_type if model_type.starts_with("ministral-3") => {
-                256_000
-            }
+            model_type if model_type.starts_with("ministral-3") => 256_000,
             model_type if model_type.starts_with("mistral-small") => 128_000,
             model_type if model_type.starts_with("mistral-large") => 128_000,
             model_type if model_type.starts_with("mixtral:8x7b-instruct-v0.1") => 16_000,
@@ -922,7 +1003,11 @@ impl ModelCapabilitiesManager {
     }
 
     fn get_openai_max_output_tokens(model_type: &str) -> usize {
-        if model_type.contains("4o-mini") || model_type.starts_with("gpt-4o") {
+        if model_type.starts_with("gpt-5-pro") {
+            272_000
+        } else if model_type.starts_with("gpt-5.4") {
+            128_000
+        } else if model_type.contains("4o-mini") || model_type.starts_with("gpt-4o") {
             16_384
         } else if model_type.starts_with("o1-preview") || model_type.starts_with("gpt-4.1") {
             32768
@@ -995,7 +1080,9 @@ impl ModelCapabilitiesManager {
                 }
             }
             LLMProviderInterface::Grok(grok) => {
-                if grok.model_type.starts_with("grok-4.1-fast") {
+                if grok.model_type.starts_with("grok-4.20") {
+                    128_000
+                } else if grok.model_type.starts_with("grok-4.1-fast") {
                     128_000
                 } else if grok.model_type.starts_with("grok-4") {
                     128_000
@@ -1015,15 +1102,27 @@ impl ModelCapabilitiesManager {
                 max_tokens.unwrap_or(model.and_then(|m| m.context_length).unwrap_or(4096)) as usize
             }
             LLMProviderInterface::Claude(claude) => {
-                if claude.model_type.starts_with("claude-opus-4.5") || claude.model_type.starts_with("claude-opus-4-5") {
+                if claude.model_type.starts_with("claude-opus-4-7") {
+                    128_000
+                } else if claude.model_type.starts_with("claude-sonnet-4-6") {
+                    64_000
+                } else if claude.model_type.starts_with("claude-haiku-4-5") {
+                    64_000
+                } else if claude.model_type.starts_with("claude-opus-4.5")
+                    || claude.model_type.starts_with("claude-opus-4-5")
+                {
                     32_000
                 } else if claude.model_type.starts_with("claude-opus-4") {
                     32_000
-                } else if claude.model_type.starts_with("claude-sonnet-4.5") || claude.model_type.starts_with("claude-sonnet-4-5") {
+                } else if claude.model_type.starts_with("claude-sonnet-4.5")
+                    || claude.model_type.starts_with("claude-sonnet-4-5")
+                {
                     64_000
                 } else if claude.model_type.starts_with("claude-sonnet-4") {
                     64_000
-                } else if claude.model_type.starts_with("claude-haiku-4.5") || claude.model_type.starts_with("claude-haiku-4-5") {
+                } else if claude.model_type.starts_with("claude-haiku-4.5")
+                    || claude.model_type.starts_with("claude-haiku-4-5")
+                {
                     8192
                 } else if claude.model_type.starts_with("claude-3-7-sonnet") {
                     64_000
@@ -1039,7 +1138,13 @@ impl ModelCapabilitiesManager {
                     8192 // Default for other Claude models
                 }
             }
-            LLMProviderInterface::DeepSeek(_) => 8192,
+            LLMProviderInterface::DeepSeek(deepseek) => {
+                if deepseek.model_type.starts_with("deepseek-reasoner") {
+                    64_000
+                } else {
+                    8_192
+                }
+            }
             LLMProviderInterface::LocalRegex(_) => 128_000,
         }
     }
@@ -1148,7 +1253,6 @@ impl ModelCapabilitiesManager {
     /// Returns whether the given model supports tool/function calling
     /// capabilities
     pub fn has_tool_capabilities(model: &LLMProviderInterface, _stream: Option<bool>) -> bool {
-        eprintln!("has tool capabilities model: {:?}", model);
         match model {
             LLMProviderInterface::OpenAI(openai) => Self::openai_has_tool_capabilities(&openai.model_type),
             LLMProviderInterface::OpenAILegacy(openai) => Self::openai_has_tool_capabilities(&openai.model_type),
@@ -1256,19 +1360,29 @@ impl ModelCapabilitiesManager {
                     || groq.model_type.starts_with("qwen/qwen3-32b")
                     || groq.model_type.starts_with("openai/gpt-oss")
             }
+            LLMProviderInterface::Grok(grok) => {
+                grok.model_type.starts_with("grok-4.20")
+                    || grok.model_type.starts_with("grok-4.1-fast")
+                    || grok.model_type.starts_with("grok-4")
+            }
             LLMProviderInterface::DeepSeek(deepseek) => deepseek.model_type.starts_with("deepseek-reasoner"),
             LLMProviderInterface::Claude(claude) => {
-                claude.model_type.starts_with("claude-opus-4.5")
+                claude.model_type.starts_with("claude-opus-4-7")
+                    || claude.model_type.starts_with("claude-opus-4.5")
                     || claude.model_type.starts_with("claude-opus-4-5")
                     || claude.model_type.starts_with("claude-opus-4-1")
                     || claude.model_type.starts_with("claude-opus-4")
+                    || claude.model_type.starts_with("claude-sonnet-4-6")
                     || claude.model_type.starts_with("claude-sonnet-4.5")
                     || claude.model_type.starts_with("claude-sonnet-4-5")
                     || claude.model_type.starts_with("claude-sonnet-4")
                     || claude.model_type.starts_with("claude-3-7-sonnet")
             }
             LLMProviderInterface::Gemini(gemini) => {
-                gemini.model_type == "gemini-2.5-flash-preview-05-20"
+                gemini.model_type.starts_with("gemini-3.1-pro-preview")
+                    || gemini.model_type.starts_with("gemini-3.1-flash-lite-preview")
+                    || gemini.model_type.starts_with("gemini-3-flash-preview")
+                    || gemini.model_type == "gemini-2.5-flash-preview-05-20"
                     || gemini.model_type == "gemini-2.5-flash-lite-preview-06-17"
                     || gemini.model_type == "gemini-2.5-flash-lite"
                     || gemini.model_type == "gemini-2.5-flash"
