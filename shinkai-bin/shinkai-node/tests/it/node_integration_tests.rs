@@ -15,7 +15,7 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::Node;
 use std::fs;
-use std::net::{IpAddr, Ipv4Addr, TcpListener};
+use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
 use std::sync::Arc;
 use std::{net::SocketAddr, time::Duration};
@@ -28,13 +28,6 @@ use crate::it::utils::node_test_api::{
 use crate::it::utils::test_boilerplate::{default_embedding_model, supported_embedding_models};
 
 use super::utils::node_test_local::local_registration_profile_node;
-
-fn port_is_available(port: u16) -> bool {
-    match TcpListener::bind(("127.0.0.1", port)) {
-        Ok(_) => true,
-        Err(_) => false,
-    }
-}
 
 #[test]
 fn setup() {
@@ -93,10 +86,8 @@ fn subidentity_registration() {
         let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name));
         let node2_db_path = format!("db_tests/{}", hash_string(node2_identity_name));
 
-        assert!(port_is_available(12006), "Port 12006 is not available");
-        assert!(port_is_available(12007), "Port 12007 is not available");
         // Create node1 and node2
-        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12006);
+        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0);
         let node1 = Node::new(
             node1_identity_name.to_string(),
             addr1,
@@ -119,7 +110,7 @@ fn subidentity_registration() {
         )
         .await;
 
-        let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12007);
+        let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0);
         let node2 = Node::new(
             node2_identity_name.to_string(),
             addr2,
@@ -715,10 +706,8 @@ fn test_relay_server_communication() {
         let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name));
         let node2_db_path = format!("db_tests/{}", hash_string(node2_identity_name));
 
-        assert!(port_is_available(8082), "Port 8082 is not available");
-        assert!(port_is_available(8083), "Port 8083 is not available");
-        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8082);
-        let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8083);
+        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0);
+        let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0);
 
         let node1 = Node::new(
             node1_identity_name.to_string(),
@@ -1125,14 +1114,9 @@ fn test_localhost_relay_server_communication() {
         let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name));
         let node2_db_path = format!("db_tests/{}", hash_string(node2_identity_name));
 
-        // Let the OS select ports, so local services cannot occupy test ports.
-        let listener1 = TcpListener::bind("127.0.0.1:0").unwrap();
-        let listener2 = TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr1 = listener1.local_addr().unwrap();
-        let addr2 = listener2.local_addr().unwrap();
-        drop((listener1, listener2));
-        assert!(port_is_available(addr1.port()), "Node 1 port is not available");
-        assert!(port_is_available(addr2.port()), "Node 2 port is not available");
+        // The real listeners select and own their ports; delivery uses the local relay.
+        let addr1 = "127.0.0.1:0".parse().unwrap();
+        let addr2 = "127.0.0.1:0".parse().unwrap();
 
         let node1 = Node::new(
             node1_identity_name.to_string(),
@@ -1500,10 +1484,8 @@ fn test_send_message_to_localhost_node() {
         let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name));
         let node2_db_path = format!("db_tests/{}", hash_string(node2_identity_name));
 
-        assert!(port_is_available(12052), "Port 12052 is not available");
-        assert!(port_is_available(12053), "Port 12053 is not available");
-        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12052);
-        let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12053);
+        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0);
+        let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0);
 
         let node1 = Node::new(
             node1_identity_name.to_string(),

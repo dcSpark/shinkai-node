@@ -59,6 +59,32 @@ pub(crate) async fn execute_valid_function_call(
     execution.await
 }
 
+// Once observed, cancellation stays active for every remaining tool in this turn.
+#[derive(Default)]
+struct ToolExecutionCancellation {
+    cancelled: bool,
+}
+
+impl ToolExecutionCancellation {
+    fn observe(&mut self, stopper: &LLMStopper, inbox: Option<&InboxName>) -> bool {
+        self.cancelled |= inbox.is_some_and(|inbox| stopper.should_stop(&inbox.to_string()));
+        self.cancelled
+    }
+}
+
+async fn execute_unless_cancelled(
+    cancellation: &mut ToolExecutionCancellation,
+    stopper: &LLMStopper,
+    inbox: Option<&InboxName>,
+    function_call: &FunctionCall,
+    execution: impl std::future::Future<Output = Result<ToolCallFunctionResponse, LLMProviderError>>,
+) -> Option<Result<ToolCallFunctionResponse, LLMProviderError>> {
+    if cancellation.observe(stopper, inbox) {
+        return None;
+    }
+    Some(execute_valid_function_call(function_call, execution).await)
+}
+
 #[derive(Clone)]
 pub struct GenericInferenceChain {
     pub context: InferenceChainContext,
@@ -1106,6 +1132,36 @@ impl GenericInferenceChain {
 
         let mut iteration_count = 0;
         let mut tool_calls_history = Vec::new();
+        let mut cancellation = ToolExecutionCancellation::default();
+        // Return once after cancellation. Resetting the shared signal cannot allow
+        // another call from this response to run because this exits the chain.
+        macro_rules! return_if_cancelled {
+            ($inbox:expr, $tps:expr) => {
+                if cancellation.cancelled {
+                    if let Some(inbox) = $inbox {
+                        llm_stopper.reset(&inbox.to_string());
+                        let _ = crate::llm_provider::providers::shared::shared_model_logic::send_ws_update(
+                            &ws_manager_trait,
+                            Some(inbox.clone()),
+                            &full_job.job_id,
+                            all_llm_messages.last().cloned().unwrap_or_default(),
+                            false,
+                            true,
+                            Some("Stopped by user request".into()),
+                        )
+                        .await;
+                    }
+                    return Ok(InferenceChainResult::with_full_details(
+                        all_llm_messages.last().cloned().unwrap_or_default(),
+                        Some(all_reasoning_content.join("\n\n")),
+                        $tps,
+                        Some(format!("{:.2}", start_time.elapsed().as_millis())),
+                        Some(tool_calls_history.clone()),
+                        all_generated_files.clone(),
+                    ));
+                }
+            };
+        }
         loop {
             // Check if max_iterations is reached
             if iteration_count >= max_iterations {
@@ -1169,6 +1225,9 @@ impl GenericInferenceChain {
             }
 
             let mut response = response_res?;
+            if cancellation.observe(&llm_stopper, inbox_name.as_ref()) {
+                response.function_calls.clear();
+            }
             super::generic_prompts::tag_inference_turn(&mut response.function_calls);
             if let Some(ref msg_id) = message_hash_id {
                 let trace_info = json!({
@@ -1192,12 +1251,15 @@ impl GenericInferenceChain {
                 all_reasoning_content.push(reasoning_content);
             }
             all_generated_files.extend(response.generated_files.clone());
+            return_if_cancelled!(inbox_name.as_ref(), response.tps.map(|tps| tps.to_string()));
 
             // 5) Check response if it requires a function call
             if !response.is_function_calls_empty() {
                 let mut iteration_function_responses = Vec::new();
 
                 for function_call in response.function_calls {
+                    cancellation.observe(&llm_stopper, inbox_name.as_ref());
+                    return_if_cancelled!(inbox_name.as_ref(), response.tps.map(|tps| tps.to_string()));
                     let parsed_message = ParsedUserMessage::new(user_message.clone());
                     let image_files = HashMap::new();
                     let context = InferenceChainContext::new(
@@ -1303,7 +1365,10 @@ impl GenericInferenceChain {
 
                     // Note: here we can add logic to handle the case that we have network tools
                     // TODO: if shinkai_tool is None we need to retry with the LLM (hallucination)
-                    let mut function_response = match execute_valid_function_call(
+                    let execution_result = execute_unless_cancelled(
+                        &mut cancellation,
+                        &llm_stopper,
+                        inbox_name.as_ref(),
                         &function_call,
                         tool_router.as_ref().unwrap().call_function(
                             function_call.clone(),
@@ -1312,8 +1377,9 @@ impl GenericInferenceChain {
                             user_profile.clone(),
                         ),
                     )
-                    .await
-                    {
+                    .await;
+                    return_if_cancelled!(inbox_name.as_ref(), response.tps.map(|tps| tps.to_string()));
+                    let mut function_response = match execution_result.expect("cancellation returns above") {
                         Ok(response) => response,
                         Err(e) => {
                             match &e {
@@ -1459,6 +1525,8 @@ impl GenericInferenceChain {
                     // Store all function responses to use in the next prompt (LLM sees the sanitized version if needed)
                     iteration_function_responses.push(function_response);
                 }
+                cancellation.observe(&llm_stopper, inbox_name.as_ref());
+                return_if_cancelled!(inbox_name.as_ref(), response.tps.map(|tps| tps.to_string()));
 
                 let additional_files = Self::get_additional_files(
                     &db,
@@ -1632,5 +1700,92 @@ impl GenericInferenceChain {
         }
 
         tool_keys
+    }
+}
+
+#[cfg(test)]
+mod tool_cancellation_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    fn call() -> FunctionCall {
+        FunctionCall {
+            name: "zero_argument_tool".into(),
+            arguments: Default::default(),
+            tool_router_key: None,
+            response: None,
+            index: 0,
+            id: Some("call_test".into()),
+            call_type: Some("function".into()),
+            provider_metadata: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn cancellation_before_tool_poll_blocks_this_and_all_remaining_calls() {
+        let stopper = LLMStopper::new();
+        let inbox = InboxName::get_job_inbox_name_from_params("cancel-before-poll".into()).unwrap();
+        let mut cancellation = ToolExecutionCancellation::default();
+        // The provider returned normally, then cancellation arrived before tool polling.
+        assert!(!cancellation.observe(&stopper, Some(&inbox)));
+        let polls = AtomicUsize::new(0);
+        let function_call = call();
+        let execution_call = function_call.clone();
+        let execution = async {
+            polls.fetch_add(1, Ordering::SeqCst);
+            Ok(ToolCallFunctionResponse {
+                function_call: execution_call,
+                response: "executed".into(),
+            })
+        };
+        stopper.stop(&inbox.to_string());
+        assert!(
+            execute_unless_cancelled(&mut cancellation, &stopper, Some(&inbox), &function_call, execution)
+                .await
+                .is_none()
+        );
+        assert!(stopper.should_stop(&inbox.to_string()));
+        // Even a signal reset must not enable another call from the cancelled turn.
+        stopper.reset(&inbox.to_string());
+        let execution_call = function_call.clone();
+        assert!(
+            execute_unless_cancelled(&mut cancellation, &stopper, Some(&inbox), &function_call, async {
+                polls.fetch_add(1, Ordering::SeqCst);
+                Ok(ToolCallFunctionResponse {
+                    function_call: execution_call,
+                    response: "executed".into(),
+                })
+            })
+            .await
+            .is_none()
+        );
+        assert_eq!(polls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn uncancelled_tool_executes_and_argument_guard_still_blocks_invalid_calls() {
+        let stopper = LLMStopper::new();
+        let inbox = InboxName::get_job_inbox_name_from_params("normal-tool".into()).unwrap();
+        let mut cancellation = ToolExecutionCancellation::default();
+        let polls = AtomicUsize::new(0);
+        for invalid in [false, true] {
+            let mut function_call = call();
+            if invalid {
+                function_call.provider_metadata = Some(json!({"function_argument_error":"invalid JSON"}));
+            }
+            let execution_call = function_call.clone();
+            let outcome = execute_unless_cancelled(&mut cancellation, &stopper, Some(&inbox), &function_call, async {
+                polls.fetch_add(1, Ordering::SeqCst);
+                Ok(ToolCallFunctionResponse {
+                    function_call: execution_call,
+                    response: "executed".into(),
+                })
+            })
+            .await
+            .unwrap();
+            assert_eq!(outcome.is_ok(), !invalid);
+        }
+        assert_eq!(polls.load(Ordering::SeqCst), 1);
+        assert!(!cancellation.cancelled);
     }
 }

@@ -617,49 +617,9 @@ pub async fn parse_openai_stream_chunk(
         });
         let chunk = selected_chunk.as_deref().unwrap_or(chunk);
 
-        // Extract any function call arguments before parsing JSON
-        let is_indexed_delta = serde_json::from_str::<JsonValue>(chunk)
-            .ok()
-            .and_then(|value| {
-                value["choices"]
-                    .as_array()
-                    .map(|choices| choices.iter().any(|choice| choice["delta"]["tool_calls"].is_array()))
-            })
-            .unwrap_or(false);
-        let (maybe_args, cleaned_chunk) = if is_indexed_delta {
-            (None, chunk.to_string())
-        } else {
-            extract_and_remove_arguments(chunk)
-        };
-
-        // If we extracted arguments and we're accumulating a function call, append them
-        if let Some(args) = maybe_args {
-            if partial_fc.is_accumulating {
-                // Only clear if we truly are at the first chunk of a new function call
-                // i.e., partial_fc.arguments is empty and the chunk starts with '{'
-                if partial_fc.arguments.is_empty() && args.starts_with('{') {
-                    partial_fc.arguments.clear();
-                }
-                append_argument_delta(partial_fc, &JsonValue::String(args));
-
-                // If we have a complete JSON object, try to parse it
-                if partial_fc.arguments.starts_with('{') && partial_fc.arguments.ends_with('}') {
-                    match serde_json::from_str::<JsonValue>(&partial_fc.arguments) {
-                        Ok(_) => {
-                            // We have a complete valid JSON object, finalize the function call
-                            finalize_function_call_sync(partial_fc, function_calls, tools, false);
-                        }
-                        Err(_) => {
-                            // Not a complete valid JSON yet, continue
-                            // accumulating
-                        }
-                    }
-                }
-            }
-        }
-
-        // Attempt to parse the cleaned JSON
-        match serde_json::from_str::<JsonValue>(&cleaned_chunk) {
+        // Parse each argument string once through serde, including its escapes.
+        // Legacy and indexed calls share append_argument_delta below.
+        match serde_json::from_str::<JsonValue>(chunk) {
             Ok(json_data) => {
                 // If there's an error object, record it
                 if let Some(error_obj) = json_data.get("error") {
@@ -772,8 +732,7 @@ pub async fn parse_openai_stream_chunk(
                                     // Legacy function_call format doesn't have IDs, so we clear it
                                     partial_fc.id = None;
                                 }
-                                if let Some(arguments) = fc.get("arguments").filter(|arguments| !arguments.is_string())
-                                {
+                                if let Some(arguments) = fc.get("arguments") {
                                     append_argument_delta(partial_fc, arguments);
                                 }
                             }
@@ -998,7 +957,7 @@ pub async fn handle_streaming_response_with_optional_auth(
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum ChatStreamPolicy {
     Compatible,
-    // Groq must confirm completion, and cancellation must never return tool calls.
+    // Groq must confirm completion before returning tool calls.
     Groq,
 }
 
@@ -1237,11 +1196,7 @@ pub(super) async fn handle_streaming_response_with_policy(
                         Some(reasoning_content.clone())
                     },
                     json!({}),
-                    if policy == ChatStreamPolicy::Groq {
-                        Vec::new()
-                    } else {
-                        function_calls.clone()
-                    },
+                    Vec::new(),
                     Vec::new(),
                     None,
                 );
@@ -1258,9 +1213,15 @@ pub(super) async fn handle_streaming_response_with_policy(
                     // Keep framing separate from the shared parser, which can drain
                     // a data line before its second newline arrives.
                     terminal_buffer.push_str(&chunk_str);
-                    while let Some(end) = terminal_buffer.find("\n\n") {
+                    while let Some((end, delimiter_len)) = terminal_buffer
+                        .find("\n\n")
+                        .map(|end| (end, 2))
+                        .into_iter()
+                        .chain(terminal_buffer.find("\r\n\r\n").map(|end| (end, 4)))
+                        .min_by_key(|(end, _)| *end)
+                    {
                         let frame = terminal_buffer[..end].to_owned();
-                        terminal_buffer.drain(..end + 2);
+                        terminal_buffer.drain(..end + delimiter_len);
                         for data in frame.lines().filter_map(|line| line.strip_prefix("data:")) {
                             let data = data.trim();
                             if data == "[DONE]" {
@@ -1323,35 +1284,35 @@ pub(super) async fn handle_streaming_response_with_policy(
         }
     }
 
-    if policy == ChatStreamPolicy::Groq {
-        // EOF can arrive without another chunk on which to observe cancellation.
-        if let Some(ref inbox) = inbox_name {
-            if llm_stopper.should_stop(&inbox.to_string()) {
-                llm_stopper.reset(&inbox.to_string());
-                let _ = send_ws_update(
-                    &ws_manager_trait,
-                    Some(inbox.clone()),
-                    &session_id,
-                    response_text.clone(),
-                    false,
-                    true,
-                    Some("Stopped by user request".into()),
-                )
-                .await;
-                return Ok(LLMInferenceResponse::new(
-                    response_text,
-                    if reasoning_content.is_empty() {
-                        None
-                    } else {
-                        Some(reasoning_content)
-                    },
-                    json!({}),
-                    Vec::new(),
-                    Vec::new(),
-                    None,
-                ));
-            }
+    // EOF can arrive without another chunk on which to observe cancellation.
+    if let Some(ref inbox) = inbox_name {
+        if llm_stopper.should_stop(&inbox.to_string()) {
+            llm_stopper.reset(&inbox.to_string());
+            let _ = send_ws_update(
+                &ws_manager_trait,
+                Some(inbox.clone()),
+                &session_id,
+                response_text.clone(),
+                false,
+                true,
+                Some("Stopped by user request".into()),
+            )
+            .await;
+            return Ok(LLMInferenceResponse::new(
+                response_text,
+                if reasoning_content.is_empty() {
+                    None
+                } else {
+                    Some(reasoning_content)
+                },
+                json!({}),
+                Vec::new(),
+                Vec::new(),
+                None,
+            ));
         }
+    }
+    if policy == ChatStreamPolicy::Groq {
         if terminal_aborted {
             return Err(LLMProviderError::APIError(
                 "Groq stream ended with an incomplete finish reason".into(),
@@ -2381,7 +2342,21 @@ mod tests {
         ];
 
         for chunk in argument_chunks {
-            buffer.push_str(&format!("data: {{\"id\":\"chatcmpl-ApllfOJ8EuDsd9Qe6J1j3EMGPhywA\",\"object\":\"chat.completion.chunk\",\"created\":1736901711,\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_72ed7ab54c\",\"choices\":[{{\"index\":0,\"delta\":{{\"function_call\":{{\"arguments\":\"{}\"}}}},\"logprobs\":null,\"finish_reason\":null}}]}}\n", chunk));
+            let event = json!({
+                "id":"chatcmpl-smtp-test", "object":"chat.completion.chunk", "created":1736901711,
+                "model":"gpt-4o-mini-2024-07-18",
+                "choices":[{"index":0,"delta":{"function_call":{"arguments":chunk}},
+                    "logprobs":null,"finish_reason":null}]
+            });
+            buffer.push_str(&format!("data: {event}\n"));
+            for line in buffer.lines().filter_map(|line| line.strip_prefix("data: ")) {
+                if line.trim() != "[DONE]" {
+                    assert!(
+                        serde_json::from_str::<JsonValue>(line).is_ok(),
+                        "Fixture SSE data must be valid JSON"
+                    );
+                }
+            }
             let result = parse_openai_stream_chunk(
                 &mut buffer,
                 &mut response_text,
@@ -2399,6 +2374,14 @@ mod tests {
 
         // Final message with finish_reason
         buffer.push_str("data: {\"id\":\"chatcmpl-ApllfOJ8EuDsd9Qe6J1j3EMGPhywA\",\"object\":\"chat.completion.chunk\",\"created\":1736901711,\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_72ed7ab54c\",\"choices\":[{\"index\":0,\"delta\":{},\"logprobs\":null,\"finish_reason\":\"function_call\"}]}\n");
+        for line in buffer.lines().filter_map(|line| line.strip_prefix("data: ")) {
+            if line.trim() != "[DONE]" {
+                assert!(
+                    serde_json::from_str::<JsonValue>(line).is_ok(),
+                    "Fixture SSE data must be valid JSON"
+                );
+            }
+        }
         let result = parse_openai_stream_chunk(
             &mut buffer,
             &mut response_text,
@@ -2415,6 +2398,14 @@ mod tests {
 
         // [DONE] message
         buffer.push_str("data: [DONE]\n");
+        for line in buffer.lines().filter_map(|line| line.strip_prefix("data: ")) {
+            if line.trim() != "[DONE]" {
+                assert!(
+                    serde_json::from_str::<JsonValue>(line).is_ok(),
+                    "Fixture SSE data must be valid JSON"
+                );
+            }
+        }
         let result = parse_openai_stream_chunk(
             &mut buffer,
             &mut response_text,
@@ -2474,10 +2465,10 @@ mod tests {
         })]);
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
 
-        // Test each chunk exactly as they appeared in the logs
+        // Replay the recorded argument fragments in valid Chat SSE envelopes.
         let chunks = vec![
             r#"data: {"id":"chatcmpl-Ar9TM4lQXVkjrdwTchuU6H3TPiAFB","object":"chat.completion.chunk","created":1737231160,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"role":"assistant","content":null,"function_call":{"name":"duckduckgo_search","arguments":""},"refusal":null},"logprobs":null,"finish_reason":null}]}"#,
-            r#"data: {"id":"chatcmpl-Ar9TM4lQXVkjrdwTchuU6H3TPiAFB","object":"chat.completion.chunk","created":1737231160,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"{\""}}},"logprobs":null,"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-Ar9TM4lQXVkjrdwTchuU6H3TPiAFB","object":"chat.completion.chunk","created":1737231160,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"{\""}},"logprobs":null,"finish_reason":null}]}"#,
             r#"data: {"id":"chatcmpl-Ar9TM4lQXVkjrdwTchuU6H3TPiAFB","object":"chat.completion.chunk","created":1737231160,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"message"}},"logprobs":null,"finish_reason":null}]}"#,
             r#"data: {"id":"chatcmpl-Ar9TM4lQXVkjrdwTchuU6H3TPiAFB","object":"chat.completion.chunk","created":1737231160,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"\":\""}},"logprobs":null,"finish_reason":null}]}"#,
             r#"data: {"id":"chatcmpl-Ar9TM4lQXVkjrdwTchuU6H3TPiAFB","object":"chat.completion.chunk","created":1737231160,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"movies"}},"logprobs":null,"finish_reason":null}]}"#,
@@ -2490,6 +2481,14 @@ mod tests {
         for chunk in chunks {
             buffer.push_str(chunk);
             buffer.push('\n');
+            for line in buffer.lines().filter_map(|line| line.strip_prefix("data: ")) {
+                if line.trim() != "[DONE]" {
+                    assert!(
+                        serde_json::from_str::<JsonValue>(line).is_ok(),
+                        "Fixture SSE data must be valid JSON"
+                    );
+                }
+            }
             let result = parse_openai_stream_chunk(
                 &mut buffer,
                 &mut response_text,
@@ -3898,4 +3897,158 @@ fn log_request_to_file(payload: &JsonValue) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod cancellation_and_legacy_tests {
+    use super::*;
+    use crate::llm_provider::execution::chains::generic_chain::generic_inference_chain::execute_valid_function_call;
+    use crate::managers::tool_router::ToolCallFunctionResponse;
+
+    fn event(value: JsonValue) -> String {
+        format!("data: {value}\n\n")
+    }
+
+    #[tokio::test]
+    async fn compatible_and_complete_identity_stops_never_return_executable_calls() {
+        for mode in [ToolIdentityMode::Fragments, ToolIdentityMode::Complete] {
+            for eof_after_stop in [false, true] {
+                let mut server = mockito::Server::new_async().await;
+                let inbox = InboxName::get_job_inbox_name_from_params("chat-stop".into()).unwrap();
+                let stopper = Arc::new(LLMStopper::new());
+                let writer_stopper = stopper.clone();
+                let writer_inbox = inbox.clone();
+                let first = event(
+                    json!({"choices":[{"index":0,"delta":{"content":"Text","reasoning":"Plan","tool_calls":[
+                    {"index":0,"id":"call_finished","type":"function","function":{"name":"zero","arguments":"{}"}}
+                ]},"finish_reason":"tool_calls"}]}),
+                );
+                let mock = server
+                    .mock("POST", "/chat/completions")
+                    .with_header("content-type", "text/event-stream")
+                    .with_chunked_body(move |writer| {
+                        writer.write_all(first.as_bytes())?;
+                        writer.flush()?;
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                        writer_stopper.stop(&writer_inbox.to_string());
+                        if !eof_after_stop {
+                            writer.write_all(b"data: [DONE]\n\n")?;
+                            writer.flush()?;
+                        }
+                        Ok(())
+                    })
+                    .create_async()
+                    .await;
+                let result = handle_streaming_response_with_identity_mode(
+                    &Client::new(),
+                    format!("{}/chat/completions", server.url()),
+                    json!({}),
+                    "test".into(),
+                    Some(inbox.clone()),
+                    None,
+                    stopper.clone(),
+                    "test".into(),
+                    None,
+                    None,
+                    mode,
+                )
+                .await
+                .unwrap();
+                mock.assert_async().await;
+                assert_eq!(result.response_string, "Text");
+                assert_eq!(result.reasoning_content.as_deref(), Some("Plan"));
+                assert!(!stopper.should_stop(&inbox.to_string()));
+                let mut executed = false;
+                for call in &result.function_calls {
+                    let execution_call = call.clone();
+                    let _ = execute_valid_function_call(call, async {
+                        executed = true;
+                        Ok(ToolCallFunctionResponse {
+                            function_call: execution_call,
+                            response: "executed".into(),
+                        })
+                    })
+                    .await;
+                }
+                assert!(!executed);
+                assert!(result.function_calls.is_empty());
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn legacy_string_fragments_are_decoded_once_and_keep_execution_guards() {
+        let cases = [
+            (vec![json!("{\"city\":"), json!("\"Paris\\\" Centre\"}")], true, true),
+            (vec![json!(""), json!("{}")], true, true),
+            (vec![json!("  ")], true, true),
+            (vec![json!(null), json!("{}")], true, true),
+            (vec![json!(null)], true, false),
+            (vec![json!({})], true, false),
+            (vec![json!([])], true, false),
+            (vec![json!("null")], true, false),
+            (vec![json!("{")], true, false),
+            (vec![json!("")], false, false),
+        ];
+        for (case_index, (fragments, completed, valid)) in cases.into_iter().enumerate() {
+            let mut server = mockito::Server::new_async().await;
+            let mut body = event(json!({"choices":[{"index":0,"delta":{"function_call":{"name":"zero"}}}]}));
+            for fragment in fragments {
+                body.push_str(&event(
+                    json!({"choices":[{"index":0,"delta":{"function_call":{"arguments":fragment}}}]}),
+                ));
+            }
+            if completed {
+                body.push_str(&event(
+                    json!({"choices":[{"index":0,"delta":{},"finish_reason":"function_call"}]}),
+                ));
+                body.push_str("data: [DONE]\n\n");
+            }
+            let mock = server
+                .mock("POST", "/chat/completions")
+                .with_header("content-type", "text/event-stream")
+                .with_body(body)
+                .create_async()
+                .await;
+            let result = handle_streaming_response(
+                &Client::new(),
+                format!("{}/chat/completions", server.url()),
+                json!({}),
+                "test".into(),
+                None,
+                None,
+                Arc::new(LLMStopper::new()),
+                "test".into(),
+                Some(vec![json!({"name":"zero","tool_router_key":"zero-router"})]),
+                None,
+            )
+            .await
+            .unwrap();
+            mock.assert_async().await;
+            assert_eq!(result.function_calls.len(), 1);
+            let call = &result.function_calls[0];
+            assert_eq!(call.name, "zero");
+            assert_eq!(call.tool_router_key.as_deref(), Some("zero-router"));
+            if case_index == 0 {
+                assert_eq!(
+                    call.arguments,
+                    json!({"city":"Paris\" Centre"}).as_object().unwrap().clone()
+                );
+            } else {
+                assert!(call.arguments.is_empty());
+            }
+            let mut executed = false;
+            let execution_call = call.clone();
+            let outcome = execute_valid_function_call(call, async {
+                executed = true;
+                Ok(ToolCallFunctionResponse {
+                    function_call: execution_call,
+                    response: "executed".into(),
+                })
+            })
+            .await;
+            assert_eq!(executed, valid);
+            assert_eq!(outcome.is_ok(), valid);
+        }
+    }
 }

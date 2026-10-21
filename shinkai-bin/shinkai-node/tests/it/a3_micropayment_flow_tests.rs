@@ -24,7 +24,6 @@ use shinkai_tools_primitives::tools::network_tool::NetworkTool;
 use shinkai_tools_primitives::tools::parameters::Parameters;
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader, ShinkaiToolWithAssets};
 use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
-use std::net::TcpListener;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::runtime::Runtime;
@@ -175,23 +174,10 @@ fn micropayment_flow_test() {
         let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name));
         let node2_db_path = format!("db_tests/{}", hash_string(node2_identity_name));
 
-        // Create node1 and node2
-        fn port_is_available(port: u16) -> bool {
-            match TcpListener::bind(("127.0.0.1", port)) {
-                Ok(_) => true,
-                Err(_) => false,
-            }
-        }
+        // The real listeners select and own their ports; delivery uses the local relay.
+        let addr1 = "127.0.0.1:0".parse().unwrap();
+        let addr2 = "127.0.0.1:0".parse().unwrap();
 
-        // Create node1 and node2
-        let listener1 = TcpListener::bind("127.0.0.1:0").unwrap();
-        let listener2 = TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr1 = listener1.local_addr().unwrap();
-        let addr2 = listener2.local_addr().unwrap();
-        drop((listener1, listener2));
-        assert!(port_is_available(addr1.port()), "Node 1 port is not available");
-        assert!(port_is_available(addr2.port()), "Node 2 port is not available");
-        
         let node1 = Node::new(
             node1_identity_name.to_string(),
             addr1,
@@ -499,7 +485,7 @@ fn micropayment_flow_test() {
                     .unwrap();
                 let all_tools_resp = receiver.recv().await.unwrap();
                 eprintln!("\nAll available Shinkai tools (name, tool_router_key):");
-                
+
                 if let Ok(tools) = &all_tools_resp {
                     if let Some(array) = tools.as_array() {
                         for tool in array {
@@ -769,7 +755,7 @@ fn micropayment_flow_test() {
                         .await
                         .unwrap();
                     let current_resp = receiver.recv().await.unwrap();
-                    
+
                     // Check if response is Ok and has valid offerings
                     let is_valid = if let Ok(val) = &current_resp {
                         println!("val: {:?}", val);
@@ -788,7 +774,7 @@ fn micropayment_flow_test() {
                     } else {
                         false
                     };
-                    
+
                     if is_valid {
                         resp = Some(current_resp);
                         break;

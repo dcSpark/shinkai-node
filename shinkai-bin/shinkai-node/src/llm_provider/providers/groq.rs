@@ -628,6 +628,51 @@ mod response_tests {
     }
 
     #[tokio::test]
+    async fn groq_crlf_terminal_frames_survive_split_cr_lf_boundaries() {
+        for reason in ["length", "content_filter", "tool_calls"] {
+            let mut server = mockito::Server::new_async().await;
+            let first = sse(
+                vec![json!({"choices":[{"index":0,"delta":{"tool_calls":[
+                {"index":0,"id":"split","type":"function","function":{"name":"weather","arguments":"{}"}}
+            ]},"finish_reason":reason}]})],
+                false,
+            )
+            .replace("\n", "\r\n");
+            let mock = server
+                .mock("POST", "/chat/completions")
+                .with_header("content-type", "text/event-stream")
+                .with_chunked_body(move |writer| {
+                    writer.write_all(&first.as_bytes()[..first.len() - 1])?;
+                    writer.flush()?;
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                    writer.write_all(b"\ndata: [DONE]\r\n\r\n")?;
+                    writer.flush()?;
+                    Ok(())
+                })
+                .create_async()
+                .await;
+            let result = handle_streaming_response(
+                &Client::new(),
+                format!("{}/chat/completions", server.url()),
+                json!({}),
+                "test".into(),
+                None,
+                None,
+                Arc::new(LLMStopper::new()),
+                "test".into(),
+                None,
+            )
+            .await;
+            mock.assert_async().await;
+            if reason == "tool_calls" {
+                assert_eq!(result.unwrap().function_calls[0].id.as_deref(), Some("split"));
+            } else {
+                assert!(result.unwrap_err().to_string().contains("incomplete finish reason"));
+            }
+        }
+    }
+
+    #[tokio::test]
     async fn groq_stop_after_completed_call_discards_calls_and_keeps_text() {
         let mut server = mockito::Server::new_async().await;
         let inbox = InboxName::get_job_inbox_name_from_params("groq-stop".into()).unwrap();

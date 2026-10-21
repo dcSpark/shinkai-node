@@ -376,6 +376,31 @@ async fn handle_streaming_response(
         }
     }
 
+    // EOF can arrive without another chunk on which to observe a stop request.
+    if let Some(ref inbox) = inbox_name {
+        if llm_stopper.should_stop(&inbox.to_string()) {
+            llm_stopper.reset(&inbox.to_string());
+            let _ = send_ws_update(
+                &ws_manager_trait,
+                Some(inbox.clone()),
+                &session_id,
+                response_text.clone(),
+                false,
+                true,
+                Some("Stopped by user request".into()),
+            )
+            .await;
+            return Ok(LLMInferenceResponse::new(
+                response_text,
+                None,
+                json!({}),
+                Vec::new(),
+                Vec::new(),
+                None,
+            ));
+        }
+    }
+
     // If no WS message with is_done: true was sent, send a final message
     if !is_done_sent {
         let _ = send_ws_update(
@@ -509,11 +534,67 @@ struct OpenRouterResponseState {
     content: String,
     arguments: std::collections::HashMap<u64, JsonValue>,
     arguments_complete: Option<bool>,
+    identity_errors: std::collections::HashMap<u64, String>,
 }
 
 impl OpenRouterResponseState {
-    fn update_call_arguments(&self, call: &mut FunctionCall) {
-        let arguments = match self.arguments.get(&call.index) {
+    fn update_call_identity(&mut self, call: &mut FunctionCall, delta: &JsonValue, tools: &Option<Vec<JsonValue>>) {
+        // The OpenRouter SDK sets identity once and merges only argument strings.
+        // https://github.com/OpenRouterTeam/ai-sdk-provider/blob/main/src/chat/index.ts
+        let mut error = None;
+        if let Some(id) = delta.get("id").filter(|id| !id.is_null()) {
+            match id.as_str() {
+                Some("") => {}
+                Some(id) if call.id.as_deref().is_none_or(|previous| previous == id) => {
+                    call.id = Some(id.to_owned());
+                }
+                Some(_) => error = Some("Tool call ID changed within one stream index"),
+                None => error = Some("Tool call ID must be a string"),
+            }
+        }
+        if let Some(kind) = delta.get("type") {
+            if kind.as_str() != Some("function") {
+                error = Some("Tool call type must remain function");
+            }
+        }
+        if let Some(name) = delta
+            .get("function")
+            .and_then(|function| function.get("name"))
+            .filter(|name| !name.is_null())
+        {
+            match name.as_str() {
+                Some("") => {}
+                Some(name) if call.name.is_empty() || call.name == name => {
+                    call.name = name.to_owned();
+                    call.tool_router_key = tools.as_ref().and_then(|tools| {
+                        tools.iter().find_map(|tool| {
+                            let definition = tool.get("function").unwrap_or(tool);
+                            if definition.get("name").and_then(|name| name.as_str()) == Some(call.name.as_str()) {
+                                definition
+                                    .get("tool_router_key")
+                                    .or_else(|| tool.get("tool_router_key"))
+                                    .and_then(|key| key.as_str())
+                                    .map(str::to_owned)
+                            } else {
+                                None
+                            }
+                        })
+                    });
+                }
+                Some(_) => error = Some("Tool function name changed within one stream index"),
+                None => error = Some("Tool function name must be a string"),
+            }
+        }
+        if let Some(error) = error {
+            // A later valid delta must not make an ambiguous call executable.
+            self.identity_errors
+                .entry(call.index)
+                .or_insert_with(|| error.to_owned());
+        }
+    }
+
+    fn parsed_arguments(&self, index: u64) -> Result<serde_json::Map<String, JsonValue>, String> {
+        match self.arguments.get(&index) {
             Some(JsonValue::String(arguments))
                 if self.arguments_complete == Some(true) && arguments.trim().is_empty() =>
             {
@@ -530,6 +611,18 @@ impl OpenRouterResponseState {
                 .as_object()
                 .cloned()
                 .ok_or_else(|| "Tool arguments must be a JSON object".to_string())
+        })
+    }
+
+    fn update_call_arguments(&self, call: &mut FunctionCall) {
+        let arguments = self.parsed_arguments(call.index).and_then(|arguments| {
+            if let Some(error) = self.identity_errors.get(&call.index) {
+                Err(error.clone())
+            } else if call.name.is_empty() {
+                Err("Tool function name is missing".to_owned())
+            } else {
+                Ok(arguments)
+            }
         });
         let mut metadata = call
             .provider_metadata
@@ -566,12 +659,7 @@ impl OpenRouterResponseState {
             .map(|call| {
                 let mut function = json!({"name": call.name});
                 let raw_arguments = self.arguments.get(&call.index);
-                let argument_error = call
-                    .provider_metadata
-                    .as_ref()
-                    .and_then(|metadata| metadata.get("function_argument_error"))
-                    .and_then(JsonValue::as_str)
-                    .is_some();
+                let argument_error = self.parsed_arguments(call.index).is_err();
                 if argument_error
                     || self.arguments_complete == Some(true)
                         && raw_arguments.map_or(true, |arguments| {
@@ -648,29 +736,7 @@ fn process_streaming_chunk(
                         function_calls.len() - 1
                     });
                     let call = &mut function_calls[call_position];
-                    if let Some(id) = tool_call.get("id").and_then(|id| id.as_str()) {
-                        call.id = Some(id.into());
-                    }
-                    if let Some(kind) = tool_call.get("type").and_then(|t| t.as_str()) {
-                        call.call_type = Some(kind.into());
-                    }
-                    if let Some(name) = function.and_then(|f| f.get("name")).and_then(|n| n.as_str()) {
-                        call.name.push_str(name);
-                        call.tool_router_key = tools.as_ref().and_then(|tools| {
-                            tools.iter().find_map(|tool| {
-                                let definition = tool.get("function").unwrap_or(tool);
-                                if definition.get("name").and_then(|n| n.as_str()) == Some(call.name.as_str()) {
-                                    definition
-                                        .get("tool_router_key")
-                                        .or_else(|| tool.get("tool_router_key"))
-                                        .and_then(|key| key.as_str())
-                                        .map(str::to_owned)
-                                } else {
-                                    None
-                                }
-                            })
-                        });
-                    }
+                    state.update_call_identity(call, tool_call, tools);
                     if let Some(arguments) = function.and_then(|f| f.get("arguments")) {
                         if let Some(fragment) = arguments.as_str() {
                             let buffer = state.arguments.entry(index).or_insert_with(|| json!(""));
@@ -1486,6 +1552,129 @@ mod option_tests {
 }
 
 #[cfg(test)]
+mod cancellation_tests {
+    use super::*;
+    use shinkai_message_primitives::schemas::ws_types::{WSMessageType, WSMetadata};
+    use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
+
+    struct StreamUpdates {
+        events: Arc<std::sync::Mutex<Vec<(String, WSMetadata)>>>,
+        parsed: std::sync::mpsc::Sender<()>,
+    }
+
+    #[async_trait]
+    impl WSUpdateHandler for StreamUpdates {
+        async fn queue_message(
+            &self,
+            _topic: WSTopic,
+            _subtopic: String,
+            update: String,
+            metadata: WSMessageType,
+            _is_stream: bool,
+        ) {
+            if let WSMessageType::Metadata(metadata) = metadata {
+                let completed = metadata.is_done && metadata.done_reason.is_none();
+                self.events.lock().unwrap().push((update, metadata));
+                if completed {
+                    // Release the HTTP writer only after the production parser saw the call.
+                    let _ = self.parsed.send(());
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn stop_while_waiting_for_eof_discards_completed_calls_and_reports_stop() {
+        for stop_at_eof in [false, true] {
+            let mut server = mockito::Server::new_async().await;
+            let inbox = InboxName::get_job_inbox_name_from_params("openrouter-eof-stop".into()).unwrap();
+            let stopper = Arc::new(LLMStopper::new());
+            let writer_stopper = stopper.clone();
+            let writer_inbox = inbox.clone();
+            let (parsed, received) = std::sync::mpsc::channel();
+            let received = std::sync::Mutex::new(received);
+            let events = Arc::new(std::sync::Mutex::new(Vec::new()));
+            let manager: Arc<Mutex<dyn WSUpdateHandler + Send>> = Arc::new(Mutex::new(StreamUpdates {
+                events: events.clone(),
+                parsed,
+            }));
+            let details = json!([{"type": "reasoning.encrypted", "data": "signed-opaque", "index": 0}]);
+            let body = format!(
+                "data: {}\n\n",
+                json!({"choices": [{"index": 0, "delta": {
+                "content": "Text", "reasoning_details": details, "tool_calls": [{
+                    "index": 0, "id": "completed-call", "type": "function",
+                    "function": {"name": "weather", "arguments": "{}"}
+                }]
+            }, "finish_reason": "tool_calls"}]})
+            );
+            let mock = server
+                .mock("POST", "/chat/completions")
+                .with_header("content-type", "text/event-stream")
+                .with_chunked_body(move |writer| {
+                    writer.write_all(body.as_bytes())?;
+                    writer.flush()?;
+                    received
+                        .lock()
+                        .unwrap()
+                        .recv_timeout(std::time::Duration::from_secs(5))
+                        .map_err(|error| std::io::Error::new(std::io::ErrorKind::TimedOut, error))?;
+                    if stop_at_eof {
+                        writer_stopper.stop(&writer_inbox.to_string());
+                    }
+                    // Close the HTTP stream. There is no later chunk or [DONE] event.
+                    Ok(())
+                })
+                .create_async()
+                .await;
+            let response = tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                handle_streaming_response(
+                    &Client::new(),
+                    format!("{}/chat/completions", server.url()),
+                    json!({}),
+                    "test".into(),
+                    Some(inbox.clone()),
+                    Some(manager),
+                    stopper.clone(),
+                    "test-session".into(),
+                    Some(vec![json!({"name": "weather", "tool_router_key": "weather-route"})]),
+                ),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            mock.assert_async().await;
+            assert_eq!(response.response_string, "Text");
+            assert!(!stopper.should_stop(&inbox.to_string()));
+            let events = events.lock().unwrap();
+            if stop_at_eof {
+                assert!(response.function_calls.is_empty());
+                assert_eq!(events.len(), 2);
+                assert_eq!(events[1].0, "Text");
+                assert!(events[1].1.is_done);
+                assert_eq!(events[1].1.done_reason.as_deref(), Some("Stopped by user request"));
+            } else {
+                assert_eq!(events.len(), 1);
+                assert_eq!(response.function_calls.len(), 1);
+                let call = &response.function_calls[0];
+                assert_eq!(call.id.as_deref(), Some("completed-call"));
+                assert_eq!(call.name, "weather");
+                assert_eq!(call.tool_router_key.as_deref(), Some("weather-route"));
+                assert_eq!(json!(call.arguments), json!({}));
+                let metadata = call.provider_metadata.as_ref().unwrap();
+                assert!(metadata.get("function_argument_error").is_none());
+                assert_eq!(metadata["openrouter_assistant"]["reasoning_details"], details);
+                assert_eq!(
+                    metadata["openrouter_assistant"]["tool_calls"][0]["id"],
+                    "completed-call"
+                );
+            }
+        }
+    }
+}
+
+#[cfg(test)]
 mod argument_tests {
     use super::*;
     use crate::llm_provider::execution::chains::generic_chain::generic_inference_chain::execute_valid_function_call;
@@ -1505,6 +1694,179 @@ mod argument_tests {
         assert_eq!(result.is_ok(), allowed);
         if !allowed {
             assert!(result.unwrap_err().to_string().contains("Invalid function arguments"));
+        }
+    }
+
+    #[tokio::test]
+    async fn repeated_complete_names_keep_parallel_routes_and_argument_fragments() {
+        let tools = Some(vec![
+            json!({"function": {"name": "weather", "tool_router_key": "weather-route"}}),
+            json!({"name": "weatherweather", "tool_router_key": "wrong-route"}),
+            json!({"name": "clock", "tool_router_key": "clock-route"}),
+        ]);
+        let details = json!([{"type": "reasoning.encrypted", "data": "signed-opaque", "index": 0}]);
+        let mut state = OpenRouterResponseState::default();
+        let mut calls = Vec::new();
+        for delta in [
+            json!({"reasoning_details": details, "tool_calls": [
+                {"index": 4, "id": "weather-a", "type": "function", "function": {"name": "weather", "arguments": "{\"city\":"}},
+                {"index": 9, "id": "weather-b", "type": "function", "function": {"name": "weather", "arguments": "{\"city\":"}},
+                {"index": 2, "id": "clock-c", "type": "function", "function": {"name": "clock", "arguments": "{"}}
+            ]}),
+            json!({"tool_calls": [
+                {"index": 9, "id": "weather-b", "type": "function", "function": {"name": "weather", "arguments": "\"Rome\"}"}},
+                {"index": 4, "id": "weather-a", "type": "function", "function": {"name": "weather", "arguments": "\"Paris\"}"}},
+                {"index": 2, "id": "clock-c", "type": "function", "function": {"name": "clock", "arguments": "}"}}
+            ]}),
+            json!({"tool_calls": [{"index": 4, "function": {"name": "weather"}}]}),
+        ] {
+            process_streaming_chunk(
+                &json!({"choices": [{"index": 0, "delta": delta}]}),
+                &mut String::new(),
+                &mut calls,
+                &tools,
+                &mut state,
+            );
+        }
+        state.attach_reasoning(&mut calls);
+        assert_eq!(calls.len(), 3);
+        for (index, id, name, route, arguments) in [
+            (4, "weather-a", "weather", "weather-route", json!({"city": "Paris"})),
+            (9, "weather-b", "weather", "weather-route", json!({"city": "Rome"})),
+            (2, "clock-c", "clock", "clock-route", json!({})),
+        ] {
+            let call = calls.iter().find(|call| call.index == index).unwrap();
+            assert_eq!(call.id.as_deref(), Some(id));
+            assert_eq!(call.name, name);
+            assert_eq!(call.tool_router_key.as_deref(), Some(route));
+            assert_eq!(json!(call.arguments), arguments);
+            assert_execution_allowed(call, true).await;
+            let assistant = &call.provider_metadata.as_ref().unwrap()["openrouter_assistant"];
+            assert_eq!(assistant["reasoning_details"], details);
+            assert_eq!(assistant["tool_calls"].as_array().unwrap().len(), 3);
+            assert_eq!(assistant["tool_calls"][0]["function"]["name"], "weather");
+            assert_eq!(
+                assistant["tool_calls"][0]["function"]["arguments"],
+                "{\"city\":\"Paris\"}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn conflicting_stream_identity_stays_guarded_without_reassigning_the_route() {
+        let tools = Some(vec![
+            json!({"function": {"name": "weather", "tool_router_key": "weather-route"}}),
+            json!({"name": "clock", "tool_router_key": "clock-route"}),
+        ]);
+        for conflict in [
+            json!({"function": {"name": "clock"}}),
+            json!({"function": {"name": "ther"}}),
+            json!({"function": {"name": 42}}),
+            json!({"id": "different-call"}),
+            json!({"id": 42}),
+            json!({"type": "custom"}),
+            json!({"type": null}),
+        ] {
+            let mut state = OpenRouterResponseState::default();
+            let mut calls = Vec::new();
+            let details = json!([{"type": "reasoning.encrypted", "data": "signed-opaque", "index": 0}]);
+            process_streaming_chunk(
+                &json!({"choices": [{"delta": {
+                    "reasoning_details": details, "tool_calls": [
+                        {"index": 0, "id": "original-call", "type": "function", "function": {"name": "weather", "arguments": "{\"city\":"}},
+                        {"index": 1, "id": "parallel-call", "function": {"name": "clock", "arguments": "{}"}}
+                    ]
+                }}]}),
+                &mut String::new(),
+                &mut calls,
+                &tools,
+                &mut state,
+            );
+            let mut conflict = conflict;
+            conflict["index"] = json!(0);
+            process_streaming_chunk(
+                &json!({"choices": [{"delta": {"tool_calls": [conflict]}}]}),
+                &mut String::new(),
+                &mut calls,
+                &tools,
+                &mut state,
+            );
+            // Valid later arguments and repeated original identity cannot clear the conflict.
+            process_streaming_chunk(
+                &json!({"choices": [{"delta": {"tool_calls": [{
+                "index": 0, "id": "original-call", "type": "function",
+                "function": {"name": "weather", "arguments": "\"Paris\"}"}
+            }]}, "finish_reason": "tool_calls"}]}),
+                &mut String::new(),
+                &mut calls,
+                &tools,
+                &mut state,
+            );
+            state.attach_reasoning(&mut calls);
+            assert_eq!(calls[0].id.as_deref(), Some("original-call"));
+            assert_eq!(calls[0].name, "weather");
+            assert_eq!(calls[0].call_type.as_deref(), Some("function"));
+            assert_eq!(calls[0].tool_router_key.as_deref(), Some("weather-route"));
+            assert!(calls[0].arguments.is_empty());
+            assert_execution_allowed(&calls[0], false).await;
+            assert_execution_allowed(&calls[1], true).await;
+            let assistant = &calls[0].provider_metadata.as_ref().unwrap()["openrouter_assistant"];
+            assert_eq!(assistant["reasoning_details"], details);
+            assert_eq!(assistant["tool_calls"][0]["id"], "original-call");
+            assert_eq!(assistant["tool_calls"][0]["function"]["name"], "weather");
+            // An identity error must not rewrite a valid native argument string.
+            assert_eq!(
+                assistant["tool_calls"][0]["function"]["arguments"],
+                "{\"city\":\"Paris\"}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn name_fragments_are_not_guessed_but_deferred_names_can_complete() {
+        let tools = Some(vec![json!({"name": "weather", "tool_router_key": "weather-route"})]);
+        for (first, second, expected_name, allowed) in [
+            (json!("wea"), json!("ther"), "wea", false),
+            (json!(null), json!("weather"), "weather", true),
+            (json!(""), json!("weather"), "weather", true),
+            (json!(null), json!(null), "", false),
+            (json!(42), json!("weather"), "weather", false),
+        ] {
+            let mut state = OpenRouterResponseState::default();
+            let mut calls = Vec::new();
+            for name in [first, second] {
+                process_streaming_chunk(
+                    &json!({"choices": [{"delta": {"tool_calls": [{
+                        "index": 0, "id": "original-call", "function": {"name": name}
+                    }]}}]}),
+                    &mut String::new(),
+                    &mut calls,
+                    &tools,
+                    &mut state,
+                );
+                assert_execution_allowed(&calls[0], false).await;
+            }
+            process_streaming_chunk(
+                &json!({"choices": [{"delta": {"tool_calls": [{
+                "index": 0, "function": {"arguments": "{}"}
+            }]}, "finish_reason": "tool_calls"}]}),
+                &mut String::new(),
+                &mut calls,
+                &tools,
+                &mut state,
+            );
+            state.attach_reasoning(&mut calls);
+            assert_eq!(calls[0].name, expected_name);
+            assert_eq!(calls[0].id.as_deref(), Some("original-call"));
+            assert_eq!(
+                calls[0].tool_router_key.as_deref(),
+                if expected_name == "weather" {
+                    Some("weather-route")
+                } else {
+                    None
+                }
+            );
+            assert_execution_allowed(&calls[0], allowed).await;
         }
     }
 

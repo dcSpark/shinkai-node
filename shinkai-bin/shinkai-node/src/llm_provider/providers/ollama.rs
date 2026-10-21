@@ -463,6 +463,35 @@ async fn process_stream(
         }
     }
 
+    // A stop can arrive while the last stream poll returns EOF, without another chunk.
+    if let Some(ref inbox) = inbox_name {
+        if llm_stopper.should_stop(&inbox.to_string()) {
+            llm_stopper.reset(&inbox.to_string());
+            let _ = send_ws_update(
+                &ws_manager_trait,
+                Some(inbox.clone()),
+                &session_id,
+                regular_content.clone(),
+                false,
+                true,
+                Some("Stopped by user request".to_string()),
+            )
+            .await;
+            return Ok(LLMInferenceResponse::new(
+                regular_content,
+                if thinking_content.is_empty() {
+                    None
+                } else {
+                    Some(thinking_content)
+                },
+                json!({}),
+                Vec::new(),
+                Vec::new(),
+                None,
+            ));
+        }
+    }
+
     // If we ended with thinking content but no regular content, send closing tag
     if thinking_started && !thinking_ended && !thinking_content.is_empty() {
         let _ = send_ws_update(
@@ -782,6 +811,120 @@ fn add_options_to_payload(
     // Add options to payload if not empty
     if !options.is_empty() {
         payload["options"] = serde_json::Value::Object(options);
+    }
+}
+
+#[cfg(test)]
+mod cancellation_tests {
+    use super::*;
+    use shinkai_message_primitives::schemas::ws_types::{WSMessageType, WSMetadata};
+    use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
+
+    struct StreamUpdates {
+        events: Arc<std::sync::Mutex<Vec<(String, WSMetadata)>>>,
+        parsed: std::sync::mpsc::Sender<()>,
+    }
+
+    #[async_trait]
+    impl WSUpdateHandler for StreamUpdates {
+        async fn queue_message(&self, _: WSTopic, _: String, update: String, metadata: WSMessageType, _: bool) {
+            if let WSMessageType::Metadata(metadata) = metadata {
+                let parsed = update == "Text" && !metadata.is_done;
+                self.events.lock().unwrap().push((update, metadata));
+                if parsed {
+                    let _ = self.parsed.send(());
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn ollama_stop_at_eof_discards_completed_calls_and_keeps_reasoning() {
+        for stop_at_eof in [false, true] {
+            let mut server = mockito::Server::new_async().await;
+            let inbox = InboxName::get_job_inbox_name_from_params("ollama-eof-stop".into()).unwrap();
+            let stopper = Arc::new(LLMStopper::new());
+            let writer_stopper = stopper.clone();
+            let writer_inbox = inbox.clone();
+            let (parsed, received) = std::sync::mpsc::channel();
+            let received = std::sync::Mutex::new(received);
+            let events = Arc::new(std::sync::Mutex::new(Vec::new()));
+            let manager: Arc<Mutex<dyn WSUpdateHandler + Send>> = Arc::new(Mutex::new(StreamUpdates {
+                events: events.clone(),
+                parsed,
+            }));
+            let body = json!({"model":"qwen3.5:9b", "created_at":"2026-10-21T00:00:00Z",
+                "message":{"role":"assistant","content":"Text","thinking":"Plan","tool_calls":[
+                    {"function":{"name":"weather","arguments":{"city":"Paris"}}}
+                ]}, "done":true, "done_reason":"stop", "eval_count":10, "eval_duration":1000000000
+            })
+            .to_string();
+            let mock = server
+                .mock("POST", "/api/chat")
+                .with_header("content-type", "application/x-ndjson")
+                .with_chunked_body(move |writer| {
+                    writer.write_all(body.as_bytes())?;
+                    writer.flush()?;
+                    // Close only after the real parser has stored the call, text, and thinking.
+                    received
+                        .lock()
+                        .unwrap()
+                        .recv_timeout(std::time::Duration::from_secs(5))
+                        .map_err(|error| std::io::Error::new(std::io::ErrorKind::TimedOut, error))?;
+                    if stop_at_eof {
+                        writer_stopper.stop(&writer_inbox.to_string());
+                    }
+                    Ok(())
+                })
+                .create_async()
+                .await;
+            let response = tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                handle_streaming_response(
+                    &Client::new(),
+                    format!("{}/api/chat", server.url()),
+                    json!({}),
+                    Some(inbox.clone()),
+                    Some(manager),
+                    stopper.clone(),
+                    "test-session".into(),
+                    Some(vec![
+                        json!({"function":{"name":"weather","tool_router_key":"weather-route"}}),
+                    ]),
+                ),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            mock.assert_async().await;
+            assert_eq!(response.response_string, "Text");
+            assert_eq!(response.reasoning_content.as_deref(), Some("Plan"));
+            assert!(!stopper.should_stop(&inbox.to_string()));
+            let events = events.lock().unwrap();
+            let stopped: Vec<_> = events
+                .iter()
+                .filter(|(_, metadata)| metadata.done_reason.as_deref() == Some("Stopped by user request"))
+                .collect();
+            if stop_at_eof {
+                assert!(response.function_calls.is_empty());
+                assert_eq!(stopped.len(), 1);
+                assert_eq!(stopped[0].0, "Text");
+                assert!(stopped[0].1.is_done);
+                assert!(!stopped[0].1.is_reasoning);
+                assert_eq!(
+                    events.last().unwrap().1.done_reason.as_deref(),
+                    Some("Stopped by user request")
+                );
+            } else {
+                assert!(stopped.is_empty());
+                assert_eq!(response.function_calls.len(), 1);
+                let call = &response.function_calls[0];
+                assert_eq!(call.name, "weather");
+                assert_eq!(call.tool_router_key.as_deref(), Some("weather-route"));
+                assert_eq!(call.arguments["city"], "Paris");
+                assert_eq!(response.tps, Some(10.0));
+            }
+        }
     }
 }
 

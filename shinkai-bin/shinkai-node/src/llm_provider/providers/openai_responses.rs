@@ -920,7 +920,7 @@ async fn handle_streaming_response_responses(
     }
 
     // A stop can arrive while waiting for EOF, including a stream with no chunks.
-    if !completed && !stopped_by_user {
+    if !stopped_by_user {
         if let Some(ref inbox) = inbox_name {
             if llm_stopper.should_stop(&inbox.to_string()) {
                 llm_stopper.reset(&inbox.to_string());
@@ -945,9 +945,10 @@ async fn handle_streaming_response_responses(
     }
 
     // Completed native items contain the final arguments, call IDs, and encrypted reasoning.
-    let native_calls = extract_native_function_calls(&native_output);
-    if native_output.iter().any(|item| item["type"] == "function_call") {
-        function_calls = native_calls;
+    if stopped_by_user {
+        function_calls.clear();
+    } else if native_output.iter().any(|item| item["type"] == "function_call") {
+        function_calls = extract_native_function_calls(&native_output);
     }
 
     Ok(LLMInferenceResponse::new(
@@ -1784,6 +1785,89 @@ mod tests {
                 .unwrap_err()
                 .to_string()
                 .contains("ended before response.completed"));
+        }
+    }
+
+    #[tokio::test]
+    async fn responses_sse_stop_after_native_items_never_returns_executable_calls() {
+        use shinkai_message_primitives::{
+            schemas::ws_types::{WSMessageType, WSUpdateHandler},
+            shinkai_message::shinkai_message_schemas::WSTopic,
+        };
+        struct StopOnUpdate {
+            stopper: std::sync::Arc<super::LLMStopper>,
+            on_completed: bool,
+            reasons: std::sync::Arc<tokio::sync::Mutex<Vec<String>>>,
+        }
+        #[async_trait::async_trait]
+        impl WSUpdateHandler for StopOnUpdate {
+            async fn queue_message(&self, _: WSTopic, inbox: String, update: String, metadata: WSMessageType, _: bool) {
+                if let WSMessageType::Metadata(metadata) = metadata {
+                    if let Some(reason) = metadata.done_reason {
+                        if self.on_completed && reason == "Completed" {
+                            self.stopper.stop(&inbox);
+                        }
+                        self.reasons.lock().await.push(reason);
+                    } else if !self.on_completed && update == "partial answer" {
+                        self.stopper.stop(&inbox);
+                    }
+                }
+            }
+        }
+        for completed in [false, true] {
+            let mut server = mockito::Server::new_async().await;
+            let native = json!({"type":"function_call","id":"fc_1","call_id":"call_1","name":"lookup","arguments":"{}","status":"completed"});
+            let mut body = format!(
+                "event: response.reasoning_summary_text.delta\ndata: {{\"delta\":\"partial reasoning\"}}\n\nevent: response.output_item.done\ndata: {}\n\nevent: response.output_text.delta\ndata: {{\"delta\":\"partial answer\"}}\n\n",
+                json!({"item":native}),
+            );
+            if completed {
+                body.push_str(&format!(
+                    "event: response.completed\ndata: {}\n\n",
+                    json!({"response":{"status":"completed","output":[native]}})
+                ));
+            }
+            let mock = server
+                .mock("POST", "/responses")
+                .with_header("content-type", "text/event-stream")
+                .with_body(body)
+                .create_async()
+                .await;
+            let inbox = super::InboxName::get_job_inbox_name_from_params("native-stop-test".into()).unwrap();
+            let stopper = std::sync::Arc::new(super::LLMStopper::new());
+            let reasons = std::sync::Arc::new(tokio::sync::Mutex::new(Vec::new()));
+            let handler: std::sync::Arc<tokio::sync::Mutex<dyn WSUpdateHandler + Send>> =
+                std::sync::Arc::new(tokio::sync::Mutex::new(StopOnUpdate {
+                    stopper: stopper.clone(),
+                    on_completed: completed,
+                    reasons: reasons.clone(),
+                }));
+            let response = super::handle_streaming_response_responses(
+                &reqwest::Client::new(),
+                format!("{}/responses", server.url()),
+                json!({}),
+                "test-key".into(),
+                Some(inbox.clone()),
+                Some(handler),
+                stopper.clone(),
+                "test".into(),
+            )
+            .await
+            .unwrap();
+            mock.assert_async().await;
+            assert!(response.function_calls.is_empty());
+            assert_eq!(response.response_string, "partial answer");
+            assert_eq!(response.reasoning_content.as_deref(), Some("partial reasoning"));
+            assert!(!stopper.should_stop(&inbox.to_string()));
+            assert_eq!(
+                reasons
+                    .lock()
+                    .await
+                    .iter()
+                    .filter(|reason| reason.as_str() == "Stopped by user request")
+                    .count(),
+                1
+            );
         }
     }
 

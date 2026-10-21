@@ -192,7 +192,7 @@ impl LLMService for Gemini {
         inbox_name: Option<InboxName>,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         config: Option<JobConfig>,
-        _llm_stopper: Arc<LLMStopper>,
+        llm_stopper: Arc<LLMStopper>,
         db: Arc<SqliteManager>,
         tracing_message_id: Option<String>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
@@ -296,7 +296,23 @@ impl LLMService for Gemini {
                 let mut in_thinking = false;
                 let mut thinking_started = false;
 
-                while let Some(item) = stream.next().await {
+                let mut stop_poll = tokio::time::interval(tokio::time::Duration::from_millis(100));
+                let mut stopped = false;
+                loop {
+                    if inbox_name
+                        .as_ref()
+                        .is_some_and(|inbox| llm_stopper.should_stop(&inbox.to_string()))
+                    {
+                        stopped = true;
+                        break;
+                    }
+                    let item = tokio::select! {
+                        item = stream.next() => item,
+                        _ = stop_poll.tick() => continue,
+                    };
+                    let Some(item) = item else {
+                        break;
+                    };
                     match item {
                         Ok(chunk) => {
                             process_chunk(
@@ -328,6 +344,28 @@ impl LLMService for Gemini {
                             return Err(LLMProviderError::NetworkError(e.to_string()));
                         }
                     }
+                }
+
+                // A stop can arrive with the last chunk or while a nonstreaming
+                // HTTP body is pending, without another stream item to check it.
+                stopped |= inbox_name
+                    .as_ref()
+                    .is_some_and(|inbox| llm_stopper.should_stop(&inbox.to_string()));
+                if stopped {
+                    if let Some(inbox) = &inbox_name {
+                        llm_stopper.reset(&inbox.to_string());
+                    }
+                    function_calls.clear();
+                    let _ = send_ws_update(
+                        &ws_manager_trait,
+                        inbox_name.clone(),
+                        &session_id,
+                        regular_content.clone(),
+                        false,
+                        true,
+                        Some("Stopped by user request".into()),
+                    )
+                    .await;
                 }
 
                 Ok(LLMInferenceResponse::new(
@@ -587,6 +625,79 @@ mod tests {
     use std::sync::Arc;
     use tempfile::NamedTempFile;
     use tokio::sync::Mutex;
+
+    #[tokio::test]
+    async fn gemini_http_stop_never_returns_executable_tools() {
+        use std::io::Write;
+        for (stop_requested, stop_at_end) in [(true, false), (true, true), (false, true)] {
+            let mut server = mockito::Server::new_async().await;
+            let inbox = InboxName::get_job_inbox_name_from_params("gemini-stop".into()).unwrap();
+            let stopper = Arc::new(LLMStopper::new());
+            let writer_stopper = stopper.clone();
+            let writer_inbox = inbox.clone();
+            let parts = json!([
+                {"text": "Plan", "thought": true, "thoughtSignature": "signed-plan"},
+                {"text": "Partial text"},
+                {"functionCall": {"name": "zero", "id": "call-1", "args": {}}, "thoughtSignature": "signed-call"}
+            ]);
+            let first = format!(
+                "[{}",
+                json!({"candidates": [{"content": {"parts": parts}, "finishReason": "STOP"}]})
+            );
+            let mock = server
+                .mock("POST", "/gemini-3.5-flash-lite:streamGenerateContent?key=test-key")
+                .with_header("content-type", "application/json")
+                .with_chunked_body(move |writer| {
+                    writer.write_all(first.as_bytes())?;
+                    writer.flush()?;
+                    std::thread::sleep(std::time::Duration::from_millis(150));
+                    if stop_requested {
+                        writer_stopper.stop(&writer_inbox.to_string());
+                    }
+                    if !stop_at_end {
+                        writer.write_all(b",{}")?;
+                        writer.flush()?;
+                    }
+                    writer.write_all(b"]")?;
+                    Ok(())
+                })
+                .create_async()
+                .await;
+            let provider = Gemini {
+                model_type: "gemini-3.5-flash-lite".into(),
+            };
+            let model = LLMProviderInterface::Gemini(provider.clone());
+            let response = provider
+                .call_api(
+                    &Client::new(),
+                    Some(&server.url()),
+                    Some(&"test-key".into()),
+                    Prompt::new(),
+                    model,
+                    Some(inbox.clone()),
+                    None,
+                    None,
+                    stopper.clone(),
+                    Arc::new(setup_test_db().await),
+                    None,
+                )
+                .await
+                .unwrap();
+            mock.assert_async().await;
+            assert_eq!(response.response_string, "Partial text");
+            assert_eq!(response.reasoning_content.as_deref(), Some("Plan"));
+            if stop_requested {
+                assert!(response.function_calls.is_empty());
+            } else {
+                assert_eq!(response.function_calls.len(), 1);
+                assert_eq!(
+                    response.function_calls[0].provider_metadata.as_ref().unwrap()["gemini_parts"],
+                    parts
+                );
+            }
+            assert!(!stopper.should_stop(&inbox.to_string()));
+        }
+    }
 
     #[tokio::test]
     async fn gemini_missing_args_keeps_complete_response_and_stream() {

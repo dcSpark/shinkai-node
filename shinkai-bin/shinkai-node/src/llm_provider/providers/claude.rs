@@ -365,6 +365,23 @@ async fn handle_streaming_response(
         }
     }
 
+    // EOF may follow a stop without another chunk on which to observe it.
+    if let Some(inbox) = &inbox_name {
+        if llm_stopper.should_stop(&inbox.to_string()) {
+            llm_stopper.reset(&inbox.to_string());
+            let _ = send_ws_update(
+                &ws_manager_trait,
+                Some(inbox.clone()),
+                &session_id,
+                response_text.clone(),
+                false,
+                true,
+                Some("Stopped by user request".into()),
+            )
+            .await;
+            function_calls.clear();
+        }
+    }
     native_content.attach_metadata(&mut function_calls);
 
     Ok(LLMInferenceResponse::new(
@@ -633,6 +650,14 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
                 };
             }
         }
+    }
+    if payload
+        .get("output_config")
+        .is_some_and(|value| !value.is_null() && !value.is_object())
+    {
+        return Err(LLMProviderError::InputProcessingError(
+            "Claude output_config must be a JSON object or null.".into(),
+        ));
     }
     // Current Claude models use adaptive thinking and reject sampling overrides.
     let model = payload["model"].as_str().unwrap_or_default();
@@ -1058,6 +1083,61 @@ fn process_chunk(chunk: &[u8]) -> Result<ProcessedChunk, LLMProviderError> {
 mod tests {
     fn claude_sse(event: JsonValue) -> String {
         format!("event: {}\ndata: {}\n\n", event["type"].as_str().unwrap(), event)
+    }
+
+    #[tokio::test]
+    async fn claude_eof_stop_discards_completed_tools_but_normal_completion_keeps_them() {
+        use std::io::Write;
+        for stop in [false, true] {
+            let mut server = mockito::Server::new_async().await;
+            let stopper = Arc::new(LLMStopper::new());
+            let inbox = InboxName::get_job_inbox_name_from_params("claude-eof-stop".into()).unwrap();
+            let writer_stopper = stopper.clone();
+            let writer_inbox = inbox.clone();
+            let body = [
+                json!({"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"Plan","signature":"signed-plan"}}),
+                json!({"type":"content_block_stop","index":0}),
+                json!({"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_a","name":"zero","input":{}}}),
+                json!({"type":"content_block_stop","index":1}),
+                json!({"type":"message_stop"}),
+            ].into_iter().map(claude_sse).collect::<String>();
+            let mock = server
+                .mock("POST", "/messages")
+                .with_header("content-type", "text/event-stream")
+                .with_chunked_body(move |writer| {
+                    writer.write_all(body.as_bytes())?;
+                    writer.flush()?;
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    if stop {
+                        writer_stopper.stop(&writer_inbox.to_string());
+                    }
+                    Ok(())
+                })
+                .create_async()
+                .await;
+            let response = handle_streaming_response(
+                &Client::new(),
+                format!("{}/messages", server.url()),
+                json!({}),
+                "test-key".into(),
+                Some(inbox.clone()),
+                None,
+                stopper.clone(),
+                "test".into(),
+                None,
+            )
+            .await
+            .unwrap();
+            mock.assert_async().await;
+            assert!(!stopper.should_stop(&inbox.to_string()));
+            assert_eq!(response.function_calls.len(), if stop { 0 } else { 1 });
+            if !stop {
+                assert_eq!(
+                    response.function_calls[0].provider_metadata.as_ref().unwrap()["claude_content"][0]["signature"],
+                    "signed-plan"
+                );
+            }
+        }
     }
 
     #[tokio::test]
@@ -1522,6 +1602,51 @@ mod tests {
         add_options_to_payload(&mut payload, Some(&config)).unwrap();
         assert_eq!(payload["max_tokens"], 2048);
         assert_eq!(payload["thinking"]["budget_tokens"], 2047);
+    }
+
+    #[test]
+    fn claude_custom_output_config_is_validated_before_effort_mutation() {
+        for model in [
+            "claude-opus-5-5",
+            "claude-sonnet-5-5",
+            "claude-fable-5-1",
+            "claude-haiku-5-5",
+        ] {
+            for effort in [None, Some("high")] {
+                let mut config = JobConfig::empty();
+                config.thinking = Some(true);
+                config.reasoning_effort = effort.map(str::to_owned);
+                for invalid in [json!("bad"), json!(42), json!(true), json!([])] {
+                    config.other_model_params = Some(json!({"output_config": invalid}));
+                    let mut payload = json!({"model": model, "max_tokens": 8192});
+                    let result = add_options_to_payload(&mut payload, Some(&config));
+                    assert!(
+                        matches!(result, Err(LLMProviderError::InputProcessingError(message)) if message.contains("output_config must be a JSON object or null"))
+                    );
+                }
+                for valid in [JsonValue::Null, json!({"format": {"type": "json_schema"}})] {
+                    config.other_model_params = Some(json!({"output_config": valid}));
+                    let mut payload = json!({"model": model, "max_tokens": 8192});
+                    add_options_to_payload(&mut payload, Some(&config)).unwrap();
+                    if let Some(effort) = effort {
+                        assert_eq!(payload["output_config"]["effort"], effort);
+                    } else {
+                        assert_eq!(payload["output_config"], valid);
+                    }
+                    if valid.is_object() {
+                        assert_eq!(payload["output_config"]["format"], valid["format"]);
+                    }
+                }
+                config.other_model_params = None;
+                let mut payload = json!({"model": model, "max_tokens": 8192});
+                add_options_to_payload(&mut payload, Some(&config)).unwrap();
+                if let Some(effort) = effort {
+                    assert_eq!(payload["output_config"]["effort"], effort);
+                } else {
+                    assert!(payload.get("output_config").is_none());
+                }
+            }
+        }
     }
 
     #[test]
