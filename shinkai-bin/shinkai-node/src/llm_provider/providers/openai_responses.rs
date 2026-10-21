@@ -1166,30 +1166,49 @@ fn transform_input_messages_for_responses(messages_json: serde_json::Value) -> s
     // Track assistant-emitted tool calls by id so we can pair them with outputs
     let mut call_map: HashMap<String, (String, String)> = HashMap::new(); // id -> (name, args)
     let mut emitted_call_ids: HashSet<String> = HashSet::new();
-    let mut emitted_native_outputs: HashSet<String> = HashSet::new();
-    let mut missing_result_ids: HashSet<String> = HashSet::new();
+    // Tagged turns and legacy payload identities have separate namespaces.
+    type NativeTurn = (bool, String);
+    fn native_turn(message: &JsonValue) -> Option<(&Vec<JsonValue>, NativeTurn)> {
+        if message["role"] != "assistant" {
+            return None;
+        }
+        message.get("tool_calls")?.as_array()?.iter().find_map(|call| {
+            let metadata = call
+                .get("provider_metadata")
+                .or_else(|| call.pointer("/function/provider_metadata"))?;
+            let output = metadata.pointer("/openai_responses/output")?.as_array()?;
+            let identity = match metadata["inference_turn_id"].as_str() {
+                Some(turn) => (true, turn.to_owned()),
+                None => (false, serde_json::to_string(output).unwrap()),
+            };
+            Some((output, identity))
+        })
+    }
+    let mut emitted_native_outputs: HashSet<NativeTurn> = HashSet::new();
+    let mut missing_result_ids: HashSet<(NativeTurn, String)> = HashSet::new();
     if let Some(arr) = messages_json.as_array() {
         // Parallel call/result pairs can be separated in Prompt history. Check the
         // whole history before deciding whether a native call has an execution result.
-        let recorded_outputs: HashSet<&str> = arr
-            .iter()
-            .filter(|message| message["role"] == "tool")
-            .filter_map(|message| message["tool_call_id"].as_str())
-            .collect();
+        let mut recorded_outputs: HashSet<(NativeTurn, String)> = HashSet::new();
+        let mut active_turn = None;
+        for message in arr {
+            if let Some((_, identity)) = native_turn(message) {
+                active_turn = Some(identity);
+            } else if message["role"] == "tool" {
+                if let (Some(turn), Some(id)) = (&active_turn, message["tool_call_id"].as_str()) {
+                    recorded_outputs.insert((turn.clone(), id.to_owned()));
+                }
+            } else {
+                active_turn = None;
+            }
+        }
         for msg in arr {
             let role = msg.get("role").and_then(|r| r.as_str()).unwrap_or("");
             if role == "assistant" {
-                let native = msg.get("tool_calls").and_then(JsonValue::as_array).and_then(|calls| {
-                    calls.iter().find_map(|call| {
-                        call.pointer("/provider_metadata/openai_responses/output")
-                            .or_else(|| call.pointer("/function/provider_metadata/openai_responses/output"))
-                            .and_then(JsonValue::as_array)
-                    })
-                });
-                if let Some(items) = native {
+                if let Some((items, turn)) = native_turn(msg) {
                     // Prompt history can split parallel calls across assistant/tool pairs.
                     // Each pair carries the same complete native response.
-                    if !emitted_native_outputs.insert(serde_json::to_string(items).unwrap()) {
+                    if !emitted_native_outputs.insert(turn.clone()) {
                         continue;
                     }
                     // Metadata is repeated on each call, but the response is replayed only once.
@@ -1207,7 +1226,8 @@ fn transform_input_messages_for_responses(messages_json: serde_json::Value) -> s
                     // error, not a successful tool execution or an orphaned call.
                     for item in items {
                         if let Some((_, id)) = native_function_identity(item) {
-                            if !recorded_outputs.contains(id) && missing_result_ids.insert(id.to_owned()) {
+                            let result = (turn.clone(), id.to_owned());
+                            if !recorded_outputs.contains(&result) && missing_result_ids.insert(result) {
                                 out.push(missing_tool_output(id));
                             }
                         }
@@ -1403,6 +1423,57 @@ mod tests {
             .map(|id| (*id, "actual tool result".to_string()))
             .collect::<Vec<_>>();
         replay_native_calls_with_results(output, &results)
+    }
+
+    #[test]
+    fn saved_identical_native_turns_keep_parallel_calls_and_results_separate() {
+        let native = json!([
+            {"type":"reasoning","id":"rs_1","summary":[],"encrypted_content":"signed-opaque"},
+            {"type":"function_call","id":"fc_A","call_id":"A","name":"first","arguments":"{}"},
+            {"type":"function_call","id":"fc_B","call_id":"B","name":"second","arguments":"{}"}
+        ]);
+        // The first tag deliberately equals the legacy payload identity.
+        let tag = serde_json::to_string(&native).unwrap();
+        let mut prompt = super::Prompt::new();
+        let mut expected = Vec::new();
+        for (index, turn) in [Some(tag.as_str()), Some("second-turn"), None].into_iter().enumerate() {
+            for call in super::extract_native_function_calls(native.as_array().unwrap()) {
+                let mut metadata = call.provider_metadata.unwrap();
+                if let Some(turn) = turn {
+                    metadata["inference_turn_id"] = json!(turn);
+                }
+                prompt.add_function_call(
+                    json!({"name":call.name,"call_id":call.id,
+                    "arguments":call.arguments,"provider_metadata":metadata}),
+                    100,
+                );
+            }
+            expected.extend(native.as_array().unwrap().iter().cloned());
+            if index == 1 {
+                expected.push(super::missing_tool_output("B"));
+            }
+            for (id, name) in [("A", "first"), ("B", "second")] {
+                if index == 1 && id == "B" {
+                    continue;
+                }
+                let result = format!("turn {index}: {id}");
+                prompt
+                    .add_function_call_response(json!({"function_call":{"name":name,"id":id},"response":result}), 100);
+                expected.push(json!({"type":"function_call_output","call_id":id,"output":result}));
+            }
+        }
+        let saved: super::Prompt = serde_json::from_str(&serde_json::to_string(&prompt).unwrap()).unwrap();
+        let model = super::LLMProviderInterface::OpenAI(super::OpenAI {
+            model_type: "gpt-6.1-sol".into(),
+        });
+        let prepared = super::openai_prepare_messages(&model, saved).unwrap();
+        let super::PromptResultEnum::Value(messages) = prepared.messages else {
+            panic!("Expected messages")
+        };
+        let replay = super::transform_input_messages_for_responses(messages);
+        assert_eq!(replay, json!(expected));
+        assert!(!replay.to_string().contains("provider_metadata"));
+        assert!(!replay.to_string().contains("inference_turn_id"));
     }
 
     fn replay_native_calls_with_results(output: &serde_json::Value, results: &[(&str, String)]) -> serde_json::Value {

@@ -452,9 +452,14 @@ async fn handle_non_streaming_response(
                                 }
                                 "tool_use" => {
                                     let name = content_block["name"].as_str().unwrap_or_default().to_string();
-                                    let arguments = content_block.get("input")
-                                                .and_then(|args_value| args_value.as_object().cloned())
-                                                .unwrap_or_else(|| serde_json::Map::new());
+                                    let mut metadata = json!({"claude_content": content.clone()});
+                                    let arguments = match content_block.get("input").and_then(JsonValue::as_object) {
+                                        Some(arguments) => arguments.clone(),
+                                        None => {
+                                            metadata["function_argument_error"] = json!("Tool arguments must be a JSON object");
+                                            serde_json::Map::new()
+                                        }
+                                    };
 
                                     // Search for the tool_router_key in the tools array
                                     let tool_router_key = tools.as_ref().and_then(|tools_array| {
@@ -474,7 +479,7 @@ async fn handle_non_streaming_response(
                                         response: None,
                                         index: function_calls.len() as u64,
                                         id: content_block["id"].as_str().map(str::to_owned),
-                                        provider_metadata: Some(json!({"claude_content": content.clone()})),
+                                        provider_metadata: Some(metadata),
                                         call_type: Some("function".to_string()),
                                     };
 
@@ -1053,6 +1058,71 @@ fn process_chunk(chunk: &[u8]) -> Result<ProcessedChunk, LLMProviderError> {
 mod tests {
     fn claude_sse(event: JsonValue) -> String {
         format!("event: {}\ndata: {}\n\n", event["type"].as_str().unwrap(), event)
+    }
+
+    #[tokio::test]
+    async fn nonstream_claude_invalid_inputs_cannot_execute_zero_argument_tool() {
+        use crate::llm_provider::execution::chains::generic_chain::generic_inference_chain::execute_valid_function_call;
+        use crate::managers::tool_router::ToolCallFunctionResponse;
+        for input in [
+            Some(json!({})),
+            Some(json!({"city": "Paris"})),
+            None,
+            Some(JsonValue::Null),
+            Some(json!([])),
+            Some(json!("bad")),
+            Some(json!(3)),
+        ] {
+            let valid = input.as_ref().is_some_and(JsonValue::is_object);
+            let mut block = json!({"type": "tool_use", "id": "toolu_zero", "name": "zero_arg_tool"});
+            if let Some(input) = input {
+                block["input"] = input;
+            }
+            let native = json!([
+                {"type": "thinking", "thinking": "opaque", "signature": "native-signature"},
+                block
+            ]);
+            let mut server = mockito::Server::new_async().await;
+            let mock = server.mock("POST", "/messages").with_status(200)
+                .with_header("content-type", "application/json")
+                .with_body(json!({"content": native, "stop_reason": "tool_use", "usage": {"input_tokens": 1, "output_tokens": 2}}).to_string())
+                .create_async().await;
+            let response = handle_non_streaming_response(
+                &Client::new(),
+                format!("{}/messages", server.url()),
+                "test-key".into(),
+                json!({}),
+                None,
+                None,
+                Arc::new(LLMStopper::new()),
+                None,
+            )
+            .await
+            .unwrap();
+            mock.assert_async().await;
+            assert_eq!(response.function_calls.len(), 1);
+            let call = &response.function_calls[0];
+            assert_eq!(call.id.as_deref(), Some("toolu_zero"));
+            assert_eq!(call.name, "zero_arg_tool");
+            let metadata = call.provider_metadata.as_ref().unwrap();
+            assert_eq!(metadata["claude_content"], native);
+            assert_eq!(metadata.get("function_argument_error").is_some(), !valid);
+            if valid {
+                assert_eq!(call.arguments, block["input"].as_object().unwrap().clone());
+            }
+            let mut executed = false;
+            let execution_call = call.clone();
+            let result = execute_valid_function_call(call, async {
+                executed = true;
+                Ok(ToolCallFunctionResponse {
+                    function_call: execution_call,
+                    response: "done".into(),
+                })
+            })
+            .await;
+            assert_eq!(executed, valid);
+            assert_eq!(result.is_ok(), valid);
+        }
     }
 
     #[tokio::test]

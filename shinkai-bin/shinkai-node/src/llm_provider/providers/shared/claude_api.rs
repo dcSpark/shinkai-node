@@ -116,18 +116,31 @@ pub fn process_llm_messages(
 
             // Second pass: process messages with generated IDs
             let mut assistant_tool_ids = function_name_to_tool_id.clone();
-            let mut last_native_content: Option<String> = None;
+            let mut last_native_content: Option<(bool, String)> = None;
             arr.into_iter()
             .filter_map(|mut message| {
                 if message["role"] == "assistant" {
                     if let Some(content) = message["function_call"]["provider_metadata"]["claude_content"].as_array().cloned() {
-                        let key = serde_json::to_string(&content).unwrap_or_default();
+                        // Tagged turns use their explicit identity; legacy payload keys
+                        // occupy a separate namespace so neither can hide the other.
+                        let key = message["function_call"]["provider_metadata"]["inference_turn_id"]
+                            .as_str()
+                            .map(|id| (true, id.to_owned()))
+                            .unwrap_or_else(|| (false, serde_json::to_string(&content).unwrap_or_default()));
                         if last_native_content.as_ref() == Some(&key) { return None; }
                         last_native_content = Some(key);
                         // A tool_use without a usable identity cannot have a valid result.
                         // Keep every other native block, especially signed thinking, unchanged.
-                        let content: Vec<_> = content.into_iter().filter(|block| {
-                            block["type"] != "tool_use" || claude_tool_identity(block).is_some()
+                        let content: Vec<_> = content.into_iter().filter_map(|mut block| {
+                            if block["type"] == "tool_use" {
+                                claude_tool_identity(&block)?;
+                                // Canonicalize only the outbound clone. Stored native input
+                                // and its execution error remain intact for diagnostics.
+                                if !block.get("input").is_some_and(serde_json::Value::is_object) {
+                                    block["input"] = serde_json::json!({});
+                                }
+                            }
+                            Some(block)
                         }).collect();
                         if content.is_empty() { return None; }
                         native_turns.insert(serde_json::to_string(&content).unwrap_or_default());
@@ -498,6 +511,112 @@ mod tests {
     }
 
     #[test]
+    fn malformed_native_claude_inputs_are_canonicalized_only_for_retry() {
+        for input in [
+            None,
+            Some(json!(null)),
+            Some(json!([])),
+            Some(json!("bad")),
+            Some(json!(7)),
+        ] {
+            let mut invalid = json!({"type": "tool_use", "name": "broken", "id": "toolu_bad"});
+            if let Some(input) = input {
+                invalid["input"] = input;
+            }
+            let thinking = json!({"type": "thinking", "thinking": "opaque", "signature": "signed-native"});
+            let redacted = json!({"type": "redacted_thinking", "data": "signed-redacted"});
+            let valid = json!({"type": "tool_use", "name": "valid", "id": "toolu_valid", "input": {"city": "Paris"}});
+            let content = json!([thinking, invalid, redacted, valid]);
+            let mut prompt = Prompt::new();
+            prompt.add_content("Use both tools".into(), SubPromptType::UserLastMessage, 100);
+            for (name, id, arguments, error) in [
+                ("broken", "toolu_bad", json!({}), true),
+                ("valid", "toolu_valid", json!({"city": "Paris"}), false),
+            ] {
+                let mut metadata = json!({"claude_content": content});
+                if error {
+                    metadata["function_argument_error"] = json!("Tool arguments must be a JSON object");
+                }
+                prompt.add_function_call(
+                    json!({"name": name, "call_id": id, "arguments": arguments, "provider_metadata": metadata}),
+                    100,
+                );
+                prompt.add_function_call_response(
+                    json!({"function_call": {"name": name, "id": id}, "response": if error { "Tool arguments must be a JSON object" } else { "done" }}),
+                    100,
+                );
+            }
+            let persisted = serde_json::to_string(&prompt).unwrap();
+            let saved: Prompt = serde_json::from_str(&persisted).unwrap();
+            let model = LLMProviderInterface::Claude(Claude {
+                model_type: "claude-haiku-5-5".into(),
+            });
+            let (result, _) = claude_prepare_messages(&model, saved.clone()).unwrap();
+            assert_eq!(serde_json::to_string(&saved).unwrap(), persisted);
+            let PromptResultEnum::Value(messages) = result.messages else {
+                panic!("Expected messages")
+            };
+            assert_eq!(messages.as_array().unwrap().len(), 3);
+            let mut expected = content.clone();
+            expected[1]["input"] = json!({});
+            assert_eq!(messages[1]["content"], expected);
+            let results = messages[2]["content"].as_array().unwrap();
+            assert_eq!(results.len(), 2);
+            assert_eq!(results[0]["tool_use_id"], "toolu_bad");
+            assert_eq!(results[0]["content"], "Tool arguments must be a JSON object");
+            assert_eq!(results[1]["tool_use_id"], "toolu_valid");
+            assert_eq!(results[1]["content"], "done");
+            assert!(persisted.contains("function_argument_error"));
+        }
+    }
+
+    #[test]
+    fn tagged_claude_history_groups_by_turn_not_identical_content() {
+        let native = json!([
+            {"type": "thinking", "thinking": "opaque", "signature": "signed"},
+            {"type": "tool_use", "id": "toolu_a", "name": "lookup", "input": {}}
+        ]);
+        let fallback_key = serde_json::to_string(&native).unwrap();
+        for tags in [
+            vec![Some("turn-a"), Some("turn-b")],
+            vec![None, Some(fallback_key.as_str())],
+        ] {
+            let mut prompt = Prompt::new();
+            prompt.add_content("Use tool".into(), SubPromptType::UserLastMessage, 100);
+            for (index, tag) in tags.iter().enumerate() {
+                let mut metadata = json!({"claude_content": native});
+                if let Some(tag) = tag {
+                    metadata["inference_turn_id"] = json!(tag);
+                }
+                prompt.add_function_call(
+                    json!({"name": "lookup", "call_id": "toolu_a", "arguments": {}, "provider_metadata": metadata}),
+                    100,
+                );
+                prompt.add_function_call_response(json!({"function_call": {"name": "lookup", "id": "toolu_a"}, "response": format!("result-{index}")}), 100);
+            }
+            let persisted = serde_json::to_string(&prompt).unwrap();
+            let saved: Prompt = serde_json::from_str(&persisted).unwrap();
+            let model = LLMProviderInterface::Claude(Claude {
+                model_type: "claude-haiku-5-5".into(),
+            });
+            let (prepared, _) = claude_prepare_messages(&model, saved.clone()).unwrap();
+            assert_eq!(serde_json::to_string(&saved).unwrap(), persisted);
+            let PromptResultEnum::Value(messages) = prepared.messages else {
+                panic!("Expected messages")
+            };
+            assert_eq!(messages.as_array().unwrap().len(), 5);
+            for index in 0..2 {
+                assert_eq!(messages[1 + index * 2]["content"], native);
+                assert_eq!(messages[2 + index * 2]["content"][0]["tool_use_id"], "toolu_a");
+                assert_eq!(
+                    messages[2 + index * 2]["content"][0]["content"],
+                    format!("result-{index}")
+                );
+            }
+        }
+    }
+
+    #[test]
     fn test_signed_parallel_prompt_history_round_trip() {
         let content = json!([
             {"type": "thinking", "thinking": "", "signature": "signed"},
@@ -509,7 +628,7 @@ mod tests {
         for name in ["first", "second"] {
             let id = format!("toolu_{}", name);
             prompt.add_function_call(
-                json!({"name": name, "call_id": id, "arguments": {}, "provider_metadata": {"claude_content": content}}),
+                json!({"name": name, "call_id": id, "arguments": {}, "provider_metadata": {"claude_content": content, "inference_turn_id": "parallel-turn"}}),
                 100,
             );
             prompt.add_function_call_response(

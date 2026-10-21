@@ -214,7 +214,15 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
                             {
                                 // The stored Prompt alternates call/result pairs. Restore the complete
                                 // native assistant turn only at its first call, before all tool results.
-                                let identity = serde_json::to_string(&native["tool_calls"]).unwrap_or_default();
+                                // Provider IDs and call payloads can repeat in later inference turns.
+                                // Keep tagged identities separate from the legacy payload fallback.
+                                let identity = match metadata
+                                    .and_then(|metadata| metadata["inference_turn_id"].as_str())
+                                    .filter(|turn| !turn.is_empty())
+                                {
+                                    Some(turn) => (true, turn.to_owned()),
+                                    None => (false, serde_json::to_string(&native["tool_calls"]).unwrap_or_default()),
+                                };
                                 if replayed_openrouter_turns.insert(identity) {
                                     return Some(native.clone());
                                 }
@@ -240,6 +248,10 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
                         if uses_responses {
                             if let Some(output) = metadata.and_then(|m| m.get("openai_responses")) {
                                 tool_call["provider_metadata"] = serde_json::json!({"openai_responses": output});
+                                // The Responses transform consumes this local tag before building API input.
+                                if let Some(turn) = metadata.and_then(|metadata| metadata.get("inference_turn_id")) {
+                                    tool_call["provider_metadata"]["inference_turn_id"] = turn.clone();
+                                }
                             }
                         }
                         restore_assistant_reasoning(&mut message, metadata, model);
@@ -412,7 +424,9 @@ mod tests {
     #[test]
     fn responses_metadata_only_reaches_actual_responses_routes() {
         use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{OpenAI, OpenAILegacy};
-        let metadata = json!({"openai_responses": {"output": [{"type":"reasoning","encrypted_content":"signed"}]}});
+        let output = json!({"output": [{"type":"reasoning","encrypted_content":"signed"}]});
+        let metadata =
+            json!({"openai_responses": output, "inference_turn_id": "turn-first", "private": "must stay local"});
         for (model, expected) in [
             (
                 LLMProviderInterface::OpenAI(OpenAI {
@@ -444,6 +458,7 @@ mod tests {
                 json!({"name":"weather", "call_id":"call-1", "arguments":{}, "provider_metadata":metadata}),
                 100,
             );
+            let prompt = serde_json::from_str(&serde_json::to_string(&prompt).unwrap()).unwrap();
             let result = openai_prepare_messages(&model, prompt).unwrap();
             let PromptResultEnum::Value(messages) = result.messages else {
                 panic!("expected messages")
@@ -452,6 +467,17 @@ mod tests {
                 messages[0]["tool_calls"][0].get("provider_metadata").is_some(),
                 expected
             );
+            if expected {
+                assert_eq!(
+                    messages[0]["tool_calls"][0]["provider_metadata"],
+                    json!({"openai_responses": output, "inference_turn_id": "turn-first"})
+                );
+            }
+            assert!(messages[0].get("inference_turn_id").is_none());
+            assert!(messages[0]["tool_calls"][0].get("inference_turn_id").is_none());
+            assert!(messages[0]["tool_calls"][0]["function"]
+                .get("inference_turn_id")
+                .is_none());
             assert!(messages[0]["tool_calls"][0]["function"]
                 .get("provider_metadata")
                 .is_none());
@@ -499,6 +525,109 @@ mod tests {
             }
             assert_eq!(messages.as_array().unwrap().len(), 3);
         }
+    }
+
+    fn prepare_saved_openrouter_history(prompt: Prompt) -> serde_json::Value {
+        use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::OpenRouter;
+        let saved = serde_json::to_string(&prompt).unwrap();
+        let prompt = serde_json::from_str(&saved).unwrap();
+        let model = LLMProviderInterface::OpenRouter(OpenRouter {
+            model_type: "anthropic/claude-opus-5.5".into(),
+        });
+        let prepared = openai_prepare_messages(&model, prompt).unwrap();
+        let PromptResultEnum::Value(messages) = prepared.messages else {
+            panic!("Expected messages");
+        };
+        messages
+    }
+
+    #[test]
+    fn tagged_openrouter_turns_keep_identical_calls_and_each_signed_assistant_turn() {
+        let native = json!({"role": "assistant", "content": null,
+            "reasoning_details": [{"type": "reasoning.encrypted", "data": "signed-first", "index": 0}],
+            "tool_calls": [
+                {"id": "A", "type": "function", "function": {"name": "first", "arguments": "{}"}},
+                {"id": "B", "type": "function", "function": {"name": "second", "arguments": "{}"}}
+            ]
+        });
+        for same_reasoning in [false, true] {
+            for grouped in [false, true] {
+                let mut prompt = Prompt::new();
+                let mut expected_turns = Vec::new();
+                for turn in ["first-turn", "second-turn"] {
+                    let mut assistant = native.clone();
+                    if turn == "second-turn" && !same_reasoning {
+                        assistant["reasoning_details"][0]["data"] = json!("signed-second");
+                    }
+                    expected_turns.push(assistant.clone());
+                    let mut responses = Vec::new();
+                    for (name, id) in [("first", "A"), ("second", "B")] {
+                        prompt.add_function_call(
+                            json!({"name": name, "call_id": id, "arguments": {},
+                                "provider_metadata": {"inference_turn_id": turn, "openrouter_assistant": assistant}
+                            }),
+                            100,
+                        );
+                        let response = json!({"function_call": {"name": name, "id": id}, "response": format!("{turn}: actual {id}")});
+                        if grouped {
+                            responses.push(response);
+                        } else {
+                            prompt.add_function_call_response(response, 100);
+                        }
+                    }
+                    for response in responses {
+                        prompt.add_function_call_response(response, 100);
+                    }
+                }
+                let messages = prepare_saved_openrouter_history(prompt);
+                assert_eq!(messages.as_array().unwrap().len(), 6);
+                for (offset, turn, expected) in [
+                    (0, "first-turn", &expected_turns[0]),
+                    (3, "second-turn", &expected_turns[1]),
+                ] {
+                    // Each turn replays once, even when its complete signed payload is identical.
+                    assert_eq!(&messages[offset], expected);
+                    assert_eq!(
+                        messages[offset + 1],
+                        json!({"role": "tool", "tool_call_id": "A", "content": format!("{turn}: actual A")})
+                    );
+                    assert_eq!(
+                        messages[offset + 2],
+                        json!({"role": "tool", "tool_call_id": "B", "content": format!("{turn}: actual B")})
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn tagged_turn_identity_cannot_collide_with_legacy_payload_identity() {
+        let native = json!({"role": "assistant", "content": null,
+            "reasoning_details": [{"type": "reasoning.encrypted", "data": "signed", "index": 0}],
+            "tool_calls": [{"id": "A", "type": "function", "function": {"name": "first", "arguments": "{}"}}]
+        });
+        let payload_identity = serde_json::to_string(&native["tool_calls"]).unwrap();
+        let mut prompt = Prompt::new();
+        for (index, tagged) in [false, true].into_iter().enumerate() {
+            let mut metadata = json!({"openrouter_assistant": native});
+            if tagged {
+                metadata["inference_turn_id"] = json!(payload_identity);
+            }
+            prompt.add_function_call(
+                json!({"name": "first", "call_id": "A", "arguments": {}, "provider_metadata": metadata}),
+                100,
+            );
+            prompt.add_function_call_response(
+                json!({"function_call": {"name": "first", "id": "A"}, "response": format!("actual result {index}")}),
+                100,
+            );
+        }
+        let messages = prepare_saved_openrouter_history(prompt);
+        assert_eq!(messages.as_array().unwrap().len(), 4);
+        assert_eq!(messages[0], native);
+        assert_eq!(messages[2], native);
+        assert_eq!(messages[1]["content"], "actual result 0");
+        assert_eq!(messages[3]["content"], "actual result 1");
     }
 
     #[test]

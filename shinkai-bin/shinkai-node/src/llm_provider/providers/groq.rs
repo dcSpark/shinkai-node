@@ -1,16 +1,12 @@
-use std::error::Error;
 use std::sync::Arc;
 
 use super::super::error::LLMProviderError;
-use super::shared::openai_api::{MessageContent, OpenAIResponse};
-use super::shared::shared_model_logic::{send_tool_ws_update, send_ws_update};
 use super::LLMService;
-use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
+use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::llm_provider::providers::shared::groq_api::groq_prepare_messages;
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
 use async_trait::async_trait;
-use futures::StreamExt;
 use reqwest::Client;
 use serde_json::json;
 use serde_json::Value as JsonValue;
@@ -195,6 +191,8 @@ impl LLMService for Groq {
     }
 }
 
+// Groq uses the OpenAI Chat Completions delta format. Share its indexed
+// accumulator and execution guards instead of parsing each argument fragment.
 async fn handle_streaming_response(
     client: &Client,
     url: String,
@@ -204,292 +202,23 @@ async fn handle_streaming_response(
     ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     llm_stopper: Arc<LLMStopper>,
     session_id: String,
-    tools: Option<Vec<JsonValue>>, // Add tools parameter
+    tools: Option<Vec<JsonValue>>,
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
-    let res = client
-        .post(url)
-        .bearer_auth(api_key)
-        .header("Content-Type", "application/json")
-        .json(&payload)
-        .send()
-        .await?;
-
-    // Check if it's an error response
-    if !res.status().is_success() {
-        let error_json: serde_json::Value = res.json().await?;
-        if let Some(error) = error_json.get("error") {
-            let error_message = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
-            return Err(LLMProviderError::APIError(
-                "AI Provider API Error: ".to_string() + error_message,
-            ));
-        }
-        return Err(LLMProviderError::APIError(
-            "AI Provider API Error: Unknown error occurred".to_string(),
-        ));
-    }
-
-    // Check content type to determine if it's a stream
-    let content_type = res.headers().get("content-type").and_then(|v| v.to_str().ok());
-    let is_stream = match content_type {
-        Some(ct) => {
-            ct.contains("text/event-stream")
-                || (ct.contains("application/json") && res.headers().contains_key("transfer-encoding"))
-        }
-        None => false,
-    };
-
-    if !is_stream {
-        // Handle as regular JSON response
-        let response_json: serde_json::Value = res.json().await?;
-        if let Some(error) = response_json.get("error") {
-            let error_message = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
-            return Err(LLMProviderError::APIError(
-                "AI Provider API Error: ".to_string() + error_message,
-            ));
-        }
-        return Err(LLMProviderError::APIError(
-            "AI Provider API Error: Expected streaming response but received regular JSON".to_string(),
-        ));
-    }
-
-    let mut stream = res.bytes_stream();
-    let mut response_text = String::new();
-    let mut buffer = String::new();
-    let mut function_calls: Vec<FunctionCall> = Vec::new();
-    let mut reasoning_content = String::new();
-
-    while let Some(item) = stream.next().await {
-        // Check if we need to stop the LLM job
-        if let Some(ref inbox_name) = inbox_name {
-            if llm_stopper.should_stop(&inbox_name.to_string()) {
-                shinkai_log(
-                    ShinkaiLogOption::JobExecution,
-                    ShinkaiLogLevel::Info,
-                    "LLM job stopped by user request",
-                );
-                llm_stopper.reset(&inbox_name.to_string());
-
-                return Ok(LLMInferenceResponse::new(
-                    response_text,
-                    if reasoning_content.is_empty() {
-                        None
-                    } else {
-                        Some(reasoning_content)
-                    },
-                    json!({}),
-                    Vec::new(),
-                    Vec::new(),
-                    None,
-                ));
-            }
-        }
-
-        match item {
-            Ok(chunk) => {
-                let chunk_str = String::from_utf8_lossy(&chunk).to_string();
-                buffer.push_str(&chunk_str);
-
-                while let Some(pos) = buffer.find("\n\n") {
-                    // Clone the message to own the data, avoiding borrow conflicts
-                    let message = buffer[..pos].trim().to_string();
-                    buffer = buffer[pos + 2..].to_string(); // Update buffer
-
-                    if message.starts_with("data: ") {
-                        let data = &message[6..]; // Skip "data: "
-                        if data == "[DONE]" {
-                            let _ = send_ws_update(
-                                &ws_manager_trait,
-                                inbox_name.clone(),
-                                &session_id,
-                                response_text.clone(),
-                                false,                                   // is_reasoning
-                                function_calls.is_empty(),               // is_done
-                                Some("streaming completed".to_string()), // done_reason
-                            )
-                            .await;
-                            break;
-                        } else {
-                            match serde_json::from_str::<JsonValue>(data) {
-                                Ok(data_json) => {
-                                    // Check if the data contains an error
-                                    if let Some(error) = data_json.get("error") {
-                                        let message =
-                                            error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
-                                        let status_code =
-                                            error.get("status_code").and_then(|c| c.as_u64()).unwrap_or(500);
-                                        return Err(LLMProviderError::LLMServiceUnexpectedError(format!(
-                                            "Error {}: {}",
-                                            status_code, message
-                                        )));
-                                    }
-
-                                    if let Some(choices) = data_json.get("choices") {
-                                        for choice in choices.as_array().unwrap_or(&vec![]) {
-                                            if let Some(delta) = choice.get("delta") {
-                                                // Handle reasoning content
-                                                if let Some(reasoning) = delta.get("reasoning").and_then(|r| r.as_str())
-                                                {
-                                                    reasoning_content.push_str(reasoning);
-
-                                                    // Send WebSocket update for reasoning content
-                                                    if let Some(ref inbox_name) = inbox_name {
-                                                        let _ = send_ws_update(
-                                                            &ws_manager_trait,
-                                                            Some(inbox_name.clone()),
-                                                            &session_id,
-                                                            reasoning.to_string(),
-                                                            true,  // is_reasoning
-                                                            false, // is_done
-                                                            None,  // done_reason
-                                                        )
-                                                        .await;
-                                                    }
-                                                }
-
-                                                if let Some(fc) = delta.get("tool_calls") {
-                                                    if let Some(tool_calls_array) = fc.as_array() {
-                                                        for tool_call in tool_calls_array {
-                                                            if let Some(function) = tool_call.get("function") {
-                                                                if let Some(name) = function.get("name") {
-                                                                    let fc_arguments = function
-                                                                        .get("arguments")
-                                                                        .and_then(|args| args.as_str())
-                                                                        .and_then(|args_str| {
-                                                                            serde_json::from_str(args_str).ok()
-                                                                        })
-                                                                        .and_then(|args_value: serde_json::Value| {
-                                                                            args_value.as_object().cloned()
-                                                                        })
-                                                                        .unwrap_or_else(|| serde_json::Map::new());
-
-                                                                    // Search for the tool_router_key in the tools array
-                                                                    let tool_router_key =
-                                                                        tools.as_ref().and_then(|tools_array| {
-                                                                            tools_array.iter().find_map(|tool| {
-                                                                                if let Some(function) =
-                                                                                    tool.get("function")
-                                                                                {
-                                                                                    if function.get("name")?.as_str()?
-                                                                                        == name.as_str().unwrap_or("")
-                                                                                    {
-                                                                                        function
-                                                                                            .get("tool_router_key")
-                                                                                            .and_then(|key| {
-                                                                                                key.as_str().map(|s| {
-                                                                                                    s.to_string()
-                                                                                                })
-                                                                                            })
-                                                                                    } else {
-                                                                                        None
-                                                                                    }
-                                                                                } else {
-                                                                                    None
-                                                                                }
-                                                                            })
-                                                                        });
-
-                                                                    let function_call = FunctionCall {
-                                                                        provider_metadata: None,
-                                                                        name: name.as_str().unwrap_or("").to_string(),
-                                                                        arguments: fc_arguments.clone(),
-                                                                        tool_router_key,
-                                                                        response: None,
-                                                                        index: function_calls.len() as u64,
-                                                                        id: None,
-                                                                        call_type: Some("function".to_string()),
-                                                                    };
-                                                                    function_calls.push(function_call.clone());
-
-                                                                    let _ = send_tool_ws_update(
-                                                                        &ws_manager_trait,
-                                                                        inbox_name.clone(),
-                                                                        &function_call,
-                                                                    )
-                                                                    .await;
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                                if let Some(content) = delta.get("content") {
-                                                    let response_text_chunk = content.as_str().unwrap_or("");
-                                                    response_text.push_str(response_text_chunk);
-
-                                                    // Handle WebSocket updates using shared function
-                                                    let is_done = function_calls.is_empty()
-                                                        && data_json
-                                                            .get("done")
-                                                            .and_then(|d| d.as_bool())
-                                                            .unwrap_or(false);
-                                                    let done_reason = data_json
-                                                        .get("done_reason")
-                                                        .and_then(|d| d.as_str())
-                                                        .map(|s| s.to_string());
-
-                                                    let _ = send_ws_update(
-                                                        &ws_manager_trait,
-                                                        inbox_name.clone(),
-                                                        &session_id,
-                                                        response_text_chunk.to_string(),
-                                                        false, // is_reasoning
-                                                        is_done,
-                                                        done_reason,
-                                                    )
-                                                    .await;
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    eprintln!("Error parsing JSON: {:?}", e);
-                                    shinkai_log(
-                                        ShinkaiLogOption::JobExecution,
-                                        ShinkaiLogLevel::Error,
-                                        format!("Error parsing JSON: {:?}", e).as_str(),
-                                    );
-                                }
-                            }
-                        }
-                    } else {
-                        eprintln!("Received unexpected message format: {:?}", message);
-                    }
-                }
-            }
-            Err(e) => {
-                shinkai_log(
-                    ShinkaiLogOption::JobExecution,
-                    ShinkaiLogLevel::Error,
-                    format!("Error while receiving chunk: {:?}, Error Source: {:?}", e, e.source()).as_str(),
-                );
-            }
-        }
-    }
-
-    // Send final WS message to indicate completion using shared function
-    let _ = send_ws_update(
-        &ws_manager_trait,
-        inbox_name.clone(),
-        &session_id,
-        response_text.clone(),
-        false,                        // is_reasoning
-        function_calls.is_empty(),    // is_done
-        Some("finished".to_string()), // done_reason
-    )
-    .await;
-
-    Ok(LLMInferenceResponse::new(
-        response_text,
-        if reasoning_content.is_empty() {
-            None
-        } else {
-            Some(reasoning_content)
-        },
-        json!({}),
-        function_calls,
-        Vec::new(),
+    super::openai::handle_streaming_response_with_policy(
+        client,
+        url,
+        payload,
+        Some(api_key),
+        inbox_name,
+        ws_manager_trait,
+        llm_stopper,
+        session_id,
+        tools,
         None,
-    ))
+        super::openai::ToolIdentityMode::Fragments,
+        super::openai::ChatStreamPolicy::Groq,
+    )
+    .await
 }
 
 async fn handle_non_streaming_response(
@@ -502,178 +231,18 @@ async fn handle_non_streaming_response(
     ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     tools: Option<Vec<JsonValue>>,
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
-    let session_id = uuid::Uuid::new_v4().to_string();
-    let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(500));
-    let response_fut = client
-        .post(url)
-        .bearer_auth(api_key)
-        .header("Content-Type", "application/json")
-        .json(&payload)
-        .send();
-    let mut response_fut = Box::pin(response_fut);
-
-    loop {
-        tokio::select! {
-            _ = interval.tick() => {
-                if let Some(ref inbox_name) = inbox_name {
-                    if llm_stopper.should_stop(&inbox_name.to_string()) {
-                        shinkai_log(
-                            ShinkaiLogOption::JobExecution,
-                            ShinkaiLogLevel::Info,
-                            "LLM job stopped by user request",
-                        );
-                        llm_stopper.reset(&inbox_name.to_string());
-
-                        // Send final WebSocket update for stopped job
-                        let _ = send_ws_update(
-                            &ws_manager_trait,
-                            Some(inbox_name.clone()),
-                            &session_id,
-                            "".to_string(),
-                            false, // is_reasoning
-                            true, // is_done
-                            Some("stopped by user".to_string()), // done_reason
-                        ).await;
-
-                        return Ok(LLMInferenceResponse::new("".to_string(), None, json!({}), Vec::new(), Vec::new(), None));
-                    }
-                }
-            },
-            response = &mut response_fut => {
-                let res = response?;
-                let response_text = res.text().await?;
-                let data_resp: Result<JsonValue, _> = serde_json::from_str(&response_text);
-
-                match data_resp {
-                    Ok(value) => {
-                        if let Some(error) = value.get("error") {
-                            let code = error.get("code").and_then(|c| c.as_str());
-                            let formatted_error =
-                                if let (Some(code), Some(message)) = (code, error.get("message").and_then(|m| m.as_str())) {
-                                    format!("{}: {}", code, message)
-                                } else {
-                                    serde_json::to_string(&error).unwrap_or_default()
-                                };
-
-                            return Err(match code {
-                                Some("rate_limit_exceeded") => {
-                                    LLMProviderError::LLMServiceInferenceLimitReached(formatted_error.to_string())
-                                }
-                                _ => LLMProviderError::LLMServiceUnexpectedError(formatted_error.to_string()),
-                            });
-                        }
-
-                        // Extract reasoning content before deserializing into OpenAIResponse
-                        let reasoning_content: String = value
-                            .get("choices")
-                            .and_then(|choices| choices.as_array())
-                            .map(|choices_array| {
-                                choices_array
-                                    .iter()
-                                    .filter_map(|choice| {
-                                        choice.get("message")
-                                            .and_then(|msg| msg.get("reasoning"))
-                                            .and_then(|reasoning| reasoning.as_str())
-                                    })
-                                    .collect::<Vec<&str>>()
-                                    .join("")
-                            })
-                            .unwrap_or_default();
-
-                        let data: OpenAIResponse = serde_json::from_value(value).map_err(LLMProviderError::SerdeError)?;
-
-                        let response_string: String = data
-                            .choices
-                            .iter()
-                            .filter_map(|choice| match &choice.message.content {
-                                Some(MessageContent::Text(text)) => {
-                                    // Unescape the JSON string
-                                    let cleaned_json_str = text.replace("\\\"", "\"").replace("\\n", "\n");
-                                    Some(cleaned_json_str)
-                                }
-                                Some(MessageContent::ImageUrl { .. }) => None,
-                                Some(MessageContent::FunctionCall(_)) => None,
-                                None => None,
-                            })
-                            .collect::<Vec<String>>()
-                            .join(" ");
-
-                        let function_calls: Vec<FunctionCall> = data.choices.iter().flat_map(|choice| {
-                            let mut calls = Vec::new();
-
-                            // Handle tool_calls
-                            if let Some(tool_calls) = &choice.message.tool_calls {
-                                for (index, tool_call) in tool_calls.iter().enumerate() {
-                                    let arguments = serde_json::from_str::<serde_json::Value>(&tool_call.function.arguments)
-                                        .ok()
-                                        .and_then(|args_value: serde_json::Value| args_value.as_object().cloned())
-                                        .unwrap_or_else(|| serde_json::Map::new());
-
-                                    // Find matching tool and extract router key
-                                    let tool_router_key = tools.as_ref().and_then(|tools_array| {
-                                        tools_array.iter().find_map(|tool| {
-                                            if let Some(name) = tool.get("name").and_then(|n| n.as_str()) {
-                                                if name == tool_call.function.name {
-                                                    tool.get("tool_router_key")
-                                                        .and_then(|key| key.as_str())
-                                                        .map(|s| s.to_string())
-                                                } else {
-                                                    None
-                                                }
-                                            } else {
-                                                None
-                                            }
-                                        })
-                                    });
-
-                                    calls.push(FunctionCall {
-                    provider_metadata: None,
-                                        name: tool_call.function.name.clone(),
-                                        arguments,
-                                        tool_router_key,
-                                        response: None,
-                                        index: index as u64,
-                                        id: None,
-                                        call_type: Some("function".to_string()),
-                                    });
-                                }
-                            }
-
-                            calls
-                        }).collect();
-
-                        // Send final WebSocket update for non-streaming completion
-                        let _ = send_ws_update(
-                            &ws_manager_trait,
-                            inbox_name.clone(),
-                            &session_id,
-                            response_string.clone(),
-                            false, // is_reasoning
-                            true, // is_done
-                            Some("finished".to_string()), // done_reason
-                        ).await;
-
-                        return Ok(LLMInferenceResponse::new(
-                            response_string,
-                            if reasoning_content.is_empty() { None } else { Some(reasoning_content) },
-                            json!({}),
-                            function_calls,
-                            Vec::new(),
-                            None,
-                        ));
-                    }
-                    Err(e) => {
-                        shinkai_log(
-                            ShinkaiLogOption::JobExecution,
-                            ShinkaiLogLevel::Error,
-                            format!("Failed to parse response: {:?}", e).as_str(),
-                        );
-                        return Err(LLMProviderError::SerdeError(e));
-                    }
-                }
-            }
-        }
-    }
+    super::openai::handle_non_streaming_response(
+        client,
+        url,
+        payload,
+        api_key,
+        inbox_name,
+        llm_stopper,
+        ws_manager_trait,
+        tools,
+        None,
+    )
+    .await
 }
 
 fn initial_groq_payload(
@@ -846,5 +415,265 @@ mod request_tests {
             add_options_to_payload(&mut payload, None);
             assert_eq!(payload["max_completion_tokens"], limit.min(budget), "{}", id);
         }
+    }
+}
+
+#[cfg(test)]
+mod response_tests {
+    use super::*;
+    use crate::llm_provider::execution::chains::generic_chain::generic_inference_chain::execute_valid_function_call;
+    use crate::managers::tool_router::ToolCallFunctionResponse;
+
+    async fn try_response(body: String, streaming: bool) -> Result<LLMInferenceResponse, LLMProviderError> {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/chat/completions")
+            .with_header(
+                "content-type",
+                if streaming {
+                    "text/event-stream"
+                } else {
+                    "application/json"
+                },
+            )
+            .with_body(body)
+            .create_async()
+            .await;
+        let tools = Some(vec![json!({"type":"function","function":{
+            "name":"weather", "tool_router_key":"weather-router"}})]);
+        let client = Client::new();
+        let url = format!("{}/chat/completions", server.url());
+        let stopper = Arc::new(LLMStopper::new());
+        let result = if streaming {
+            handle_streaming_response(
+                &client,
+                url,
+                json!({}),
+                "test".into(),
+                None,
+                None,
+                stopper,
+                "test".into(),
+                tools,
+            )
+            .await
+        } else {
+            handle_non_streaming_response(&client, url, json!({}), "test".into(), None, stopper, None, tools).await
+        };
+        mock.assert_async().await;
+        result
+    }
+
+    async fn response(body: String, streaming: bool) -> LLMInferenceResponse {
+        try_response(body, streaming).await.unwrap()
+    }
+
+    fn sse(events: Vec<JsonValue>, done: bool) -> String {
+        let mut body = events
+            .into_iter()
+            .map(|event| format!("data: {}\n\n", event))
+            .collect::<String>();
+        if done {
+            body.push_str("data: [DONE]\n\n");
+        }
+        body
+    }
+
+    #[tokio::test]
+    async fn groq_stream_accumulates_parallel_arguments_and_keeps_native_identity() {
+        let body = sse(
+            vec![
+                json!({"choices":[{"index":0,"delta":{"reasoning":"Plan", "content":"Start", "tool_calls":[
+                    {"index":0,"id":"call_a","type":"function","function":{"name":"weather","arguments":"{\"city\":"}},
+                    {"index":1,"id":"call_b","type":"function","function":{"name":"weather","arguments":"{\"city\":"}}
+                ]}}]}),
+                json!({"choices":[{"index":0,"delta":{"tool_calls":[
+                    {"index":1,"function":{"arguments":"\"Rome\"}"}},
+                    {"index":0,"function":{"arguments":"\"Paris\"}"}}
+                ]}}]}),
+                json!({"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}),
+            ],
+            true,
+        );
+        let result = response(body, true).await;
+        assert_eq!(result.response_string, "Start");
+        assert_eq!(result.reasoning_content.as_deref(), Some("Plan"));
+        assert_eq!(result.function_calls.len(), 2);
+        for (call, id, city) in [
+            (&result.function_calls[0], "call_a", "Paris"),
+            (&result.function_calls[1], "call_b", "Rome"),
+        ] {
+            assert_eq!(call.id.as_deref(), Some(id));
+            assert_eq!(call.name, "weather");
+            assert_eq!(call.arguments["city"], city);
+            assert_eq!(call.tool_router_key.as_deref(), Some("weather-router"));
+            assert!(call.provider_metadata.is_none());
+        }
+    }
+
+    #[tokio::test]
+    async fn groq_malformed_arguments_cannot_execute_zero_parameter_tools() {
+        for streaming in [false, true] {
+            for arguments in ["{", "[]", "null", "{}"] {
+                let valid = arguments == "{}";
+                let body = if streaming {
+                    sse(
+                        vec![
+                            json!({"choices":[{"index":0,"delta":{"tool_calls":[
+                                {"index":0,"id":"call_guard","type":"function","function":{"name":"weather","arguments":arguments}}
+                            ]}}]}),
+                            json!({"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}),
+                        ],
+                        true,
+                    )
+                } else {
+                    json!({"id":"chatcmpl-groq-test", "object":"chat.completion", "created":1720000000,
+                        "model":"qwen/qwen3.8-27b", "system_fingerprint":"fp_test",
+                        "usage":{"prompt_tokens":10,"completion_tokens":8,"total_tokens":18},
+                        "x_groq":{"id":"req_test"},
+                        "choices":[{"index":0,"finish_reason":"tool_calls","message":{"role":"assistant","content":null,"reasoning":"Plan","tool_calls":[
+                        {"id":"call_guard","type":"function","function":{"name":"weather","arguments":arguments}}
+                    ]}}]}).to_string()
+                };
+                let result = response(body, streaming).await;
+                let call = &result.function_calls[0];
+                assert_eq!(call.id.as_deref(), Some("call_guard"));
+                assert_eq!(call.tool_router_key.as_deref(), Some("weather-router"));
+                let mut executed = false;
+                let execution_call = call.clone();
+                let outcome = execute_valid_function_call(call, async {
+                    executed = true;
+                    Ok(ToolCallFunctionResponse {
+                        function_call: execution_call,
+                        response: "executed".into(),
+                    })
+                })
+                .await;
+                assert_eq!(executed, valid, "streaming={streaming}, arguments={arguments}");
+                assert_eq!(outcome.is_ok(), valid);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn groq_raw_eof_requires_confirmation_even_for_valid_arguments() {
+        for arguments in ["", "{}", "{\"city\":\"Paris\"}"] {
+            let body = sse(
+                vec![json!({"choices":[{"index":0,"delta":{"tool_calls":[
+                    {"index":0,"id":"unfinished","type":"function","function":{"name":"weather","arguments":arguments}}
+                ]}}]})],
+                false,
+            );
+            let error = try_response(body, true).await.unwrap_err();
+            assert!(error.to_string().contains("before completion"));
+        }
+    }
+
+    #[tokio::test]
+    async fn groq_aborted_finish_cannot_execute_valid_arguments_even_after_done() {
+        for reason in ["length", "content_filter"] {
+            let body = sse(
+                vec![json!({"choices":[{"index":0,"delta":{"tool_calls":[
+                {"index":0,"id":"aborted","type":"function","function":{"name":"weather","arguments":"{}"}}
+            ]},"finish_reason":reason}]})],
+                true,
+            );
+            let error = try_response(body, true).await.unwrap_err();
+            assert!(error.to_string().contains("incomplete finish reason"));
+        }
+    }
+
+    #[tokio::test]
+    async fn groq_terminal_frames_survive_split_newline_boundaries() {
+        for reason in ["length", "content_filter", "tool_calls"] {
+            let mut server = mockito::Server::new_async().await;
+            let first = sse(
+                vec![json!({"choices":[{"index":0,"delta":{"tool_calls":[
+                {"index":0,"id":"split","type":"function","function":{"name":"weather","arguments":"{}"}}
+            ]},"finish_reason":reason}]})],
+                false,
+            );
+            let mock = server
+                .mock("POST", "/chat/completions")
+                .with_header("content-type", "text/event-stream")
+                .with_chunked_body(move |writer| {
+                    writer.write_all(&first.as_bytes()[..first.len() - 1])?;
+                    writer.flush()?;
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                    writer.write_all(b"\ndata: [DONE]\n\n")?;
+                    writer.flush()?;
+                    Ok(())
+                })
+                .create_async()
+                .await;
+            let result = handle_streaming_response(
+                &Client::new(),
+                format!("{}/chat/completions", server.url()),
+                json!({}),
+                "test".into(),
+                None,
+                None,
+                Arc::new(LLMStopper::new()),
+                "test".into(),
+                None,
+            )
+            .await;
+            mock.assert_async().await;
+            if reason == "tool_calls" {
+                assert_eq!(result.unwrap().function_calls[0].id.as_deref(), Some("split"));
+            } else {
+                assert!(result.unwrap_err().to_string().contains("incomplete finish reason"));
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn groq_stop_after_completed_call_discards_calls_and_keeps_text() {
+        let mut server = mockito::Server::new_async().await;
+        let inbox = InboxName::get_job_inbox_name_from_params("groq-stop".into()).unwrap();
+        let stopper = Arc::new(LLMStopper::new());
+        let writer_stopper = stopper.clone();
+        let writer_inbox = inbox.clone();
+        let first = sse(
+            vec![
+                json!({"choices":[{"index":0,"delta":{"content":"Text", "reasoning":"Plan", "tool_calls":[
+            {"index":0,"id":"completed","type":"function","function":{"name":"weather","arguments":"{}"}}
+        ]},"finish_reason":"tool_calls"}]}),
+            ],
+            false,
+        );
+        let mock = server
+            .mock("POST", "/chat/completions")
+            .with_header("content-type", "text/event-stream")
+            .with_chunked_body(move |writer| {
+                writer.write_all(first.as_bytes())?;
+                writer.flush()?;
+                // Keep the stream open after the complete tool call, then stop it.
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                writer_stopper.stop(&writer_inbox.to_string());
+                writer.write_all(b"data: [DONE]\n\n")?;
+                writer.flush()?;
+                Ok(())
+            })
+            .create_async()
+            .await;
+        let result = handle_streaming_response(
+            &Client::new(),
+            format!("{}/chat/completions", server.url()),
+            json!({}),
+            "test".into(),
+            Some(inbox.clone()),
+            None,
+            stopper.clone(),
+            "test".into(),
+            None,
+        )
+        .await
+        .unwrap();
+        mock.assert_async().await;
+        assert_eq!(result.response_string, "Text");
+        assert_eq!(result.reasoning_content.as_deref(), Some("Plan"));
+        assert!(result.function_calls.is_empty());
+        assert!(!stopper.should_stop(&inbox.to_string()));
     }
 }

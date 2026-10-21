@@ -978,6 +978,44 @@ pub async fn handle_streaming_response_with_optional_auth(
     headers: Option<JsonValue>,
     identity_mode: ToolIdentityMode,
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
+    handle_streaming_response_with_policy(
+        client,
+        url,
+        payload,
+        api_key,
+        inbox_name,
+        ws_manager_trait,
+        llm_stopper,
+        session_id,
+        tools,
+        headers,
+        identity_mode,
+        ChatStreamPolicy::Compatible,
+    )
+    .await
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum ChatStreamPolicy {
+    Compatible,
+    // Groq must confirm completion, and cancellation must never return tool calls.
+    Groq,
+}
+
+pub(super) async fn handle_streaming_response_with_policy(
+    client: &Client,
+    url: String,
+    payload: JsonValue,
+    api_key: Option<String>,
+    inbox_name: Option<InboxName>,
+    ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    llm_stopper: Arc<LLMStopper>,
+    session_id: String,
+    tools: Option<Vec<JsonValue>>,
+    headers: Option<JsonValue>,
+    identity_mode: ToolIdentityMode,
+    policy: ChatStreamPolicy,
+) -> Result<LLMInferenceResponse, LLMProviderError> {
     let request = client.post(url);
     let request = if let Some(key) = api_key {
         request.bearer_auth(key)
@@ -1124,6 +1162,9 @@ pub async fn handle_streaming_response_with_optional_auth(
     let mut response_text = String::new();
     let mut reasoning_content = String::new();
     let mut buffer = String::new();
+    let mut terminal_buffer = String::new();
+    let mut terminal_confirmed = false;
+    let mut terminal_aborted = false;
     let mut function_calls: Vec<FunctionCall> = Vec::new();
     let mut partial_fc = PartialFunctionCall {
         identity_mode,
@@ -1196,14 +1237,15 @@ pub async fn handle_streaming_response_with_optional_auth(
                         Some(reasoning_content.clone())
                     },
                     json!({}),
-                    function_calls.clone(),
+                    if policy == ChatStreamPolicy::Groq {
+                        Vec::new()
+                    } else {
+                        function_calls.clone()
+                    },
                     Vec::new(),
                     None,
                 );
-
-                // Log the response if LOG_REQUESTS is enabled
                 log_response_to_file(&response_text, &function_calls, true);
-
                 return Ok(response);
             }
         }
@@ -1212,6 +1254,36 @@ pub async fn handle_streaming_response_with_optional_auth(
             Ok(chunk) => {
                 let chunk_str = String::from_utf8_lossy(&chunk).to_string();
                 buffer.push_str(&chunk_str);
+                if policy == ChatStreamPolicy::Groq {
+                    // Keep framing separate from the shared parser, which can drain
+                    // a data line before its second newline arrives.
+                    terminal_buffer.push_str(&chunk_str);
+                    while let Some(end) = terminal_buffer.find("\n\n") {
+                        let frame = terminal_buffer[..end].to_owned();
+                        terminal_buffer.drain(..end + 2);
+                        for data in frame.lines().filter_map(|line| line.strip_prefix("data:")) {
+                            let data = data.trim();
+                            if data == "[DONE]" {
+                                terminal_confirmed = true;
+                            } else if let Ok(value) = serde_json::from_str::<JsonValue>(data) {
+                                if let Some(choices) = value["choices"].as_array() {
+                                    for choice in choices {
+                                        if choice["index"].as_u64().unwrap_or(0) != 0 {
+                                            continue;
+                                        }
+                                        if let Some(reason) = choice["finish_reason"].as_str() {
+                                            if matches!(reason, "tool_calls" | "function_call" | "stop") {
+                                                terminal_confirmed = true;
+                                            } else {
+                                                terminal_aborted = true;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
 
                 // Process complete messages in the buffer
                 if let Some(err) = parse_openai_stream_chunk(
@@ -1248,6 +1320,45 @@ pub async fn handle_streaming_response_with_optional_auth(
                 );
                 return Err(LLMProviderError::NetworkError(e.to_string()));
             }
+        }
+    }
+
+    if policy == ChatStreamPolicy::Groq {
+        // EOF can arrive without another chunk on which to observe cancellation.
+        if let Some(ref inbox) = inbox_name {
+            if llm_stopper.should_stop(&inbox.to_string()) {
+                llm_stopper.reset(&inbox.to_string());
+                let _ = send_ws_update(
+                    &ws_manager_trait,
+                    Some(inbox.clone()),
+                    &session_id,
+                    response_text.clone(),
+                    false,
+                    true,
+                    Some("Stopped by user request".into()),
+                )
+                .await;
+                return Ok(LLMInferenceResponse::new(
+                    response_text,
+                    if reasoning_content.is_empty() {
+                        None
+                    } else {
+                        Some(reasoning_content)
+                    },
+                    json!({}),
+                    Vec::new(),
+                    Vec::new(),
+                    None,
+                ));
+            }
+        }
+        if terminal_aborted {
+            return Err(LLMProviderError::APIError(
+                "Groq stream ended with an incomplete finish reason".into(),
+            ));
+        }
+        if !terminal_confirmed {
+            return Err(LLMProviderError::APIError("Groq stream ended before completion".into()));
         }
     }
 
