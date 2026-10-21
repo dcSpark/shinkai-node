@@ -68,7 +68,12 @@ struct FunctionCallResponse {
     #[serde(default)]
     id: Option<String>,
     name: String,
+    #[serde(default = "empty_function_args")]
     args: serde_json::Value,
+}
+
+fn empty_function_args() -> serde_json::Value {
+    json!({})
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -582,6 +587,102 @@ mod tests {
     use std::sync::Arc;
     use tempfile::NamedTempFile;
     use tokio::sync::Mutex;
+
+    #[tokio::test]
+    async fn gemini_missing_args_keeps_complete_response_and_stream() {
+        use crate::llm_provider::execution::chains::generic_chain::generic_inference_chain::execute_valid_function_call;
+        use crate::managers::tool_router::ToolCallFunctionResponse;
+        let db = setup_test_db().await;
+        for streaming in [false, true] {
+            for explicit_null in [false, true] {
+                let mut function = json!({"id": "zero-call", "name": "zero_arg_tool"});
+                if explicit_null {
+                    function["args"] = JsonValue::Null;
+                }
+                let parts = json!([
+                    {"text": "native thought", "thought": true, "thoughtSignature": "signed-thought"},
+                    {"text": "Calling tool"},
+                    {"functionCall": function, "thoughtSignature": "signed-call"}
+                ]);
+                let response =
+                    json!({"candidates": [{"content": {"role": "model", "parts": parts}, "finishReason": "STOP"}]});
+                let mut thinking = String::new();
+                let mut text = String::new();
+                let mut calls = Vec::new();
+                let mut native = Vec::new();
+                let mut finish = None;
+                let mut done = false;
+                let mut in_thinking = false;
+                let mut started = false;
+                if streaming {
+                    let encoded = format!("[{}]", response);
+                    let mut buffer = String::new();
+                    for chunk in encoded.as_bytes().chunks(encoded.len() / 2) {
+                        process_chunk(
+                            chunk,
+                            &mut buffer,
+                            &mut thinking,
+                            &mut text,
+                            &mut Vec::new(),
+                            "test",
+                            &None,
+                            &None,
+                            &db,
+                            &mut done,
+                            &mut finish,
+                            &mut calls,
+                            &mut native,
+                            &mut in_thinking,
+                            &mut started,
+                        )
+                        .await
+                        .unwrap();
+                    }
+                } else {
+                    process_gemini_response(
+                        response,
+                        &mut thinking,
+                        &mut text,
+                        &mut Vec::new(),
+                        "test",
+                        &None,
+                        &None,
+                        &db,
+                        &done,
+                        &mut finish,
+                        &mut calls,
+                        &mut native,
+                        &mut in_thinking,
+                        &mut started,
+                    )
+                    .await
+                    .unwrap();
+                }
+                assert_eq!(thinking, "native thought");
+                assert_eq!(text, "Calling tool");
+                assert_eq!(finish.as_deref(), Some("STOP"));
+                assert_eq!(calls.len(), 1);
+                let call = &calls[0];
+                assert_eq!(call.id.as_deref(), Some("zero-call"));
+                assert!(call.arguments.is_empty());
+                let metadata = call.provider_metadata.as_ref().unwrap();
+                assert_eq!(metadata["gemini_parts"], parts);
+                assert_eq!(metadata.get("function_argument_error").is_some(), explicit_null);
+                let mut executed = false;
+                let execution_call = call.clone();
+                let result = execute_valid_function_call(call, async {
+                    executed = true;
+                    Ok(ToolCallFunctionResponse {
+                        function_call: execution_call,
+                        response: "done".into(),
+                    })
+                })
+                .await;
+                assert_eq!(executed, !explicit_null);
+                assert_eq!(result.is_ok(), !explicit_null);
+            }
+        }
+    }
 
     #[tokio::test]
     async fn gemini_invalid_arguments_cannot_execute_an_empty_schema_tool() {

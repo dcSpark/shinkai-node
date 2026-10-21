@@ -357,6 +357,8 @@ async fn handle_streaming_response_responses(
     let mut tools_map: HashMap<String, ToolAccum> = HashMap::new();
     let mut function_calls: Vec<FunctionCall> = Vec::new();
     let mut native_output: Vec<JsonValue> = Vec::new();
+    let mut completed = false;
+    let mut stopped_by_user = false;
 
     // SSE parsing loop
     while let Some(item) = stream.next().await {
@@ -364,6 +366,7 @@ async fn handle_streaming_response_responses(
         if let Some(ref inbox_name) = inbox_name {
             if llm_stopper.should_stop(&inbox_name.to_string()) {
                 llm_stopper.reset(&inbox_name.to_string());
+                stopped_by_user = true;
                 // notify done
                 super::shared::shared_model_logic::send_ws_update(
                     &ws_manager_trait,
@@ -759,14 +762,25 @@ async fn handle_streaming_response_responses(
                         }
                         // Completion end
                         "response.completed" => {
-                            if let Ok(v) = serde_json::from_str::<JsonValue>(&data_buf) {
-                                if let Some(response) = v.get("response") {
-                                    validate_response_completion(response)?;
-                                }
-                                if let Some(output) = v.pointer("/response/output").and_then(JsonValue::as_array) {
-                                    if !output.is_empty() {
-                                        native_output = output.clone();
-                                    }
+                            let completion: JsonValue = serde_json::from_str(&data_buf).map_err(|_| {
+                                LLMProviderError::APIError("OpenAI Responses completion event is invalid".into())
+                            })?;
+                            let response = completion
+                                .get("response")
+                                .filter(|response| response.is_object())
+                                .ok_or_else(|| {
+                                    LLMProviderError::APIError("OpenAI Responses completion response is missing".into())
+                                })?;
+                            validate_response_completion(response)?;
+                            if response["status"] != "completed" {
+                                return Err(LLMProviderError::APIError(
+                                    "OpenAI Responses completion status is missing".into(),
+                                ));
+                            }
+                            completed = true;
+                            if let Some(output) = response.get("output").and_then(JsonValue::as_array) {
+                                if !output.is_empty() {
+                                    native_output = output.clone();
                                 }
                             }
                             // finalize any remaining tool calls
@@ -905,6 +919,31 @@ async fn handle_streaming_response_responses(
         }
     }
 
+    // A stop can arrive while waiting for EOF, including a stream with no chunks.
+    if !completed && !stopped_by_user {
+        if let Some(ref inbox) = inbox_name {
+            if llm_stopper.should_stop(&inbox.to_string()) {
+                llm_stopper.reset(&inbox.to_string());
+                stopped_by_user = true;
+                send_ws_update(
+                    &ws_manager_trait,
+                    Some(inbox.clone()),
+                    &session_id,
+                    response_text.clone(),
+                    false,
+                    true,
+                    Some("Stopped by user request".to_string()),
+                )
+                .await?;
+            }
+        }
+    }
+    if !completed && !stopped_by_user {
+        return Err(LLMProviderError::APIError(
+            "OpenAI Responses stream ended before response.completed".into(),
+        ));
+    }
+
     // Completed native items contain the final arguments, call IDs, and encrypted reasoning.
     let native_calls = extract_native_function_calls(&native_output);
     if native_output.iter().any(|item| item["type"] == "function_call") {
@@ -996,6 +1035,7 @@ fn add_options_to_payload_responses(
     config: Option<&JobConfig>,
     is_reasoning_model: bool,
 ) {
+    let prepared_budget = payload.get("max_output_tokens").and_then(JsonValue::as_u64);
     // Helper to read env var or config value
     fn read_env_var<T: std::str::FromStr>(key: &str) -> Option<T> {
         std::env::var(key).ok().and_then(|val| val.parse::<T>().ok())
@@ -1078,6 +1118,9 @@ fn add_options_to_payload_responses(
                 };
             }
         }
+    }
+    if let (Some(budget), Some(requested)) = (prepared_budget, payload["max_output_tokens"].as_u64()) {
+        payload["max_output_tokens"] = json!(requested.min(budget));
     }
 }
 
@@ -1395,6 +1438,78 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn responses_prepared_request_caps_output_for_direct_and_legacy_gpt6() {
+        use shinkai_embedding::model_type::EmbeddingModelType;
+        use shinkai_message_primitives::schemas::{
+            llm_providers::serialized_llm_provider::OpenAILegacy, subprompts::SubPromptType,
+        };
+        let temp = tempfile::tempdir().unwrap();
+        let db = std::sync::Arc::new(
+            super::SqliteManager::new(
+                temp.path().join("budget.db"),
+                String::new(),
+                EmbeddingModelType::default(),
+            )
+            .unwrap(),
+        );
+        for model in [
+            super::LLMProviderInterface::OpenAI(super::OpenAI {
+                model_type: "gpt-6.1-sol".into(),
+            }),
+            super::LLMProviderInterface::OpenAILegacy(OpenAILegacy {
+                model_type: "gpt-6.1-sol".into(),
+            }),
+        ] {
+            let mut prompt = super::Prompt::new();
+            prompt.add_content("Reply briefly.".into(), SubPromptType::UserLastMessage, 100);
+            let budget = super::openai_prepare_messages(&model, prompt.clone())
+                .unwrap()
+                .remaining_output_tokens as u64;
+            assert!(budget > 1024);
+            for requested in [1024, budget + 1] {
+                let mut server = mockito::Server::new_async().await;
+                let mock = server
+                    .mock("POST", "/v1/responses")
+                    .match_body(mockito::Matcher::PartialJson(
+                        json!({"max_output_tokens":requested.min(budget)}),
+                    ))
+                    .with_header("content-type", "application/json")
+                    .with_body(json!({"status":"completed","output":[]}).to_string())
+                    .create_async()
+                    .await;
+                let mut config = super::JobConfig::empty();
+                config.stream = Some(false);
+                config.max_tokens = Some(requested);
+                // Chat-style aliases remain unforwarded by the Responses schema allowlist.
+                config.other_model_params =
+                    Some(json!({"max_tokens":u64::MAX,"max_completion_tokens":u64::MAX,"max_output_tokens":u64::MAX}));
+                let service: &dyn super::LLMService = match &model {
+                    super::LLMProviderInterface::OpenAI(provider) => provider,
+                    super::LLMProviderInterface::OpenAILegacy(provider) => provider,
+                    _ => unreachable!(),
+                };
+                service
+                    .call_api(
+                        &reqwest::Client::new(),
+                        Some(&server.url()),
+                        Some(&"test-key".into()),
+                        prompt.clone(),
+                        model.clone(),
+                        None,
+                        None,
+                        Some(config),
+                        std::sync::Arc::new(super::LLMStopper::new()),
+                        db.clone(),
+                        None,
+                    )
+                    .await
+                    .unwrap();
+                mock.assert_async().await;
+            }
+        }
+    }
+
+    #[tokio::test]
     async fn responses_http_terminal_status_is_checked_before_returning_output() {
         for (status, error, incomplete, expected) in [
             (
@@ -1562,6 +1677,114 @@ mod tests {
             assert!(error.contains(event), "{error}");
             assert!(error.contains(expected), "{error}");
         }
+    }
+
+    #[tokio::test]
+    async fn responses_sse_clean_eof_without_completion_rejects_partial_output() {
+        for body in [
+            "event: response.output_text.delta\ndata: {\"delta\":\"partial\"}\n\n".to_string(),
+            format!(
+                "event: response.output_item.done\ndata: {}\n\n",
+                json!({"item":{
+                    "type":"function_call","id":"fc_1","call_id":"call_1","name":"lookup","arguments":"{}","status":"completed"
+                }})
+            ),
+        ] {
+            let mut server = mockito::Server::new_async().await;
+            let mock = server
+                .mock("POST", "/responses")
+                .with_header("content-type", "text/event-stream")
+                .with_body(body)
+                .create_async()
+                .await;
+            let result = super::handle_streaming_response_responses(
+                &reqwest::Client::new(),
+                format!("{}/responses", server.url()),
+                json!({}),
+                "test-key".into(),
+                None,
+                None,
+                std::sync::Arc::new(super::LLMStopper::new()),
+                "test".into(),
+            )
+            .await;
+            mock.assert_async().await;
+            assert!(result
+                .unwrap_err()
+                .to_string()
+                .contains("ended before response.completed"));
+        }
+    }
+
+    #[tokio::test]
+    async fn responses_sse_empty_body_requires_completion_unless_stopped() {
+        for stopped in [false, true] {
+            let mut server = mockito::Server::new_async().await;
+            let mock = server
+                .mock("POST", "/responses")
+                .with_header("content-type", "text/event-stream")
+                .with_body("")
+                .create_async()
+                .await;
+            let inbox = super::InboxName::get_job_inbox_name_from_params("empty-stop-test".into()).unwrap();
+            let stopper = std::sync::Arc::new(super::LLMStopper::new());
+            if stopped {
+                stopper.stop(&inbox.to_string());
+            }
+            let result = super::handle_streaming_response_responses(
+                &reqwest::Client::new(),
+                format!("{}/responses", server.url()),
+                json!({}),
+                "test-key".into(),
+                Some(inbox.clone()),
+                None,
+                stopper.clone(),
+                "test".into(),
+            )
+            .await;
+            mock.assert_async().await;
+            if stopped {
+                let response = result.unwrap();
+                assert!(response.response_string.is_empty());
+                assert!(response.function_calls.is_empty());
+                assert!(!stopper.should_stop(&inbox.to_string()));
+            } else {
+                assert!(result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("ended before response.completed"));
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn responses_sse_explicit_user_stop_does_not_require_completion() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/responses")
+            .with_header("content-type", "text/event-stream")
+            .with_body("event: response.output_text.delta\ndata: {\"delta\":\"not consumed\"}\n\n")
+            .create_async()
+            .await;
+        let inbox = super::InboxName::get_job_inbox_name_from_params("stop-test".into()).unwrap();
+        let stopper = std::sync::Arc::new(super::LLMStopper::new());
+        stopper.stop(&inbox.to_string());
+        let response = super::handle_streaming_response_responses(
+            &reqwest::Client::new(),
+            format!("{}/responses", server.url()),
+            json!({}),
+            "test-key".into(),
+            Some(inbox.clone()),
+            None,
+            stopper.clone(),
+            "test".into(),
+        )
+        .await
+        .unwrap();
+        mock.assert_async().await;
+        assert!(response.response_string.is_empty());
+        assert!(response.function_calls.is_empty());
+        assert!(!stopper.should_stop(&inbox.to_string()));
     }
 
     #[tokio::test]

@@ -529,6 +529,8 @@ fn has_tool_calls_in_messages(messages: &serde_json::Value) -> bool {
 }
 
 fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobConfig>) -> Result<(), LLMProviderError> {
+    // Prepared messages already bound output by the model limit and remaining context.
+    let prepared_output_budget = payload["max_tokens"].as_u64();
     // Helper function to read and parse environment variables
     fn read_env_var<T: std::str::FromStr>(key: &str) -> Option<T> {
         std::env::var(key).ok().and_then(|val| val.parse::<T>().ok())
@@ -673,6 +675,10 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
         for key in ["temperature", "top_p", "top_k"] {
             payload.as_object_mut().unwrap().remove(key);
         }
+    }
+    // Clamp after config, environment, and custom token aliases have all been merged.
+    if let Some(budget) = prepared_output_budget {
+        payload["max_tokens"] = serde_json::json!(payload["max_tokens"].as_u64().unwrap_or(budget).min(budget));
     }
     // max_tokens includes thinking. A manual budget must be smaller than it.
     if let Some(budget) = payload["thinking"]["budget_tokens"].as_u64() {
@@ -1401,6 +1407,54 @@ mod tests {
     }
 
     #[test]
+    fn claude_request_token_overrides_preserve_prepared_budget() {
+        use shinkai_message_primitives::schemas::subprompts::{SubPrompt, SubPromptType};
+        for id in ["claude-opus-5-5", "claude-haiku-5-5", "claude-3-7-sonnet"] {
+            let model = LLMProviderInterface::Claude(Claude { model_type: id.into() });
+            let mut prompt = Prompt::new();
+            prompt.add_sub_prompts(vec![SubPrompt::Content(SubPromptType::User, "Hello".into(), 100)]);
+            let (prepared, _) = claude_prepare_messages(&model, prompt).unwrap();
+            let budget = prepared.remaining_output_tokens as u64;
+            let PromptResultEnum::Value(messages) = prepared.messages else {
+                panic!("Expected messages")
+            };
+            assert!(budget > 1024);
+            let mut config = JobConfig::empty();
+            config.thinking = Some(true);
+            config.max_tokens = Some(budget + 1);
+            let mut payload = json!({"model": id, "messages": messages, "max_tokens": budget});
+            add_options_to_payload(&mut payload, Some(&config)).unwrap();
+            assert_eq!(payload["max_tokens"], budget);
+            config.max_tokens = Some(1024);
+            let mut payload = json!({"model": id, "max_tokens": budget});
+            add_options_to_payload(&mut payload, Some(&config)).unwrap();
+            assert_eq!(payload["max_tokens"], 1024);
+            for params in [
+                json!({"max_tokens": budget + 1}),
+                json!({"max_completion_tokens": budget + 1}),
+                json!({"max_tokens": "bad"}),
+            ] {
+                config.other_model_params = Some(params);
+                let mut payload = json!({"model": id, "max_tokens": 512});
+                add_options_to_payload(&mut payload, Some(&config)).unwrap();
+                assert_eq!(payload["max_tokens"], 512);
+                assert!(payload.get("max_completion_tokens").is_none());
+                if id == "claude-3-7-sonnet" {
+                    assert_eq!(payload["thinking"]["type"], "disabled");
+                }
+            }
+        }
+        let mut config = JobConfig::empty();
+        config.thinking = Some(true);
+        config.reasoning_effort = Some("high".into());
+        config.max_tokens = Some(10_000);
+        let mut payload = json!({"model": "claude-3-7-sonnet", "max_tokens": 2048});
+        add_options_to_payload(&mut payload, Some(&config)).unwrap();
+        assert_eq!(payload["max_tokens"], 2048);
+        assert_eq!(payload["thinking"]["budget_tokens"], 2047);
+    }
+
+    #[test]
     fn test_current_claude_request_options() {
         let mut config = JobConfig::empty();
         config.max_tokens = Some(8192);
@@ -1409,7 +1463,7 @@ mod tests {
         config.reasoning_effort = Some("high".into());
         let mut payload = serde_json::json!({"model": "claude-opus-5-5", "max_tokens": 4096});
         add_options_to_payload(&mut payload, Some(&config)).unwrap();
-        assert_eq!(payload["max_tokens"], 8192);
+        assert_eq!(payload["max_tokens"], 4096);
         assert_eq!(payload["thinking"]["type"], "adaptive");
         assert_eq!(payload["output_config"]["effort"], "high");
         assert!(payload.get("temperature").is_none());

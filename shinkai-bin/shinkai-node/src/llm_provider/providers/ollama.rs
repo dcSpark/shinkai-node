@@ -91,7 +91,13 @@ impl LLMService for Ollama {
             });
 
             // Modify payload to add options if needed
-            add_options_to_payload(&mut payload, config.as_ref(), &model, messages_result.tokens_used);
+            add_options_to_payload(
+                &mut payload,
+                config.as_ref(),
+                &model,
+                messages_result.tokens_used,
+                messages_result.remaining_output_tokens,
+            );
 
             // Ollama path: if stream is true, then we the response is in Chinese for minicpm-v so if stream is true,
             // then we need to remove to remove it
@@ -654,6 +660,7 @@ fn add_options_to_payload(
     config: Option<&JobConfig>,
     model: &LLMProviderInterface,
     used_tokens: usize,
+    remaining_output_tokens: usize,
 ) {
     eprintln!("config: {:?}", config);
     let mut options = serde_json::Map::new();
@@ -758,8 +765,75 @@ fn add_options_to_payload(
         }
     }
 
+    // These requests have a prepared model/context ceiling. Ollama's -1/-2
+    // sentinels must not turn bounded inference into unlimited generation.
+    // https://docs.ollama.com/modelfile#valid-parameters-and-values
+    let requested = options
+        .get("num_predict")
+        .and_then(serde_json::Value::as_u64)
+        .filter(|value| *value > 0);
+    options.insert(
+        "num_predict".into(),
+        json!(requested
+            .unwrap_or(remaining_output_tokens as u64)
+            .min(remaining_output_tokens as u64)),
+    );
+
     // Add options to payload if not empty
     if !options.is_empty() {
         payload["options"] = serde_json::Value::Object(options);
+    }
+}
+
+#[cfg(test)]
+mod output_budget_tests {
+    use super::*;
+    use shinkai_message_primitives::schemas::subprompts::{SubPrompt, SubPromptType};
+
+    #[test]
+    fn ollama_request_prediction_limit_uses_prepared_budget() {
+        for id in ["qwen3.5:9b", "gpt-oss:20b"] {
+            let model = LLMProviderInterface::Ollama(Ollama { model_type: id.into() });
+            let mut prompt = Prompt::new();
+            prompt.add_sub_prompts(vec![SubPrompt::Content(SubPromptType::User, "Hello".into(), 100)]);
+            let prepared = ollama_conversation_prepare_messages_with_tooling(&model, prompt).unwrap();
+            let budget = prepared.remaining_output_tokens;
+            assert!(budget > 1024);
+            let PromptResultEnum::Value(messages) = prepared.messages else {
+                panic!("Expected messages")
+            };
+            let mut config = JobConfig::empty();
+            config.max_tokens = Some((budget + 1) as u64);
+            let mut payload = json!({"model": id, "messages": messages});
+            add_options_to_payload(&mut payload, Some(&config), &model, prepared.tokens_used, budget);
+            assert_eq!(payload["options"]["num_predict"], budget);
+            config.max_tokens = Some(1024);
+            let mut payload = json!({"model": id});
+            add_options_to_payload(&mut payload, Some(&config), &model, prepared.tokens_used, budget);
+            assert_eq!(payload["options"]["num_predict"], 1024);
+            for key in ["num_predict", "max_tokens"] {
+                for requested in [
+                    json!(-1),
+                    json!(-2),
+                    json!(0),
+                    json!("invalid"),
+                    json!(999999),
+                    json!(1.5),
+                ] {
+                    config.other_model_params = Some(json!({key: requested}));
+                    let mut payload = json!({"model": id});
+                    add_options_to_payload(&mut payload, Some(&config), &model, prepared.tokens_used, 512);
+                    assert_eq!(payload["options"]["num_predict"], 512, "{key}: {requested}");
+                }
+                config.other_model_params = Some(json!({key: 256}));
+                let mut payload = json!({"model": id});
+                add_options_to_payload(&mut payload, Some(&config), &model, prepared.tokens_used, 512);
+                assert_eq!(payload["options"]["num_predict"], 256);
+            }
+            let mut payload = json!({"model": id});
+            // The same final clamp applies when environment settings supply options.
+            add_options_to_payload(&mut payload, None, &model, prepared.tokens_used, 512);
+            assert!(payload["options"]["num_predict"].as_u64().unwrap() <= 512);
+        }
     }
 }

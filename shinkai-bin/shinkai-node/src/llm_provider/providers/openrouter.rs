@@ -777,6 +777,8 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
         config_value.cloned().or_else(|| read_env_var::<T>(env_key))
     }
 
+    // Options must not increase the budget computed from the model and prepared prompt.
+    let prepared_output_budget = payload.get("max_tokens").and_then(JsonValue::as_u64);
     let options = payload
         .get("model")
         .and_then(|model| model.as_str())
@@ -840,6 +842,15 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
         }
     }
 
+    if let Some(budget) = prepared_output_budget {
+        for key in ["max_tokens", "max_completion_tokens"] {
+            if let Some(value) = payload.get_mut(key) {
+                let limit = value.as_u64().filter(|limit| *limit > 0).unwrap_or(budget);
+                *value = json!(limit.min(budget));
+            }
+        }
+    }
+
     let thinking = config.and_then(|c| c.thinking);
     let effort = config.and_then(|c| c.reasoning_effort.as_deref());
     if thinking.is_none() && effort.is_none() && payload.get("reasoning").is_none() {
@@ -879,6 +890,156 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
 #[cfg(test)]
 mod option_tests {
     use super::*;
+
+    fn prepared_budget_request(model: &str) -> JsonValue {
+        use shinkai_message_primitives::schemas::subprompts::SubPromptType;
+        let provider = LLMProviderInterface::OpenRouter(OpenRouter {
+            model_type: model.into(),
+        });
+        let mut prompt = Prompt::new();
+        prompt.add_content("Check the output budget".into(), SubPromptType::UserLastMessage, 100);
+        let prepared = openai_prepare_messages(&provider, prompt).unwrap();
+        let PromptResultEnum::Value(messages) = prepared.messages else {
+            panic!("Expected messages");
+        };
+        json!({"model": model, "messages": messages, "max_tokens": prepared.remaining_output_tokens, "stream": false})
+    }
+
+    #[test]
+    fn final_token_options_keep_the_prepared_budget_after_custom_merges() {
+        for (model, token_key) in [
+            ("anthropic/claude-haiku-5.5", "max_completion_tokens"),
+            ("anthropic/claude-haiku-5.5:batch", "max_tokens"),
+            ("anthropic/claude-opus-5", "max_completion_tokens"),
+            ("anthropic/claude-opus-5:batch", "max_tokens"),
+            ("anthropic/claude-sonnet-5", "max_completion_tokens"),
+            ("anthropic/claude-sonnet-5:batch", "max_tokens"),
+            ("google/gemini-3.8-flash", "max_tokens"),
+            ("google/gemini-3.8-flash:batch", "max_tokens"),
+            ("google/gemini-3.5-flash-lite", "max_tokens"),
+            ("google/gemini-3.5-flash-lite:batch", "max_tokens"),
+            ("google/gemini-3.5-flash", "max_tokens"),
+            ("google/gemini-3.5-flash:batch", "max_tokens"),
+            ("minimax/minimax-m3.1-flash:free", "max_tokens"),
+            ("meta/muse-spark-open", "max_tokens"),
+            ("openai/gpt-6.1-sol", "max_completion_tokens"),
+            ("openai/gpt-6.1-sol:batch", "max_tokens"),
+            ("deepseek/deepseek-v4.1-flash-1017", "max_completion_tokens"),
+            ("custom/reasoner", "max_completion_tokens"),
+            ("custom/reasoner:batch", "max_completion_tokens"),
+            ("openai/gpt-6.1-sol:free", "max_completion_tokens"),
+            ("minimax/minimax-m3.1-flash:free:batch", "max_completion_tokens"),
+            ("meta/muse-spark-open:batch", "max_completion_tokens"),
+            ("deepseek/deepseek-v4.1-flash-1017:batch", "max_completion_tokens"),
+        ] {
+            let prepared = prepared_budget_request(model);
+            let budget = prepared["max_tokens"].as_u64().unwrap();
+            assert!(budget > 1);
+            for requested in [u64::MAX, budget + 1, budget, budget / 2, 1, 0] {
+                for custom in [
+                    None,
+                    Some(json!(u64::MAX)),
+                    Some(json!(budget + 1)),
+                    Some(json!(1)),
+                    Some(json!(0)),
+                    Some(json!(-1)),
+                    Some(json!(1.5)),
+                    Some(json!("999999999999999")),
+                    Some(json!(null)),
+                    Some(json!(true)),
+                    Some(json!({})),
+                ] {
+                    let mut payload = prepared.clone();
+                    let mut config = JobConfig::empty();
+                    config.max_tokens = Some(requested);
+                    let mut other = json!({"reasoning": {"max_tokens": 2000, "exclude": true}});
+                    if let Some(custom) = &custom {
+                        other["max_completion_tokens"] = custom.clone();
+                    }
+                    config.other_model_params = Some(other);
+                    add_options_to_payload(&mut payload, Some(&config));
+                    assert_eq!(payload["messages"], prepared["messages"]);
+                    assert_eq!(payload["model"], model);
+                    let final_limit = if token_key == "max_completion_tokens" {
+                        custom.as_ref()
+                    } else {
+                        None
+                    };
+                    let expected = final_limit.map_or(requested, |value| {
+                        value.as_u64().filter(|value| *value > 0).unwrap_or(budget)
+                    });
+                    let expected = if expected == 0 { budget } else { expected.min(budget) };
+                    assert_eq!(payload[token_key], expected, "{model}: {requested}, {custom:?}");
+                    for key in ["max_tokens", "max_completion_tokens"] {
+                        if let Some(limit) = payload.get(key) {
+                            let limit = limit.as_u64().unwrap();
+                            assert!(limit > 0 && limit <= budget, "{model}: {key}");
+                        }
+                    }
+                    if token_key == "max_tokens" {
+                        assert!(payload.get("max_completion_tokens").is_none());
+                    }
+                    assert_eq!(payload["reasoning"], json!({"max_tokens": 2000, "exclude": true}));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn environment_token_limits_keep_the_prepared_budget() {
+        // Isolate environment changes from the rest of the parallel test suite.
+        const CHILD: &str = "SHINKAI_OPENROUTER_BUDGET_TEST_CHILD";
+        if let Ok(case) = std::env::var(CHILD) {
+            for (model, token_key) in [
+                ("anthropic/claude-haiku-5.5", "max_completion_tokens"),
+                ("anthropic/claude-haiku-5.5:batch", "max_tokens"),
+                ("google/gemini-3.8-flash", "max_tokens"),
+                ("google/gemini-3.5-flash-lite:batch", "max_tokens"),
+                ("minimax/minimax-m3.1-flash:free", "max_tokens"),
+                ("meta/muse-spark-open", "max_tokens"),
+                ("custom/reasoner:batch", "max_completion_tokens"),
+            ] {
+                let mut payload = prepared_budget_request(model);
+                let budget = payload["max_tokens"].as_u64().unwrap();
+                add_options_to_payload(&mut payload, None);
+                let expected = if case == "lower" { 17 } else { budget };
+                if case == "invalid" && token_key == "max_completion_tokens" {
+                    assert!(payload.get(token_key).is_none());
+                } else {
+                    assert_eq!(payload[token_key], expected, "{model}: {case}");
+                }
+                for key in ["max_tokens", "max_completion_tokens"] {
+                    if let Some(limit) = payload.get(key) {
+                        assert!(limit.as_u64().unwrap() <= budget);
+                    }
+                }
+                if token_key == "max_tokens" {
+                    assert!(payload.get("max_completion_tokens").is_none());
+                }
+            }
+            return;
+        }
+        for (case, value) in [
+            ("oversized", "18446744073709551615"),
+            ("lower", "17"),
+            ("zero", "0"),
+            ("invalid", "invalid"),
+        ] {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .arg("environment_token_limits_keep_the_prepared_budget")
+                .arg("--nocapture")
+                .env(CHILD, case)
+                .env("LLM_MAX_TOKENS", value)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{case}: {} {}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+    }
 
     #[test]
     fn every_advertised_route_prepares_options_from_its_catalog_contract() {

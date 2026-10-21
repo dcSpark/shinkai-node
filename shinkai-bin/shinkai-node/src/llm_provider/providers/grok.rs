@@ -61,11 +61,12 @@ impl LLMService for Grok {
                 let tools_json = result.functions.clone().unwrap_or_else(Vec::new);
                 let original_tools = result.functions.clone();
 
-                let mut payload = json!({
-                    "model": self.model_type,
-                    "messages": messages_json,
-                    "stream": is_stream,
-                });
+                let mut payload = initial_grok_payload(
+                    &self.model_type,
+                    messages_json,
+                    result.remaining_output_tokens,
+                    is_stream,
+                );
 
                 // Add tools to payload if they exist, but remove tool_router_key
                 if !tools_json.is_empty() {
@@ -645,7 +646,24 @@ fn grok_chat_url(base_url: &str) -> String {
     }
 }
 
+fn initial_grok_payload(
+    model: &str,
+    messages: JsonValue,
+    remaining_output_tokens: usize,
+    is_stream: bool,
+) -> JsonValue {
+    json!({
+        "model": model,
+        "messages": messages,
+        "max_completion_tokens": remaining_output_tokens,
+        "stream": is_stream,
+    })
+}
+
 fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobConfig>) {
+    // Message preparation bounds output by both the model limit and the remaining context.
+    let prepared_output_budget = payload["max_completion_tokens"].as_u64();
+
     // Helper function to read and parse environment variables
     fn read_env_var<T: std::str::FromStr>(key: &str) -> Option<T> {
         std::env::var(key).ok().and_then(|val| val.parse::<T>().ok())
@@ -697,6 +715,14 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
             }
         }
     }
+    // Apply the original budget after config, environment, and custom options are merged.
+    if let Some(budget) = prepared_output_budget {
+        let requested_limit = payload["max_completion_tokens"]
+            .as_u64()
+            .filter(|limit| *limit > 0)
+            .unwrap_or(budget);
+        payload["max_completion_tokens"] = json!(requested_limit.min(budget));
+    }
     // The older Grok 4 models do not support adjustable reasoning effort.
     let model = payload["model"].as_str().unwrap_or_default();
     let supports_effort = model.starts_with("grok-3-mini")
@@ -719,6 +745,56 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
 #[cfg(test)]
 mod request_tests {
     use super::*;
+    use shinkai_message_primitives::schemas::subprompts::{SubPrompt, SubPromptType};
+
+    #[test]
+    fn grok_requests_keep_the_prepared_output_budget() {
+        for id in ["grok-4.7", "grok-4", "grok-3", "grok-4-1-fast-non-reasoning"] {
+            let model = LLMProviderInterface::Grok(Grok { model_type: id.into() });
+            let mut prompt = Prompt::new();
+            prompt.add_sub_prompts(vec![SubPrompt::Content(SubPromptType::User, "Hello".into(), 100)]);
+            let prepared = openai_prepare_messages(&model, prompt).unwrap();
+            let budget = prepared.remaining_output_tokens as u64;
+            assert!(budget > 1024, "{}", id);
+            let PromptResultEnum::Value(messages) = prepared.messages else {
+                panic!("Expected prepared JSON messages");
+            };
+            let initial = initial_grok_payload(id, messages.clone(), prepared.remaining_output_tokens, false);
+            assert_eq!(initial["max_completion_tokens"], budget);
+            assert_eq!(initial["model"], id);
+            assert_eq!(initial["messages"], messages);
+            assert_eq!(initial["stream"], false);
+
+            let mut config = JobConfig::empty();
+            for (limit, expected) in [(budget + 1, budget), (1024, 1024)] {
+                config.max_tokens = Some(limit);
+                let mut payload = initial.clone();
+                add_options_to_payload(&mut payload, Some(&config));
+                assert_eq!(payload["max_completion_tokens"], expected, "{}", id);
+            }
+            // Custom limits override config, but cannot bypass the original prepared budget.
+            config.max_tokens = Some(1024);
+            for (limit, expected) in [
+                (json!(budget + 1), budget),
+                (json!(256), 256),
+                (json!(null), budget),
+                (json!(0), budget),
+                (json!(-1), budget),
+                (json!(1.5), budget),
+                (json!("invalid"), budget),
+                (json!(false), budget),
+            ] {
+                config.other_model_params = Some(json!({"max_completion_tokens": limit}));
+                let mut payload = initial.clone();
+                add_options_to_payload(&mut payload, Some(&config));
+                assert_eq!(payload["max_completion_tokens"], expected, "{}", id);
+                assert!(payload.get("max_tokens").is_none());
+                assert_eq!(payload["model"], initial["model"]);
+                assert_eq!(payload["messages"], initial["messages"]);
+                assert_eq!(payload["stream"], false);
+            }
+        }
+    }
 
     #[test]
     fn grok_url_accepts_root_and_versioned_base() {

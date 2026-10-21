@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use super::openai::{
-    add_options_to_payload, handle_non_streaming_response, handle_streaming_response, truncate_image_url_in_payload,
+    add_options_to_payload, handle_non_streaming_response_with_optional_auth,
+    handle_streaming_response_with_optional_auth, truncate_image_url_in_payload, ToolIdentityMode,
 };
 use super::shared::openai_api::openai_prepare_messages;
 use super::LLMService;
@@ -89,9 +90,9 @@ impl LLMService for Exo {
             );
         }
         // Local Exo does not require a configured API key. A key can be supplied for a proxy.
-        let key = api_key.cloned().unwrap_or_default();
+        let key = api_key.filter(|key| !key.trim().is_empty()).cloned();
         if stream {
-            handle_streaming_response(
+            handle_streaming_response_with_optional_auth(
                 client,
                 endpoint,
                 payload,
@@ -102,10 +103,11 @@ impl LLMService for Exo {
                 Uuid::new_v4().to_string(),
                 Some(tools),
                 None,
+                ToolIdentityMode::Fragments,
             )
             .await
         } else {
-            handle_non_streaming_response(
+            handle_non_streaming_response_with_optional_auth(
                 client,
                 endpoint,
                 payload,
@@ -129,6 +131,111 @@ mod tests {
     use shinkai_message_primitives::schemas::subprompts::{SubPrompt, SubPromptType};
 
     #[tokio::test]
+    async fn exo_optional_auth_headers_cover_streaming_and_json() {
+        for stream in [true, false] {
+            for key in [
+                None,
+                Some(String::new()),
+                Some(" \t ".to_string()),
+                Some("proxy-key".to_string()),
+            ] {
+                let mut server = mockito::Server::new_async().await;
+                let response_call =
+                    json!({"id":"native-weather","type":"function","function":{"name":"weather","arguments":"{}"}});
+                let body = if stream {
+                    let mut delta_call = response_call.clone();
+                    delta_call["index"] = json!(0);
+                    format!(
+                        "data: {}\n\ndata: {}\n\ndata: [DONE]\n\n",
+                        json!({"choices":[{"index":0,"delta":{"tool_calls":[delta_call]}}]}),
+                        json!({"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]})
+                    )
+                } else {
+                    json!({"id":"response","object":"chat.completion","created":1,
+                        "usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2},
+                        "choices":[{"index":0,"message":{"role":"assistant","content":null,"tool_calls":[response_call]},"finish_reason":"tool_calls"}]
+                    }).to_string()
+                };
+                let mock = server
+                    .mock("POST", "/v1/chat/completions")
+                    .match_header(
+                        "authorization",
+                        key.as_ref()
+                            .filter(|key| !key.trim().is_empty())
+                            .map(|key| Matcher::Exact(format!("Bearer {key}")))
+                            .unwrap_or(Matcher::Missing),
+                    )
+                    .match_body(Matcher::PartialJson(
+                        json!({"model":"mlx-community/Llama-3.2-1B-Instruct-4bit","stream":stream}),
+                    ))
+                    .match_request(|request| {
+                        let payload: serde_json::Value = serde_json::from_slice(request.body().unwrap()).unwrap();
+                        payload["tools"][0]["function"]["name"] == "weather"
+                            && payload["tools"][0]["function"].get("tool_router_key").is_none()
+                    })
+                    .with_header(
+                        "content-type",
+                        if stream {
+                            "text/event-stream"
+                        } else {
+                            "application/json"
+                        },
+                    )
+                    .with_body(body)
+                    .create_async()
+                    .await;
+                let temp = tempfile::tempdir().unwrap();
+                let db = Arc::new(
+                    SqliteManager::new(
+                        temp.path().join("test.db"),
+                        String::new(),
+                        EmbeddingModelType::default(),
+                    )
+                    .unwrap(),
+                );
+                let provider = Exo {
+                    model_type: "mlx-community/Llama-3.2-1B-Instruct-4bit".into(),
+                };
+                let mut prompt = Prompt::new();
+                prompt.add_content("Check weather".into(), SubPromptType::User, 100);
+                prompt.add_tool(
+                    json!({"function":{"name":"weather","description":"Get weather","tool_router_key":"local:::weather",
+                    "parameters":{"type":"object","properties":{},"required":[]}}}),
+                    SubPromptType::AvailableTool,
+                    100,
+                );
+                let mut config = JobConfig::empty();
+                config.stream = Some(stream);
+                let response = provider
+                    .call_api(
+                        &Client::new(),
+                        Some(&server.url()),
+                        key.as_ref(),
+                        prompt,
+                        LLMProviderInterface::Exo(provider.clone()),
+                        None,
+                        None,
+                        Some(config),
+                        Arc::new(LLMStopper::new()),
+                        db,
+                        None,
+                    )
+                    .await
+                    .unwrap();
+                mock.assert_async().await;
+                assert_eq!(response.function_calls.len(), 1);
+                assert_eq!(response.function_calls[0].id.as_deref(), Some("native-weather"));
+                assert_eq!(response.function_calls[0].name, "weather");
+                assert_eq!(
+                    response.function_calls[0].tool_router_key.as_deref(),
+                    Some("local:::weather")
+                );
+                assert!(response.function_calls[0].arguments.is_empty());
+            }
+        }
+    }
+
+    #[tokio::test]
     async fn custom_exo_model_reads_sse_without_a_configured_api_key() {
         let mut server = mockito::Server::new_async().await;
         let body = concat!(
@@ -138,6 +245,7 @@ mod tests {
             "data: [DONE]\n\n"
         );
         let mock = server.mock("POST", "/v1/chat/completions")
+            .match_header("authorization", Matcher::Missing)
             .match_body(Matcher::PartialJson(json!({"model":"mlx-community/Llama-3.2-1B-Instruct-4bit","stream":true,"temperature":0.2,"enable_thinking":false})))
             .match_request(|request| {
                 let body: serde_json::Value = serde_json::from_slice(request.body().unwrap()).unwrap();

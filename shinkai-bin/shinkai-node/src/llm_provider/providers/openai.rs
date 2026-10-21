@@ -949,9 +949,42 @@ pub async fn handle_streaming_response_with_identity_mode(
     headers: Option<JsonValue>,
     identity_mode: ToolIdentityMode,
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
-    let res = client
-        .post(url)
-        .bearer_auth(api_key)
+    handle_streaming_response_with_optional_auth(
+        client,
+        url,
+        payload,
+        Some(api_key),
+        inbox_name,
+        ws_manager_trait,
+        llm_stopper,
+        session_id,
+        tools,
+        headers,
+        identity_mode,
+    )
+    .await
+}
+
+pub async fn handle_streaming_response_with_optional_auth(
+    client: &Client,
+    url: String,
+    payload: JsonValue,
+    api_key: Option<String>,
+    inbox_name: Option<InboxName>,
+    ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    llm_stopper: Arc<LLMStopper>,
+    session_id: String,
+    tools: Option<Vec<JsonValue>>,
+    headers: Option<JsonValue>,
+    identity_mode: ToolIdentityMode,
+) -> Result<LLMInferenceResponse, LLMProviderError> {
+    let request = client.post(url);
+    let request = if let Some(key) = api_key {
+        request.bearer_auth(key)
+    } else {
+        request
+    };
+    let res = request
         .header("Content-Type", "application/json")
         .header(
             "X-Shinkai-Job-Id",
@@ -1254,10 +1287,39 @@ pub async fn handle_non_streaming_response(
     tools: Option<Vec<JsonValue>>,
     headers: Option<JsonValue>,
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
+    handle_non_streaming_response_with_optional_auth(
+        client,
+        url,
+        payload,
+        Some(api_key),
+        inbox_name,
+        llm_stopper,
+        ws_manager_trait,
+        tools,
+        headers,
+    )
+    .await
+}
+
+pub async fn handle_non_streaming_response_with_optional_auth(
+    client: &Client,
+    url: String,
+    payload: JsonValue,
+    api_key: Option<String>,
+    inbox_name: Option<InboxName>,
+    llm_stopper: Arc<LLMStopper>,
+    ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    tools: Option<Vec<JsonValue>>,
+    headers: Option<JsonValue>,
+) -> Result<LLMInferenceResponse, LLMProviderError> {
     let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(500));
-    let response_fut = client
-        .post(url)
-        .bearer_auth(api_key)
+    let request = client.post(url);
+    let request = if let Some(key) = api_key {
+        request.bearer_auth(key)
+    } else {
+        request
+    };
+    let response_fut = request
         .header("Content-Type", "application/json")
         .header(
             "X-Shinkai-Job-Id",
@@ -1462,6 +1524,12 @@ pub async fn handle_non_streaming_response(
 }
 
 pub fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobConfig>) {
+    // The prepared request already accounts for the model and prompt budgets.
+    let prepared_limit = ["max_tokens", "max_completion_tokens"]
+        .iter()
+        .filter_map(|key| payload.get(*key).and_then(JsonValue::as_u64))
+        .min();
+
     // Helper function to read and parse environment variables
     fn read_env_var<T: std::str::FromStr>(key: &str) -> Option<T> {
         std::env::var(key).ok().and_then(|val| val.parse::<T>().ok())
@@ -1506,6 +1574,14 @@ pub fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&J
                     "parallel_tool_calls" => payload["parallel_tool_calls"] = value.clone(),
                     _ => (),
                 };
+            }
+        }
+    }
+    if let Some(limit) = prepared_limit {
+        for key in ["max_tokens", "max_completion_tokens"] {
+            if let Some(value) = payload.get_mut(key) {
+                let requested = value.as_u64().filter(|tokens| *tokens > 0).unwrap_or(limit);
+                *value = json!(requested.min(limit));
             }
         }
     }
@@ -3376,6 +3452,104 @@ mod tests {
                     .contains(expected_error));
             }
         }
+    }
+
+    #[test]
+    fn chat_token_overrides_keep_the_prepared_ceiling_and_valid_lower_values() {
+        for initial_key in ["max_tokens", "max_completion_tokens"] {
+            for requested in [
+                json!(9000),
+                json!(500),
+                json!(0),
+                json!(-1),
+                json!(null),
+                json!("unlimited"),
+                json!(false),
+            ] {
+                let mut payload = json!({"model":"gpt-4.1"});
+                payload[initial_key] = json!(2000);
+                let mut config = JobConfig::empty();
+                config.max_tokens = Some(7000);
+                config.other_model_params = Some(json!({"max_completion_tokens":requested}));
+                add_options_to_payload(&mut payload, Some(&config));
+                assert_eq!(
+                    payload["max_completion_tokens"],
+                    if requested == 500 { json!(500) } else { json!(2000) }
+                );
+                assert_eq!(payload[initial_key].as_u64().unwrap() <= 2000, true);
+            }
+            let mut payload = json!({});
+            payload[initial_key] = json!(2000);
+            let mut config = JobConfig::empty();
+            config.max_tokens = Some(600);
+            add_options_to_payload(&mut payload, Some(&config));
+            assert_eq!(payload["max_completion_tokens"], 600);
+        }
+    }
+
+    #[tokio::test]
+    async fn legacy_chat_request_caps_config_and_custom_output_limits() {
+        use mockito::Matcher;
+        use shinkai_embedding::model_type::EmbeddingModelType;
+        let provider = OpenAILegacy {
+            model_type: "gpt-4.1".into(),
+        };
+        let model = LLMProviderInterface::OpenAILegacy(provider.clone());
+        let mut prompt = Prompt::new();
+        prompt.add_content(
+            "Hello".into(),
+            shinkai_message_primitives::schemas::subprompts::SubPromptType::User,
+            100,
+        );
+        let prepared = openai_prepare_messages(&model, prompt.clone()).unwrap();
+        let budget = prepared.remaining_output_tokens as u64;
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v1/chat/completions")
+            .match_body(Matcher::PartialJson(
+                json!({"model":"gpt-4.1","stream":false,"max_tokens":budget,"max_completion_tokens":budget}),
+            ))
+            .with_header("content-type", "application/json")
+            .with_body(
+                json!({"id":"response","object":"chat.completion","created":1,
+                    "usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2},
+                    "choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+        let temp = tempfile::tempdir().unwrap();
+        let db = Arc::new(
+            SqliteManager::new(
+                temp.path().join("test.db"),
+                String::new(),
+                EmbeddingModelType::default(),
+            )
+            .unwrap(),
+        );
+        let mut config = JobConfig::empty();
+        config.stream = Some(false);
+        config.max_tokens = Some(budget + 1000);
+        config.other_model_params = Some(json!({"max_completion_tokens":budget + 2000}));
+        let response = provider
+            .call_api(
+                &Client::new(),
+                Some(&server.url()),
+                Some(&"test-key".into()),
+                prompt,
+                model,
+                None,
+                None,
+                Some(config),
+                Arc::new(LLMStopper::new()),
+                db,
+                None,
+            )
+            .await
+            .unwrap();
+        mock.assert_async().await;
+        assert_eq!(response.response_string, "ok");
     }
 
     #[tokio::test]
