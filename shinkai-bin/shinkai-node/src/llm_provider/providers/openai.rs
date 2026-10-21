@@ -47,8 +47,17 @@ pub fn truncate_image_url_in_payload(payload: &mut JsonValue) {
     }
 }
 
+/// Identity fields are fragments in OpenAI streams and complete values in Together streams.
+#[derive(Debug, Clone, Copy, Default)]
+pub enum ToolIdentityMode {
+    #[default]
+    Fragments,
+    Complete,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct PartialFunctionCall {
+    pub identity_mode: ToolIdentityMode,
     pub indexed_calls: std::collections::BTreeMap<u64, PartialFunctionCall>,
     pub name: Option<String>,
     pub arguments: String,
@@ -646,6 +655,7 @@ pub async fn parse_openai_stream_chunk(
                             if let Some(calls) = delta["tool_calls"].as_array() {
                                 for (position, call) in calls.iter().enumerate() {
                                     let index = call["index"].as_u64().unwrap_or(position as u64);
+                                    let mode = partial_fc.identity_mode;
                                     let pending = partial_fc.indexed_calls.entry(index).or_default();
                                     pending.is_accumulating = true;
                                     for (field, target) in [
@@ -653,8 +663,16 @@ pub async fn parse_openai_stream_chunk(
                                         (call.pointer("/function/name"), &mut pending.name),
                                     ] {
                                         if let Some(fragment) = field.and_then(|value| value.as_str()) {
-                                            let value = target.get_or_insert_with(String::new);
-                                            value.push_str(fragment);
+                                            match mode {
+                                                ToolIdentityMode::Fragments => {
+                                                    target.get_or_insert_with(String::new).push_str(fragment)
+                                                }
+                                                ToolIdentityMode::Complete => {
+                                                    if !fragment.is_empty() {
+                                                        *target = Some(fragment.to_string());
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                     if let Some(kind) = call["type"].as_str() {
@@ -726,6 +744,35 @@ pub async fn handle_streaming_response(
     session_id: String,
     tools: Option<Vec<JsonValue>>,
     headers: Option<JsonValue>,
+) -> Result<LLMInferenceResponse, LLMProviderError> {
+    handle_streaming_response_with_identity_mode(
+        client,
+        url,
+        payload,
+        api_key,
+        inbox_name,
+        ws_manager_trait,
+        llm_stopper,
+        session_id,
+        tools,
+        headers,
+        ToolIdentityMode::Fragments,
+    )
+    .await
+}
+
+pub async fn handle_streaming_response_with_identity_mode(
+    client: &Client,
+    url: String,
+    payload: JsonValue,
+    api_key: String,
+    inbox_name: Option<InboxName>,
+    ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    llm_stopper: Arc<LLMStopper>,
+    session_id: String,
+    tools: Option<Vec<JsonValue>>,
+    headers: Option<JsonValue>,
+    identity_mode: ToolIdentityMode,
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
     let res = client
         .post(url)
@@ -872,6 +919,7 @@ pub async fn handle_streaming_response(
     let mut function_calls: Vec<FunctionCall> = Vec::new();
     let mut error_message: Option<String> = None;
     let mut partial_fc = PartialFunctionCall {
+        identity_mode,
         indexed_calls: Default::default(),
         name: None,
         arguments: String::new(),
@@ -1340,6 +1388,70 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    async fn test_stream_complete_identities_keep_repeated_headers_and_argument_fragments() {
+        let mut buffer = String::new();
+        let mut text = String::new();
+        let mut reasoning = String::new();
+        let mut calls = Vec::new();
+        let mut partial = PartialFunctionCall {
+            identity_mode: ToolIdentityMode::Complete,
+            ..Default::default()
+        };
+        let deltas = [
+            json!({"tool_calls": [
+                {"index": 0, "id": "first", "type": "function", "function": {"name": "weather", "arguments": "{\"city\":"}},
+                {"index": 1, "id": "second", "type": "function", "function": {"name": "time", "arguments": "{\"zone\":"}}
+            ]}),
+            json!({"tool_calls": [
+                {"index": 1, "id": "second", "function": {"name": "time", "arguments": "\"UT"}},
+                {"index": 0, "id": "first", "function": {"name": "weather", "arguments": "\"Sant"}}
+            ]}),
+            json!({"tool_calls": [{"index": 0, "function": {"name": "weather", "arguments": "iago\"}"}}]}),
+            json!({"tool_calls": [{"index": 1, "function": {"name": "time", "arguments": "C\"}"}}]}),
+        ];
+        for delta in deltas {
+            buffer.push_str(&format!(
+                "data: {}\n\n",
+                json!({"choices": [{"index": 0, "delta": delta}]})
+            ));
+            parse_openai_stream_chunk(
+                &mut buffer,
+                &mut text,
+                &mut reasoning,
+                &mut calls,
+                &mut partial,
+                &None,
+                &None,
+                None,
+                "test",
+            )
+            .await
+            .unwrap();
+        }
+        buffer.push_str("data: [DONE]\n\n");
+        parse_openai_stream_chunk(
+            &mut buffer,
+            &mut text,
+            &mut reasoning,
+            &mut calls,
+            &mut partial,
+            &None,
+            &None,
+            None,
+            "test",
+        )
+        .await
+        .unwrap();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].id.as_deref(), Some("first"));
+        assert_eq!(calls[0].name, "weather");
+        assert_eq!(calls[0].arguments["city"], "Santiago");
+        assert_eq!(calls[1].id.as_deref(), Some("second"));
+        assert_eq!(calls[1].name, "time");
+        assert_eq!(calls[1].arguments["zone"], "UTC");
+    }
+
+    #[tokio::test]
     async fn test_stream_interleaved_indexed_tool_calls() {
         let mut buffer = String::new();
         let mut text = String::new();
@@ -1414,6 +1526,7 @@ mod tests {
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
         let mut partial_fc = PartialFunctionCall {
+            identity_mode: ToolIdentityMode::default(),
             indexed_calls: Default::default(),
             name: None,
             arguments: String::new(),
@@ -1466,6 +1579,7 @@ mod tests {
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
         let mut partial_fc = PartialFunctionCall {
+            identity_mode: ToolIdentityMode::default(),
             indexed_calls: Default::default(),
             name: None,
             arguments: String::new(),
@@ -1537,6 +1651,7 @@ mod tests {
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
         let mut partial_fc = PartialFunctionCall {
+            identity_mode: ToolIdentityMode::default(),
             indexed_calls: Default::default(),
             name: None,
             arguments: String::new(),
@@ -1629,6 +1744,7 @@ mod tests {
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
         let mut partial_fc = PartialFunctionCall {
+            identity_mode: ToolIdentityMode::default(),
             indexed_calls: Default::default(),
             name: None,
             arguments: String::new(),
@@ -1727,6 +1843,7 @@ mod tests {
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
         let mut partial_fc = PartialFunctionCall {
+            identity_mode: ToolIdentityMode::default(),
             indexed_calls: Default::default(),
             name: None,
             arguments: String::new(),
@@ -1871,6 +1988,7 @@ mod tests {
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
         let mut partial_fc = PartialFunctionCall {
+            identity_mode: ToolIdentityMode::default(),
             indexed_calls: Default::default(),
             name: None,
             arguments: String::new(),
@@ -2053,6 +2171,7 @@ mod tests {
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
         let mut partial_fc = PartialFunctionCall {
+            identity_mode: ToolIdentityMode::default(),
             indexed_calls: Default::default(),
             name: None,
             arguments: String::new(),
@@ -2106,6 +2225,7 @@ mod tests {
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
         let mut partial_fc = PartialFunctionCall {
+            identity_mode: ToolIdentityMode::default(),
             indexed_calls: Default::default(),
             name: None,
             arguments: String::new(),

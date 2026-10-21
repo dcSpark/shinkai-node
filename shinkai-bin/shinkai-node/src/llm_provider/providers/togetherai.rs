@@ -15,7 +15,7 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use super::{
-    openai::{handle_non_streaming_response, handle_streaming_response},
+    openai::{handle_non_streaming_response, handle_streaming_response_with_identity_mode, ToolIdentityMode},
     shared::openai_api::openai_prepare_messages,
     LLMService,
 };
@@ -157,7 +157,7 @@ impl LLMService for TogetherAI {
             }
         }
         if payload["stream"].as_bool().unwrap_or(true) {
-            handle_streaming_response(
+            handle_streaming_response_with_identity_mode(
                 client,
                 url,
                 payload,
@@ -168,6 +168,7 @@ impl LLMService for TogetherAI {
                 Uuid::new_v4().to_string(),
                 Some(tools),
                 None,
+                ToolIdentityMode::Complete,
             )
             .await
         } else {

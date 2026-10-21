@@ -14,6 +14,7 @@ mod tests {
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
         let mut partial_fc = PartialFunctionCall {
+            identity_mode: Default::default(),
             indexed_calls: Default::default(),
             name: None,
             arguments: String::new(),
@@ -87,6 +88,7 @@ data: [DONE]"#,
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
         let mut partial_fc = PartialFunctionCall {
+            identity_mode: Default::default(),
             indexed_calls: Default::default(),
             name: None,
             arguments: String::new(),
@@ -187,6 +189,7 @@ data: {"id":"chatcmpl-BLGOkzXc864uH3CZxRW9stxqzlpOl","object":"chat.completion.c
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
         let mut partial_fc = PartialFunctionCall {
+            identity_mode: Default::default(),
             indexed_calls: Default::default(),
             name: None,
             arguments: String::new(),
@@ -286,6 +289,7 @@ data: {"id":"chatcmpl-BLGOkzXc864uH3CZxRW9stxqzlpOl","object":"chat.completion.c
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
         let mut partial_fc = PartialFunctionCall {
+            identity_mode: Default::default(),
             indexed_calls: Default::default(),
             name: None,
             arguments: String::new(),
@@ -411,6 +415,7 @@ data: [DONE]"#,
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
         let mut partial_fc = PartialFunctionCall {
+            identity_mode: Default::default(),
             indexed_calls: Default::default(),
             name: None,
             arguments: String::new(),
@@ -564,6 +569,7 @@ data: [DONE]"#,
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
         let mut partial_fc = PartialFunctionCall {
+            identity_mode: Default::default(),
             indexed_calls: Default::default(),
             name: None,
             arguments: String::new(),
