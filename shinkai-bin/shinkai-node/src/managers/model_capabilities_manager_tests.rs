@@ -706,3 +706,64 @@ mod together_reasoning_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod provider_configuration_tests {
+    use super::super::model_capabilities_manager::{ModelCapabilitiesManager as Manager, ModelCapability};
+    use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::LLMProviderInterface;
+    use std::str::FromStr;
+
+    #[test]
+    fn environment_together_ids_keep_their_capabilities_after_parsing() {
+        for (id, context) in [
+            ("moonshotai/Kimi-K3", 1_048_576),
+            ("MiniMaxAI/MiniMax-M3", 524_288),
+            ("Qwen/Qwen3.5-9B", 262_144),
+        ] {
+            let model = LLMProviderInterface::from_str(&format!("ToGeThErAi:{id}")).unwrap();
+            let LLMProviderInterface::TogetherAI(provider) = &model else {
+                panic!("Expected TogetherAI")
+            };
+            assert_eq!(provider.model_type, id);
+            assert_eq!(Manager::get_max_tokens(&model), context);
+            assert!(Manager::get_llm_provider_capabilities(&model).contains(&ModelCapability::ImageAnalysis));
+            assert!(Manager::has_tool_capabilities(&model, None));
+            assert!(Manager::has_reasoning_capabilities(&model));
+            let stored = serde_json::to_value(&model).unwrap();
+            assert_eq!(serde_json::from_value::<LLMProviderInterface>(stored).unwrap(), model);
+        }
+    }
+
+    #[test]
+    fn exo_tools_require_a_verified_loaded_model() {
+        for id in [
+            "Qwen/Qwen3.5-9B",
+            "mlx-community/Qwen3.5-9B-4bit",
+            "mlx-community/Qwen3.5-9B-8bit",
+        ] {
+            let model = LLMProviderInterface::from_str(&format!("ExO:{id}")).unwrap();
+            assert!(Manager::has_tool_capabilities(&model, Some(true)), "{id}");
+            assert!(Manager::has_tool_capabilities(&model, Some(false)), "{id}");
+        }
+        for id in [
+            "mlx-community/Llama-3.2-1B-Instruct-4bit",
+            "custom/plain-text-model",
+            "custom/Qwen3.5-9B-4bit",
+            "mlx-community/Qwen3.5-9B-4bit-custom",
+        ] {
+            let model = LLMProviderInterface::from_str(&format!("exo:{id}")).unwrap();
+            assert!(!Manager::has_tool_capabilities(&model, None), "{id}");
+        }
+    }
+
+    #[test]
+    fn only_documented_direct_gpt6_aliases_use_gpt6_capabilities() {
+        for id in ["gpt-6-sol-pro", "gpt-6.1-sol-pro", "gpt-6-sol-2099-01-01"] {
+            let model = LLMProviderInterface::from_str(&format!("openai:{id}")).unwrap();
+            assert!(!Manager::is_gpt6(id));
+            assert!(!Manager::has_reasoning_capabilities(&model));
+            assert!(!Manager::get_llm_provider_capabilities(&model).contains(&ModelCapability::ImageAnalysis));
+            assert_ne!(Manager::get_max_tokens(&model), 1_050_000);
+        }
+    }
+}

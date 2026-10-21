@@ -107,7 +107,7 @@ pub struct ModelCapabilitiesManager {
 impl ModelCapabilitiesManager {
     // Official model specifications, checked October 2026. Keep these IDs exact so
     // an unknown future model does not inherit unsupported limits or features.
-    fn is_gpt6(model: &str) -> bool {
+    pub(crate) fn is_gpt6(model: &str) -> bool {
         matches!(model, "gpt-6-astra" | "gpt-6.1-sol" | "gpt-6-sol" | "gpt-6-luna")
     }
 
@@ -1363,6 +1363,17 @@ impl ModelCapabilitiesManager {
         }
     }
 
+    fn exo_has_tool_capabilities(model_type: &str) -> bool {
+        // Exo accepts arbitrary Hugging Face IDs. Only advertise tools for verified
+        // model builds; a compatible API alone does not establish model support.
+        // https://github.com/exo-explore/exo/tree/main/resources/inference_model_cards
+        // https://huggingface.co/Qwen/Qwen3.5-9B#tool-calling
+        matches!(
+            model_type,
+            "Qwen/Qwen3.5-9B" | "mlx-community/Qwen3.5-9B-4bit" | "mlx-community/Qwen3.5-9B-8bit"
+        )
+    }
+
     fn openai_has_tool_capabilities(model_type: &str) -> bool {
         // o1-mini and gpt-5-chat specifically does not support function calling
         if model_type.starts_with("o1-mini") {
@@ -1478,8 +1489,7 @@ impl ModelCapabilitiesManager {
                     | "MiniMaxAI/MiniMax-M3"
                     | "Qwen/Qwen3.5-9B"
             ),
-            // Exo exposes OpenAI tool calling; execution depends on the loaded model.
-            LLMProviderInterface::Exo(_) => true,
+            LLMProviderInterface::Exo(model) => Self::exo_has_tool_capabilities(&model.model_type),
             LLMProviderInterface::Claude(_) => true, // All Claude models support tool calling
             LLMProviderInterface::ShinkaiBackend(_) => true,
             LLMProviderInterface::Gemini(model) => Self::gemini_has_tool_capabilities(model.model_type.as_str()),

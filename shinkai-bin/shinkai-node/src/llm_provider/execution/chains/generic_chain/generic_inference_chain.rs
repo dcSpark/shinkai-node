@@ -1151,7 +1151,8 @@ impl GenericInferenceChain {
                 return Err(LLMProviderError::LLMServiceUnexpectedError(e.to_string()));
             }
 
-            let response = response_res?;
+            let mut response = response_res?;
+            super::generic_prompts::tag_inference_turn(&mut response.function_calls);
             if let Some(ref msg_id) = message_hash_id {
                 let trace_info = json!({
                     "response": response.response_string,

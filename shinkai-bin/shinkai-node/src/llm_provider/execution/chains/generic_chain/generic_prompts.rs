@@ -151,21 +151,7 @@ impl JobPromptGenerator {
 
         // Process function calls and their responses if they exist
         if let Some(function_calls) = function_calls {
-            for function_call in function_calls {
-                // Convert FunctionCall to Value
-                let function_call_value = json!({
-                    "provider_metadata": function_call.function_call.provider_metadata,
-                    "name": function_call.function_call.name,
-                    "call_id": function_call.function_call.id,
-                    "arguments": function_call.function_call.arguments
-                });
-
-                // We add the assistant request to the prompt
-                prompt.add_function_call(function_call_value, 100);
-
-                // We add the function response to the prompt
-                prompt.add_function_call_response(serde_json::to_value(function_call).unwrap(), 100);
-            }
+            append_tool_history(&mut prompt, function_calls);
         }
 
         // eprintln!("prompt after adding function call: {:?}", prompt);
@@ -173,4 +159,184 @@ impl JobPromptGenerator {
     }
 }
 
-// TODO: add tests
+// The tag is optional metadata, so stored calls from older node versions still load.
+// Untagged records keep their original order because their turn boundaries are unknown.
+pub(super) fn tag_inference_turn(
+    calls: &mut [crate::llm_provider::execution::chains::inference_chain_trait::FunctionCall],
+) {
+    let turn = uuid::Uuid::new_v4().to_string();
+    for call in calls {
+        let metadata = call.provider_metadata.get_or_insert_with(|| json!({}));
+        if let Some(metadata) = metadata.as_object_mut() {
+            metadata.insert("inference_turn_id".into(), json!(turn));
+        }
+    }
+}
+
+fn append_tool_history(prompt: &mut Prompt, calls: Vec<ToolCallFunctionResponse>) {
+    let mut remaining = calls.as_slice();
+    while let Some(first) = remaining.first() {
+        let turn = first
+            .function_call
+            .provider_metadata
+            .as_ref()
+            .and_then(|value| value["inference_turn_id"].as_str());
+        let count = if let Some(turn) = turn {
+            remaining
+                .iter()
+                .take_while(|call| {
+                    call.function_call
+                        .provider_metadata
+                        .as_ref()
+                        .and_then(|value| value["inference_turn_id"].as_str())
+                        == Some(turn)
+                })
+                .count()
+        } else {
+            1
+        };
+        let (group, rest) = remaining.split_at(count);
+        for call in group {
+            prompt.add_function_call(
+                json!({
+                    "provider_metadata": call.function_call.provider_metadata,
+                    "name": call.function_call.name,
+                    "call_id": call.function_call.id,
+                    "arguments": call.function_call.arguments
+                }),
+                100,
+            );
+        }
+        for call in group {
+            prompt.add_function_call_response(serde_json::to_value(call).unwrap(), 100);
+        }
+        remaining = rest;
+    }
+}
+
+#[cfg(test)]
+mod tool_turn_tests {
+    use super::*;
+    use crate::llm_provider::execution::chains::inference_chain_trait::FunctionCall;
+
+    fn call(name: &str) -> FunctionCall {
+        FunctionCall {
+            provider_metadata: None,
+            name: name.into(),
+            arguments: Default::default(),
+            tool_router_key: None,
+            response: None,
+            index: 0,
+            id: Some(name.into()),
+            call_type: Some("function".into()),
+        }
+    }
+
+    #[test]
+    fn parallel_history_keeps_inference_turn_boundaries_and_native_data() {
+        let native = json!({"claude_content": [{"type": "thinking", "signature": "signed"}]});
+        let mut first = vec![call("A"), call("B")];
+        first[0].provider_metadata = Some(native.clone());
+        first[1].provider_metadata = Some(native.clone());
+        tag_inference_turn(&mut first);
+        let mut second = vec![call("C")];
+        tag_inference_turn(&mut second);
+        assert_ne!(first[0].provider_metadata, second[0].provider_metadata);
+        let responses = first
+            .into_iter()
+            .chain(second)
+            .map(|function_call| ToolCallFunctionResponse {
+                response: format!("result {}", function_call.name),
+                function_call,
+            })
+            .collect::<Vec<_>>();
+        // Exercise stored-history loading, as well as live inference history.
+        let saved = serde_json::to_string(&responses).unwrap();
+        let mut prompt = Prompt::new();
+        append_tool_history(&mut prompt, serde_json::from_str(&saved).unwrap());
+        let (messages, _) = prompt.generate_chat_completion_messages(None, &|_| 0);
+        assert_eq!(
+            messages.iter().map(|m| m.role.as_deref().unwrap()).collect::<Vec<_>>(),
+            [
+                "assistant",
+                "assistant",
+                "function",
+                "function",
+                "assistant",
+                "function"
+            ]
+        );
+        assert_eq!(messages[0].function_call.as_ref().unwrap().name, "A");
+        assert_eq!(messages[1].function_call.as_ref().unwrap().name, "B");
+        assert_eq!(messages[4].function_call.as_ref().unwrap().name, "C");
+        for message in &messages[..2] {
+            assert_eq!(
+                message
+                    .function_call
+                    .as_ref()
+                    .unwrap()
+                    .provider_metadata
+                    .as_ref()
+                    .unwrap()["claude_content"],
+                native["claude_content"]
+            );
+        }
+    }
+
+    #[test]
+    fn parallel_generic_history_becomes_one_assistant_call_turn() {
+        let mut first = vec![call("A"), call("B")];
+        tag_inference_turn(&mut first);
+        let mut later = vec![call("C")];
+        tag_inference_turn(&mut later);
+        let responses = first
+            .into_iter()
+            .chain(later)
+            .map(|function_call| ToolCallFunctionResponse {
+                response: "done".into(),
+                function_call,
+            })
+            .collect();
+        let mut prompt = Prompt::new();
+        append_tool_history(&mut prompt, responses);
+        let model = shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::LLMProviderInterface::OpenAILegacy(
+            shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::OpenAILegacy {
+                model_type: "gpt-4o".into()
+            });
+        let result =
+            crate::llm_provider::providers::shared::openai_api::openai_prepare_messages(&model, prompt).unwrap();
+        let crate::managers::model_capabilities_manager::PromptResultEnum::Value(messages) = result.messages else {
+            panic!("expected messages")
+        };
+        let messages = messages.as_array().unwrap();
+        assert_eq!(messages.len(), 5);
+        assert_eq!(messages[0]["tool_calls"].as_array().unwrap().len(), 2);
+        assert_eq!(messages[0]["tool_calls"][0]["id"], "A");
+        assert_eq!(messages[0]["tool_calls"][1]["id"], "B");
+        assert_eq!(messages[1]["tool_call_id"], "A");
+        assert_eq!(messages[2]["tool_call_id"], "B");
+        assert_eq!(messages[3]["tool_calls"][0]["id"], "C");
+        assert_eq!(messages[4]["tool_call_id"], "C");
+        assert!(messages[0]["tool_calls"][0]["function"]
+            .get("provider_metadata")
+            .is_none());
+    }
+
+    #[test]
+    fn old_untagged_history_keeps_its_order() {
+        let calls = [call("A"), call("B")]
+            .into_iter()
+            .map(|function_call| ToolCallFunctionResponse {
+                response: "old result".into(),
+                function_call,
+            })
+            .collect();
+        let mut prompt = Prompt::new();
+        append_tool_history(&mut prompt, calls);
+        let (messages, _) = prompt.generate_chat_completion_messages(None, &|_| 0);
+        assert_eq!(
+            messages.iter().map(|m| m.role.as_deref().unwrap()).collect::<Vec<_>>(),
+            ["assistant", "function", "assistant", "function"]
+        );
+    }
+}

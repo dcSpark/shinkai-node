@@ -88,6 +88,24 @@ fn chat_payload(model: &str, messages: Value, tools: &[Value], max_tokens: usize
             }
         }
     }
+    // Model-level restrictions apply after shared/custom settings.
+    // https://docs.together.ai/docs/kimi-k3-quickstart
+    if model == "moonshotai/Kimi-K3" {
+        let effort = match payload["reasoning_effort"].as_str() {
+            Some("low") => Some("low"),
+            Some("medium" | "high") => Some("high"),
+            Some("max") => Some("max"),
+            _ => None,
+        };
+        if let Some(effort) = effort.filter(|_| payload["reasoning"]["enabled"] != false) {
+            payload["reasoning_effort"] = json!(effort);
+        } else {
+            payload.as_object_mut().unwrap().remove("reasoning_effort");
+        }
+    } else if model == "MiniMaxAI/MiniMax-M3" {
+        // MiniMax supports the reasoning toggle, but not adjustable effort.
+        payload.as_object_mut().unwrap().remove("reasoning_effort");
+    }
     payload
 }
 
@@ -174,6 +192,35 @@ mod tests {
     use super::*;
 
     #[test]
+    fn together_reasoning_options_follow_each_model_contract() {
+        let mut config = JobConfig::empty();
+        config.thinking = Some(true);
+        for (configured, expected) in [
+            ("low", Some("low")),
+            ("medium", Some("high")),
+            ("high", Some("high")),
+            ("max", Some("max")),
+            ("invalid", None),
+        ] {
+            config.reasoning_effort = Some("low".into());
+            config.other_model_params = Some(json!({"reasoning_effort": configured}));
+            let kimi = chat_payload("moonshotai/Kimi-K3", json!([]), &[], 4096, Some(&config));
+            assert_eq!(kimi["reasoning_effort"].as_str(), expected);
+            assert_eq!(kimi["reasoning"]["enabled"], true);
+            let minimax = chat_payload("MiniMaxAI/MiniMax-M3", json!([]), &[], 4096, Some(&config));
+            assert!(minimax.get("reasoning_effort").is_none());
+            assert_eq!(minimax["reasoning"]["enabled"], true);
+        }
+        config.other_model_params = None;
+        config.thinking = Some(false);
+        for model in ["moonshotai/Kimi-K3", "MiniMaxAI/MiniMax-M3"] {
+            let payload = chat_payload(model, json!([]), &[], 4096, Some(&config));
+            assert_eq!(payload["reasoning"]["enabled"], false);
+            assert!(payload.get("reasoning_effort").is_none());
+        }
+    }
+
+    #[test]
     fn current_together_chat_request_preserves_messages_and_tools() {
         let messages = json!([
             {"role": "system", "content": "Use the supplied tools."},
@@ -203,7 +250,7 @@ mod tests {
         assert_eq!(payload["max_tokens"], 512);
         assert_eq!(payload["stream"], false);
         assert_eq!(payload["reasoning"]["enabled"], false);
-        assert_eq!(payload["reasoning_effort"], "high");
+        assert!(payload.get("reasoning_effort").is_none());
         assert!(payload.get("prompt").is_none());
         assert!(payload.get("max_completion_tokens").is_none());
     }

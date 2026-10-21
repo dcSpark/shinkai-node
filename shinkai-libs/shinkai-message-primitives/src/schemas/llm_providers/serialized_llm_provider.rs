@@ -262,48 +262,24 @@ impl FromStr for LLMProviderInterface {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let s = s.to_lowercase();
-        if s.starts_with("openai:") {
-            let model_type = s.strip_prefix("openai:").unwrap_or("").to_string();
-            Ok(LLMProviderInterface::OpenAI(OpenAI { model_type }))
-        } else if s.starts_with("openai-legacy:") {
-            let model_type = s.strip_prefix("openai-legacy:").unwrap_or("").to_string();
-            Ok(LLMProviderInterface::OpenAILegacy(OpenAILegacy { model_type }))
-        } else if s.starts_with("togetherai:") {
-            let model_type = s.strip_prefix("togetherai:").unwrap_or("").to_string();
-            Ok(LLMProviderInterface::TogetherAI(TogetherAI { model_type }))
-        } else if s.starts_with("ollama:") {
-            let model_type = s.strip_prefix("ollama:").unwrap_or("").to_string();
-            Ok(LLMProviderInterface::Ollama(Ollama { model_type }))
-        } else if s.starts_with("shinkai-backend:") {
-            let model_type = s.strip_prefix("shinkai-backend:").unwrap_or("").to_string();
-            Ok(LLMProviderInterface::ShinkaiBackend(ShinkaiBackend { model_type }))
-        } else if s.starts_with("groq:") {
-            let model_type = s.strip_prefix("groq:").unwrap_or("").to_string();
-            Ok(LLMProviderInterface::Groq(Groq { model_type }))
-        } else if s.starts_with("grok:") {
-            let model_type = s.strip_prefix("grok:").unwrap_or("").to_string();
-            Ok(LLMProviderInterface::Grok(Grok { model_type }))
-        } else if s.starts_with("gemini:") {
-            let model_type = s.strip_prefix("gemini:").unwrap_or("").to_string();
-            Ok(LLMProviderInterface::Gemini(Gemini { model_type }))
-        } else if s.starts_with("exo:") {
-            let model_type = s.strip_prefix("exo:").unwrap_or("").to_string();
-            Ok(LLMProviderInterface::Exo(Exo { model_type }))
-        } else if s.starts_with("openrouter:") {
-            let model_type = s.strip_prefix("openrouter:").unwrap_or("").to_string();
-            Ok(LLMProviderInterface::OpenRouter(OpenRouter { model_type }))
-        } else if s.starts_with("claude:") {
-            let model_type = s.strip_prefix("claude:").unwrap_or("").to_string();
-            Ok(LLMProviderInterface::Claude(Claude { model_type }))
-        } else if s.starts_with("deepseek:") {
-            let model_type = s.strip_prefix("deepseek:").unwrap_or("").to_string();
-            Ok(LLMProviderInterface::DeepSeek(DeepSeek { model_type }))
-        } else if s.starts_with("local-regex:") {
-            let model_type = s.strip_prefix("local-regex:").unwrap_or("").to_string();
-            Ok(LLMProviderInterface::LocalRegex(LocalRegex { model_type }))
-        } else {
-            Err(())
+        // Provider names are case-insensitive; model IDs are opaque and can be case-sensitive.
+        let (provider, model_type) = s.split_once(':').ok_or(())?;
+        let model_type = model_type.to_string();
+        match provider.to_ascii_lowercase().as_str() {
+            "openai" => Ok(LLMProviderInterface::OpenAI(OpenAI { model_type })),
+            "openai-legacy" => Ok(LLMProviderInterface::OpenAILegacy(OpenAILegacy { model_type })),
+            "togetherai" => Ok(LLMProviderInterface::TogetherAI(TogetherAI { model_type })),
+            "ollama" => Ok(LLMProviderInterface::Ollama(Ollama { model_type })),
+            "shinkai-backend" => Ok(LLMProviderInterface::ShinkaiBackend(ShinkaiBackend { model_type })),
+            "groq" => Ok(LLMProviderInterface::Groq(Groq { model_type })),
+            "grok" => Ok(LLMProviderInterface::Grok(Grok { model_type })),
+            "gemini" => Ok(LLMProviderInterface::Gemini(Gemini { model_type })),
+            "exo" => Ok(LLMProviderInterface::Exo(Exo { model_type })),
+            "openrouter" => Ok(LLMProviderInterface::OpenRouter(OpenRouter { model_type })),
+            "claude" => Ok(LLMProviderInterface::Claude(Claude { model_type })),
+            "deepseek" => Ok(LLMProviderInterface::DeepSeek(DeepSeek { model_type })),
+            "local-regex" => Ok(LLMProviderInterface::LocalRegex(LocalRegex { model_type })),
+            _ => Err(()),
         }
     }
 }
@@ -384,7 +360,7 @@ impl<'de> Visitor<'de> for LLMProviderInterfaceVisitor {
         E: de::Error,
     {
         let parts: Vec<&str> = value.splitn(2, ':').collect();
-        match parts[0] {
+        match parts[0].to_ascii_lowercase().as_str() {
             "openai" => Ok(LLMProviderInterface::OpenAI(OpenAI {
                 model_type: parts.get(1).unwrap_or(&"").to_string(),
             })),
@@ -453,5 +429,49 @@ impl<'de> Deserialize<'de> for LLMProviderInterface {
         D: Deserializer<'de>,
     {
         deserializer.deserialize_str(LLMProviderInterfaceVisitor)
+    }
+}
+
+#[cfg(test)]
+mod provider_identifier_tests {
+    use super::*;
+
+    #[test]
+    fn provider_prefix_is_case_insensitive_and_model_id_is_preserved() {
+        // Include colons in the model ID: split only the provider separator.
+        let model = "Owner/CaseSensitive-Model:Quant-4B";
+        for prefix in [
+            "OpenAI",
+            "OPENAI-LEGACY",
+            "ToGeThErAi",
+            "Ollama",
+            "SHINKAI-BACKEND",
+            "Groq",
+            "Grok",
+            "Gemini",
+            "EXO",
+            "OpenRouter",
+            "Claude",
+            "DeepSeek",
+            "LOCAL-REGEX",
+        ] {
+            let input = format!("{prefix}:{model}");
+            let parsed = LLMProviderInterface::from_str(&input).unwrap();
+            let serialized = serde_json::to_value(&parsed).unwrap();
+            assert_eq!(
+                serialized.as_str().unwrap(),
+                format!("{}:{model}", prefix.to_ascii_lowercase())
+            );
+            assert_eq!(
+                serde_json::from_value::<LLMProviderInterface>(serde_json::json!(input)).unwrap(),
+                parsed
+            );
+            assert_eq!(
+                serde_json::from_value::<LLMProviderInterface>(serialized).unwrap(),
+                parsed
+            );
+        }
+        assert!(LLMProviderInterface::from_str("unknown:Model").is_err());
+        assert!(LLMProviderInterface::from_str("togetherai").is_err());
     }
 }

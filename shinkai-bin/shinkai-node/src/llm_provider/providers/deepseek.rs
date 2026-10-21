@@ -78,7 +78,7 @@ impl LLMService for DeepSeek {
                     payload["tools"] = serde_json::Value::Array(tools_json.clone());
                 }
 
-                add_deepseek_options(&mut payload, config.as_ref());
+                add_deepseek_options(&mut payload, config.as_ref(), &self.model_type);
                 // Print payload as a pretty JSON string
                 match serde_json::to_string_pretty(&payload) {
                     Ok(pretty_json) => eprintln!("cURL Payload: {}", pretty_json),
@@ -149,7 +149,12 @@ impl LLMService for DeepSeek {
 
 // Keep this list separate from OpenAI: DeepSeek does not accept OpenAI-only
 // request fields such as max_completion_tokens, seed, or service_tier.
-fn add_deepseek_options(payload: &mut serde_json::Value, config: Option<&JobConfig>) {
+fn add_deepseek_options(payload: &mut serde_json::Value, config: Option<&JobConfig>, model: &str) {
+    // Current documented IDs and the accepted V4 Flash compatibility aliases.
+    let supports_thinking_options = matches!(
+        model,
+        "deepseek-flash" | "deepseek-v4-pro" | "deepseek-v4-flash" | "deepseek-v4-flash-vision-exp"
+    );
     if let Some(value) = config
         .and_then(|c| c.temperature)
         .or_else(|| std::env::var("LLM_TEMPERATURE").ok()?.parse::<f64>().ok())
@@ -190,6 +195,11 @@ fn add_deepseek_options(payload: &mut serde_json::Value, config: Option<&JobConf
             }
         }
     }
+    // Check after other_model_params too, so shared settings cannot bypass the model gate.
+    if !supports_thinking_options {
+        payload.as_object_mut().unwrap().remove("thinking");
+        payload.as_object_mut().unwrap().remove("reasoning_effort");
+    }
     if payload["stream"] != true {
         payload.as_object_mut().unwrap().remove("stream_options");
     }
@@ -202,12 +212,39 @@ mod tests {
     use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
     #[test]
+    fn legacy_deepseek_models_omit_new_thinking_options() {
+        let mut config = JobConfig::empty();
+        config.thinking = Some(true);
+        config.reasoning_effort = Some("high".into());
+        config.max_tokens = Some(4096);
+        config.other_model_params = Some(json!({"thinking": {"type": "enabled"}, "reasoning_effort": "max"}));
+        for model in ["deepseek-chat", "deepseek-reasoner", "deepseek-custom"] {
+            let mut payload = json!({"stream": true});
+            add_deepseek_options(&mut payload, Some(&config), model);
+            assert!(payload.get("thinking").is_none(), "{}", model);
+            assert!(payload.get("reasoning_effort").is_none(), "{}", model);
+            assert_eq!(payload["max_tokens"], 4096);
+        }
+        for model in [
+            "deepseek-flash",
+            "deepseek-v4-pro",
+            "deepseek-v4-flash",
+            "deepseek-v4-flash-vision-exp",
+        ] {
+            let mut payload = json!({"stream": true});
+            add_deepseek_options(&mut payload, Some(&config), model);
+            assert_eq!(payload["thinking"]["type"], "enabled");
+            assert_eq!(payload["reasoning_effort"], "max");
+        }
+    }
+
+    #[test]
     fn deepseek_tool_calls_keep_requested_thinking() {
         let mut config = JobConfig::empty();
         config.thinking = Some(true);
         config.reasoning_effort = Some("high".to_string());
         let mut payload = json!({"tools": [{"type": "function"}], "stream": true});
-        add_deepseek_options(&mut payload, Some(&config));
+        add_deepseek_options(&mut payload, Some(&config), "deepseek-flash");
         assert_eq!(payload["thinking"]["type"], "enabled");
         assert_eq!(payload["reasoning_effort"], "high");
     }
@@ -224,7 +261,7 @@ mod tests {
             "service_tier": "auto"
         }));
         let mut payload = json!({"stream": false});
-        add_deepseek_options(&mut payload, Some(&config));
+        add_deepseek_options(&mut payload, Some(&config), "deepseek-flash");
         assert_eq!(payload["max_tokens"], 8192);
         assert_eq!(payload["thinking"]["type"], "disabled");
         assert_eq!(payload["reasoning_effort"], "none");

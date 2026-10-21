@@ -74,7 +74,6 @@ impl LLMService for OpenAI {
                     "max_output_tokens": result.remaining_output_tokens,
                     "stream": is_stream,
                     "store": false,
-                    "include": ["reasoning.encrypted_content"],
                 });
 
                 if !tools_json.is_empty() {
@@ -940,6 +939,13 @@ fn add_options_to_payload_responses(
         config_value.cloned().or_else(|| read_env_var::<T>(env_key))
     }
 
+    // Encrypted reasoning is a model capability, not a general text response field.
+    if is_reasoning_model {
+        payload["include"] = json!(["reasoning.encrypted_content"]);
+    } else if let Some(include) = payload.get_mut("include").and_then(JsonValue::as_array_mut) {
+        include.retain(|field| field != "reasoning.encrypted_content");
+    }
+
     // Disable sampling params for reasoning-capable models
     if !is_reasoning_model {
         if let Some(temp) = get_value("LLM_TEMPERATURE", config.and_then(|c| c.temperature.as_ref())) {
@@ -966,8 +972,8 @@ fn add_options_to_payload_responses(
                 .and_then(|c| c.reasoning_effort.clone())
                 .unwrap_or_else(|| "medium".to_string());
             let model = payload["model"].as_str().unwrap_or_default();
-            if model.starts_with("gpt-6") && effort == "minimal"
-                || (model.starts_with("gpt-6-astra") || model.starts_with("gpt-6.1-sol")) && effort == "none"
+            if ModelCapabilitiesManager::is_gpt6(model) && effort == "minimal"
+                || matches!(model, "gpt-6-astra" | "gpt-6.1-sol") && effort == "none"
             {
                 effort = "low".to_string();
             }
@@ -1245,6 +1251,24 @@ fn transform_input_messages_for_responses(messages_json: serde_json::Value) -> s
 mod tests {
     use super::JobConfig;
     use serde_json::json;
+
+    #[test]
+    fn encrypted_reasoning_is_requested_only_for_reasoning_models() {
+        for (model, reasoning) in [("gpt-4o", false), ("gpt-4o-mini", false), ("gpt-6.1-sol", true)] {
+            let mut payload = json!({"model": model, "store": false});
+            super::add_options_to_payload_responses(&mut payload, None, reasoning);
+            assert_eq!(payload["store"], false);
+            if reasoning {
+                assert_eq!(payload["include"], json!(["reasoning.encrypted_content"]));
+            } else {
+                assert!(payload.get("include").is_none());
+            }
+        }
+        let mut payload =
+            json!({"model": "gpt-4o", "include": ["reasoning.encrypted_content", "message.output_text.logprobs"]});
+        super::add_options_to_payload_responses(&mut payload, None, false);
+        assert_eq!(payload["include"], json!(["message.output_text.logprobs"]));
+    }
 
     #[test]
     fn test_prompt_parallel_calls_replay_native_output_once() {

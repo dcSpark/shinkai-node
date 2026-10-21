@@ -74,7 +74,7 @@ impl LLMService for OpenAILegacy {
         tracing_message_id: Option<String>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         // GPT-6 tool calls require the Responses API.
-        if self.model_type.starts_with("gpt-6") {
+        if ModelCapabilitiesManager::is_gpt6(&self.model_type) {
             let provider = shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::OpenAI {
                 model_type: self.model_type.clone(),
             };
