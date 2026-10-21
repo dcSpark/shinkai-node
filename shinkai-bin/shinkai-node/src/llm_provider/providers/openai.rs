@@ -61,6 +61,7 @@ pub struct PartialFunctionCall {
     pub indexed_calls: std::collections::BTreeMap<u64, PartialFunctionCall>,
     pub unindexed_calls: Vec<PartialFunctionCall>,
     pub argument_error: Option<String>,
+    pub has_string_arguments: bool,
     pub name: Option<String>,
     pub arguments: String,
     pub is_accumulating: bool, // Track if we're currently accumulating a function call
@@ -362,6 +363,34 @@ fn finalize_function_call_sync(
     partial_fc.is_accumulating = false;
     partial_fc.id = None;
     partial_fc.call_type = None;
+    partial_fc.has_string_arguments = false;
+}
+
+const NULL_ARGUMENT_PLACEHOLDER: &str = "Tool arguments are missing after a null placeholder";
+
+fn append_argument_delta(pending: &mut PartialFunctionCall, arguments: &JsonValue) {
+    match arguments {
+        JsonValue::String(fragment) => {
+            pending.has_string_arguments = true;
+            if pending.argument_error.as_deref() == Some(NULL_ARGUMENT_PLACEHOLDER) {
+                pending.argument_error = None;
+            }
+            pending.arguments.push_str(fragment);
+        }
+        JsonValue::Null => {
+            // Compatible streams can send null before their first string fragment.
+            // Null alone is not an executable empty object at completion or EOF.
+            if !pending.has_string_arguments && pending.argument_error.is_none() {
+                pending.argument_error = Some(NULL_ARGUMENT_PLACEHOLDER.into());
+            }
+        }
+        _ => {
+            if pending.argument_error.is_none() || pending.argument_error.as_deref() == Some(NULL_ARGUMENT_PLACEHOLDER)
+            {
+                pending.argument_error = Some("Tool arguments must be a JSON-encoded object string".into());
+            }
+        }
+    }
 }
 
 // A missing index is not a standard delta. Retain calls by full ID when possible;
@@ -611,7 +640,7 @@ pub async fn parse_openai_stream_chunk(
                 if partial_fc.arguments.is_empty() && args.starts_with('{') {
                     partial_fc.arguments.clear();
                 }
-                partial_fc.arguments.push_str(&args);
+                append_argument_delta(partial_fc, &JsonValue::String(args));
 
                 // If we have a complete JSON object, try to parse it
                 if partial_fc.arguments.starts_with('{') && partial_fc.arguments.ends_with('}') {
@@ -743,9 +772,9 @@ pub async fn parse_openai_stream_chunk(
                                     // Legacy function_call format doesn't have IDs, so we clear it
                                     partial_fc.id = None;
                                 }
-                                if fc.get("arguments").is_some_and(|arguments| !arguments.is_string()) {
-                                    // Keep non-string input invalid after empty-argument normalization.
-                                    partial_fc.arguments.push_str("null");
+                                if let Some(arguments) = fc.get("arguments").filter(|arguments| !arguments.is_string())
+                                {
+                                    append_argument_delta(partial_fc, arguments);
                                 }
                             }
 
@@ -823,12 +852,7 @@ pub async fn parse_openai_stream_chunk(
                                         pending.call_type = Some(kind.into());
                                     }
                                     if let Some(arguments) = call.pointer("/function/arguments") {
-                                        if let Some(arguments) = arguments.as_str() {
-                                            pending.arguments.push_str(arguments);
-                                        } else {
-                                            // Null remains a non-object even when it is the only fragment.
-                                            pending.arguments.push_str("null");
-                                        }
+                                        append_argument_delta(pending, arguments);
                                     }
                                 }
                             }
@@ -1073,6 +1097,7 @@ pub async fn handle_streaming_response_with_identity_mode(
         indexed_calls: Default::default(),
         unindexed_calls: Default::default(),
         argument_error: None,
+        has_string_arguments: false,
         name: None,
         arguments: String::new(),
         is_accumulating: false,
@@ -1771,6 +1796,7 @@ mod tests {
             indexed_calls: Default::default(),
             unindexed_calls: Default::default(),
             argument_error: None,
+            has_string_arguments: false,
             name: None,
             arguments: String::new(),
             is_accumulating: false,
@@ -1826,6 +1852,7 @@ mod tests {
             indexed_calls: Default::default(),
             unindexed_calls: Default::default(),
             argument_error: None,
+            has_string_arguments: false,
             name: None,
             arguments: String::new(),
             is_accumulating: false,
@@ -1900,6 +1927,7 @@ mod tests {
             indexed_calls: Default::default(),
             unindexed_calls: Default::default(),
             argument_error: None,
+            has_string_arguments: false,
             name: None,
             arguments: String::new(),
             is_accumulating: false,
@@ -1995,6 +2023,7 @@ mod tests {
             indexed_calls: Default::default(),
             unindexed_calls: Default::default(),
             argument_error: None,
+            has_string_arguments: false,
             name: None,
             arguments: String::new(),
             is_accumulating: false,
@@ -2096,6 +2125,7 @@ mod tests {
             indexed_calls: Default::default(),
             unindexed_calls: Default::default(),
             argument_error: None,
+            has_string_arguments: false,
             name: None,
             arguments: String::new(),
             is_accumulating: false,
@@ -2243,6 +2273,7 @@ mod tests {
             indexed_calls: Default::default(),
             unindexed_calls: Default::default(),
             argument_error: None,
+            has_string_arguments: false,
             name: None,
             arguments: String::new(),
             is_accumulating: false,
@@ -2428,6 +2459,7 @@ mod tests {
             indexed_calls: Default::default(),
             unindexed_calls: Default::default(),
             argument_error: None,
+            has_string_arguments: false,
             name: None,
             arguments: String::new(),
             is_accumulating: false,
@@ -2484,6 +2516,7 @@ mod tests {
             indexed_calls: Default::default(),
             unindexed_calls: Default::default(),
             argument_error: None,
+            has_string_arguments: false,
             name: None,
             arguments: String::new(),
             is_accumulating: false,
@@ -2729,6 +2762,138 @@ mod tests {
         .await;
         assert!(result.is_err());
         assert!(!executed);
+    }
+
+    #[tokio::test]
+    async fn null_argument_placeholders_do_not_corrupt_later_sse_fragments() {
+        let mut server = mockito::Server::new_async().await;
+        let deltas = [
+            json!({"tool_calls":[{"index":0,"id":"A","type":"function","function":{"name":"weather","arguments":null}}]}),
+            json!({"tool_calls":[{"index":1,"id":"B","type":"function","function":{"name":"time","arguments":null}}]}),
+            json!({"tool_calls":[{"index":0,"function":{"arguments":"{\"city\":"}},{"index":1,"function":{"arguments":"{\"zone\":"}}]}),
+            json!({"tool_calls":[{"index":1,"function":{"arguments":"\"UTC\"}"}},{"index":0,"function":{"arguments":"\"Paris\"}"}}]}),
+            json!({"tool_calls":[{"index":0,"function":{"arguments":null}}]}),
+        ];
+        let mut body = deltas
+            .into_iter()
+            .map(|delta| format!("data: {}\n\n", json!({"choices":[{"index":0,"delta":delta}]})))
+            .collect::<String>();
+        body.push_str(
+            "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
+        );
+        let mock = server
+            .mock("POST", "/chat/completions")
+            .with_header("content-type", "text/event-stream")
+            .with_body(body)
+            .create_async()
+            .await;
+        let response = handle_streaming_response(
+            &Client::new(),
+            format!("{}/chat/completions", server.url()),
+            json!({"stream":true}),
+            "test-key".into(),
+            None,
+            None,
+            Arc::new(LLMStopper::new()),
+            "test".into(),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        mock.assert_async().await;
+        assert_eq!(response.function_calls.len(), 2);
+        assert_eq!(response.function_calls[0].id.as_deref(), Some("A"));
+        assert_eq!(response.function_calls[0].arguments["city"], "Paris");
+        assert_eq!(response.function_calls[1].id.as_deref(), Some("B"));
+        assert_eq!(response.function_calls[1].arguments["zone"], "UTC");
+        assert!(response
+            .function_calls
+            .iter()
+            .all(|call| call.provider_metadata.is_none()));
+    }
+
+    #[tokio::test]
+    async fn argument_placeholders_do_not_clear_real_argument_errors() {
+        use crate::llm_provider::execution::chains::generic_chain::generic_inference_chain::execute_valid_function_call;
+        use crate::managers::tool_router::ToolCallFunctionResponse;
+        for initial in [
+            json!(null),
+            json!({}),
+            json!([]),
+            json!(7),
+            json!(true),
+            json!("{broken"),
+            json!("null"),
+            json!("[]"),
+        ] {
+            for append_valid in [false, true] {
+                // Null may be followed by real string fragments. Other malformed input stays blocked.
+                let expected_valid = initial.is_null() && append_valid;
+                let mut deltas = vec![
+                    json!({"tool_calls":[{"index":0,"id":"A","type":"function","function":{"name":"zero_arg_tool","arguments":initial}}]}),
+                ];
+                if append_valid {
+                    deltas.push(json!({"tool_calls":[{"index":0,"function":{"arguments":"{}"}}]}));
+                }
+                let calls = parse_test_tool_events(deltas, ToolIdentityMode::Fragments).await;
+                assert_eq!(calls.len(), 1);
+                let call = &calls[0];
+                let mut executed = false;
+                let execution_call = call.clone();
+                let result = execute_valid_function_call(call, async {
+                    executed = true;
+                    Ok(ToolCallFunctionResponse {
+                        function_call: execution_call,
+                        response: "executed".into(),
+                    })
+                })
+                .await;
+                assert_eq!(
+                    executed, expected_valid,
+                    "initial={initial}, append_valid={append_valid}"
+                );
+                assert_eq!(result.is_ok(), expected_valid);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn null_placeholder_with_incomplete_arguments_stays_blocked_at_eof() {
+        let mut buffer = String::new();
+        let mut text = String::new();
+        let mut reasoning = String::new();
+        let mut calls = Vec::new();
+        let mut partial = PartialFunctionCall::default();
+        for (position, arguments) in [json!(null), json!("{\"city\":")].into_iter().enumerate() {
+            let mut call = json!({"index":0,"function":{"arguments":arguments}});
+            if position == 0 {
+                call["id"] = json!("A");
+                call["type"] = json!("function");
+                call["function"]["name"] = json!("weather");
+            }
+            buffer.push_str(&format!(
+                "data: {}\n\n",
+                json!({"choices":[{"index":0,"delta":{"tool_calls":[call]}}]})
+            ));
+            parse_openai_stream_chunk(
+                &mut buffer,
+                &mut text,
+                &mut reasoning,
+                &mut calls,
+                &mut partial,
+                &None,
+                &None,
+                None,
+                "test",
+            )
+            .await
+            .unwrap();
+        }
+        assert!(calls.is_empty());
+        finalize_function_call_sync(&mut partial, &mut calls, &None, false);
+        assert_eq!(calls.len(), 1);
+        assert!(calls[0].provider_metadata.as_ref().unwrap()["function_argument_error"].is_string());
     }
 
     #[tokio::test]

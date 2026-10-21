@@ -693,27 +693,60 @@ fn process_streaming_chunk(
 // Exact catalog entries keep new preset rules from changing custom or legacy models.
 // Source: https://openrouter.ai/api/v1/models (2026-10-21).
 fn preset_options(model: &str) -> Option<(bool, &'static [&'static str], &'static [&'static str])> {
+    let is_batch = model.ends_with(":batch");
     let model = model.strip_suffix(":batch").unwrap_or(model);
     const EFFORTS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
+    const OPTIONAL_EFFORTS: &[&str] = &["none", "low", "medium", "high", "xhigh", "max"];
     const OPENAI: &[&str] = &["seed", "max_completion_tokens", "response_format", "verbosity"];
+    const CLAUDE: &[&str] = &["max_completion_tokens", "response_format", "stop", "verbosity"];
+    const GEMINI: &[&str] = &["seed", "temperature", "top_p", "response_format", "stop"];
+    const GEMINI_FIXED: &[&str] = &["seed", "response_format", "stop"];
     match model {
         "openai/gpt-6-astra" | "openai/gpt-6-astra-pro" | "openai/gpt-6.1-sol" | "openai/gpt-6.1-sol-pro" => {
             Some((true, EFFORTS, OPENAI))
         }
         "openai/gpt-6-luna" | "openai/gpt-6-luna-pro" | "openai/gpt-6-sol" | "openai/gpt-6-sol-pro" => {
-            Some((false, &["none", "low", "medium", "high", "xhigh", "max"], OPENAI))
+            Some((false, OPTIONAL_EFFORTS, OPENAI))
         }
-        "anthropic/claude-sonnet-5.5" | "anthropic/claude-opus-5.5" | "anthropic/claude-fable-5.1" => Some((
-            true,
-            EFFORTS,
-            &["max_completion_tokens", "response_format", "stop", "verbosity"],
-        )),
-        "google/gemini-4-argon" => Some((
+        "anthropic/claude-sonnet-5.5"
+        | "anthropic/claude-opus-5.5"
+        | "anthropic/claude-fable-5"
+        | "anthropic/claude-fable-5.1" => Some((true, EFFORTS, CLAUDE)),
+        "anthropic/claude-haiku-5.5" | "anthropic/claude-opus-5" | "anthropic/claude-sonnet-5" => {
+            Some((false, OPTIONAL_EFFORTS, CLAUDE))
+        }
+        "google/gemini-4-argon" => Some((true, &["low", "medium", "high"], GEMINI)),
+        "google/gemini-3.8-flash" => Some((
             true,
             &["low", "medium", "high"],
-            &["seed", "temperature", "top_p", "response_format", "stop"],
+            if is_batch { GEMINI_FIXED } else { GEMINI },
         )),
-        "deepseek/deepseek-v4.1-flash-1017" => Some((
+        "google/gemini-3.5-flash-lite" => Some((
+            true,
+            &["minimal", "low", "medium", "high"],
+            if is_batch { GEMINI_FIXED } else { GEMINI },
+        )),
+        "google/gemini-3.5-flash" => Some((true, &["minimal", "low", "medium", "high"], GEMINI)),
+        "minimax/minimax-m3.1-flash:free" if !is_batch => {
+            Some((true, EFFORTS, &["temperature", "top_p", "response_format"]))
+        }
+        "meta/muse-spark-open" if !is_batch => Some((
+            true,
+            &["low", "medium", "high", "xhigh"],
+            &[
+                "seed",
+                "temperature",
+                "top_p",
+                "frequency_penalty",
+                "logit_bias",
+                "logprobs",
+                "top_logprobs",
+                "presence_penalty",
+                "response_format",
+                "stop",
+            ],
+        )),
+        "deepseek/deepseek-v4.1-flash-1017" if !is_batch => Some((
             false,
             &["none", "low", "high", "max"],
             &[
@@ -848,12 +881,114 @@ mod option_tests {
     use super::*;
 
     #[test]
+    fn every_advertised_route_prepares_options_from_its_catalog_contract() {
+        use shinkai_message_primitives::schemas::subprompts::SubPromptType;
+        // Independent snapshot from GET /api/v1/models on 2026-10-21, grouped only
+        // when the routes have identical reasoning and forwarded-parameter contracts.
+        // The matrix includes every exact route advertised by the capabilities manager.
+        let catalog: &[(&[&str], bool, &str, &str)] = &[
+            (&["minimax/minimax-m3.1-flash:free"], true, "max xhigh high medium low", "temperature top_p response_format"),
+            (&["deepseek/deepseek-v4.1-flash-1017"], false, "max high low none", "seed temperature top_p max_completion_tokens frequency_penalty logit_bias logprobs top_logprobs presence_penalty response_format stop parallel_tool_calls"),
+            (&["meta/muse-spark-open"], true, "xhigh high medium low", "seed temperature top_p frequency_penalty logit_bias logprobs top_logprobs presence_penalty response_format stop"),
+            (&["google/gemini-4-argon", "google/gemini-4-argon:batch", "google/gemini-3.8-flash"], true, "high medium low", "seed temperature top_p response_format stop"),
+            (&["anthropic/claude-haiku-5.5", "anthropic/claude-opus-5", "anthropic/claude-sonnet-5"], false, "max xhigh high medium low none", "max_completion_tokens response_format stop"),
+            (&["anthropic/claude-haiku-5.5:batch", "anthropic/claude-opus-5:batch", "anthropic/claude-sonnet-5:batch"], false, "max xhigh high medium low none", "response_format stop"),
+            (&["openai/gpt-6.1-sol-pro", "openai/gpt-6.1-sol", "openai/gpt-6-astra", "openai/gpt-6-astra-pro"], true, "max xhigh high medium low", "seed max_completion_tokens response_format"),
+            (&["openai/gpt-6.1-sol-pro:batch", "openai/gpt-6.1-sol:batch", "openai/gpt-6-astra:batch", "openai/gpt-6-astra-pro:batch"], true, "max xhigh high medium low", "seed response_format"),
+            (&["anthropic/claude-sonnet-5.5", "anthropic/claude-opus-5.5", "anthropic/claude-fable-5.1", "anthropic/claude-fable-5"], true, "max xhigh high medium low", "max_completion_tokens response_format stop"),
+            (&["anthropic/claude-sonnet-5.5:batch", "anthropic/claude-opus-5.5:batch", "anthropic/claude-fable-5.1:batch", "anthropic/claude-fable-5:batch"], true, "max xhigh high medium low", "response_format stop"),
+            (&["openai/gpt-6-luna-pro", "openai/gpt-6-luna", "openai/gpt-6-sol-pro", "openai/gpt-6-sol"], false, "max xhigh high medium low none", "seed max_completion_tokens response_format"),
+            (&["openai/gpt-6-luna-pro:batch", "openai/gpt-6-luna:batch", "openai/gpt-6-sol-pro:batch", "openai/gpt-6-sol:batch"], false, "max xhigh high medium low none", "seed response_format"),
+            (&["google/gemini-3.8-flash:batch"], true, "high medium low", "seed response_format stop"),
+            (&["google/gemini-3.5-flash-lite", "google/gemini-3.5-flash", "google/gemini-3.5-flash:batch"], true, "high medium low minimal", "seed temperature top_p response_format stop"),
+            (&["google/gemini-3.5-flash-lite:batch"], true, "high medium low minimal", "seed response_format stop"),
+        ];
+        let other_params = json!({
+            "max_completion_tokens": 2048, "frequency_penalty": 0.2, "logit_bias": {"42": 1},
+            "logprobs": true, "top_logprobs": 2, "n": 2, "presence_penalty": 0.1,
+            "response_format": {"type": "json_object"}, "service_tier": "auto", "stop": ["END"],
+            "stream_options": {"include_usage": true}, "parallel_tool_calls": true
+        });
+        let mut covered = std::collections::HashSet::new();
+        for (models, mandatory, efforts, parameters) in catalog {
+            let parameters: Vec<_> = parameters.split_whitespace().collect();
+            let efforts: Vec<_> = efforts.split_whitespace().collect();
+            for model in *models {
+                assert!(covered.insert(*model));
+                let provider = LLMProviderInterface::OpenRouter(OpenRouter {
+                    model_type: (*model).into(),
+                });
+                let mut prompt = Prompt::new();
+                prompt.add_content("Check options".into(), SubPromptType::UserLastMessage, 100);
+                let prepared = openai_prepare_messages(&provider, prompt).unwrap();
+                let PromptResultEnum::Value(messages) = prepared.messages else {
+                    panic!("Expected messages");
+                };
+                let base = json!({"model": model, "messages": messages, "max_tokens": prepared.remaining_output_tokens, "stream": false});
+                let mut config = JobConfig::empty();
+                config.seed = Some(42);
+                config.temperature = Some(0.4);
+                config.top_p = Some(0.8);
+                config.max_tokens = Some(1024);
+                config.other_model_params = Some(other_params.clone());
+                let mut payload = base.clone();
+                add_options_to_payload(&mut payload, Some(&config));
+                assert_eq!(payload["model"], *model);
+                assert_eq!(payload["messages"], messages);
+                assert_eq!(payload["stream"], false);
+                for (key, expected) in [("seed", json!(42)), ("temperature", json!(0.4)), ("top_p", json!(0.8))] {
+                    assert_eq!(
+                        payload.get(key),
+                        parameters.contains(&key).then_some(&expected),
+                        "{model}: {key}"
+                    );
+                }
+                for (key, expected) in other_params.as_object().unwrap() {
+                    assert_eq!(
+                        payload.get(key),
+                        parameters.contains(&key.as_str()).then_some(expected),
+                        "{model}: {key}"
+                    );
+                }
+                if !parameters.contains(&"max_completion_tokens") {
+                    assert_eq!(payload["max_tokens"], 1024, "{model}");
+                }
+                assert!(payload.get("reasoning").is_none());
+                for thinking in [None, Some(true), Some(false)] {
+                    for effort in ["none", "minimal", "low", "medium", "high", "xhigh", "max", "invalid"] {
+                        config.thinking = thinking;
+                        config.reasoning_effort = Some(effort.into());
+                        config.other_model_params = Some(json!({"reasoning": {"exclude": true, "max_tokens": 2000}}));
+                        let mut payload = base.clone();
+                        add_options_to_payload(&mut payload, Some(&config));
+                        let accepted = efforts.contains(&effort)
+                            && (thinking != Some(false) || *mandatory)
+                            && !(thinking == Some(true) && effort == "none");
+                        assert_eq!(
+                            payload["reasoning"].get("effort"),
+                            accepted.then_some(&json!(effort)),
+                            "{model}: {thinking:?}, {effort}"
+                        );
+                        if let Some(enabled) = thinking {
+                            assert_eq!(payload["reasoning"]["enabled"], enabled || *mandatory, "{model}");
+                        }
+                        assert_eq!(payload["reasoning"]["exclude"], true);
+                        assert!(payload["reasoning"].get("max_tokens").is_none());
+                    }
+                }
+            }
+        }
+        assert_eq!(covered.len(), 41);
+    }
+
+    #[test]
     fn typed_reasoning_options_use_openrouter_shape() {
         for model in [
             "openai/gpt-6-astra",
             "openai/gpt-6.1-sol",
             "openai/gpt-6-luna",
             "anthropic/claude-opus-5.5",
+            "anthropic/claude-fable-5",
             "anthropic/claude-fable-5.1",
         ] {
             for effort in ["low", "medium", "high", "xhigh", "max"] {
@@ -876,6 +1011,7 @@ mod option_tests {
             "openai/gpt-6.1-sol",
             "anthropic/claude-sonnet-5.5",
             "anthropic/claude-opus-5.5",
+            "anthropic/claude-fable-5",
             "anthropic/claude-fable-5.1",
             "google/gemini-4-argon",
         ] {
@@ -885,6 +1021,46 @@ mod option_tests {
             config.reasoning_effort = Some("none".into());
             add_options_to_payload(&mut payload, Some(&config));
             assert_eq!(payload["reasoning"], json!({"enabled": true}));
+        }
+    }
+
+    #[test]
+    fn exact_fable_requests_keep_mandatory_reasoning_and_supported_options() {
+        for base in ["anthropic/claude-fable-5", "anthropic/claude-fable-5.1"] {
+            for suffix in ["", ":batch"] {
+                let model = format!("{base}{suffix}");
+                for typed in [false, true] {
+                    let mut payload = json!({"model": model, "max_tokens": 4096, "stream": true});
+                    let mut config = JobConfig::empty();
+                    if typed {
+                        config.thinking = Some(false);
+                        config.reasoning_effort = Some("none".into());
+                    }
+                    config.temperature = Some(0.8);
+                    config.top_p = Some(0.9);
+                    config.seed = Some(42);
+                    config.max_tokens = Some(1024);
+                    config.other_model_params = Some(json!({
+                        "reasoning": {"enabled": false, "effort": "none", "exclude": true},
+                        "frequency_penalty": 0.2, "logprobs": true,
+                        "response_format": {"type": "json_object"}, "stop": ["END"]
+                    }));
+                    add_options_to_payload(&mut payload, Some(&config));
+                    assert_eq!(payload["model"], model);
+                    assert_eq!(payload["reasoning"], json!({"enabled": true, "exclude": true}));
+                    for key in ["temperature", "top_p", "seed", "frequency_penalty", "logprobs"] {
+                        assert!(payload.get(key).is_none(), "{model}: {key}");
+                    }
+                    assert_eq!(payload["response_format"], json!({"type": "json_object"}));
+                    assert_eq!(payload["stop"], json!(["END"]));
+                    if suffix.is_empty() {
+                        assert_eq!(payload["max_completion_tokens"], 1024);
+                    } else {
+                        assert_eq!(payload["max_tokens"], 1024);
+                        assert!(payload.get("max_completion_tokens").is_none());
+                    }
+                }
+            }
         }
     }
 
@@ -952,6 +1128,7 @@ mod option_tests {
             "openai/gpt-6.1-sol:batch",
             "anthropic/claude-sonnet-5.5:batch",
             "anthropic/claude-opus-5.5:batch",
+            "anthropic/claude-fable-5:batch",
             "anthropic/claude-fable-5.1:batch",
             "google/gemini-4-argon:batch",
         ] {
@@ -1058,8 +1235,15 @@ mod option_tests {
             "anthropic/claude-sonnet-5.5:nitro",
             "anthropic/claude-opus-5.5-custom",
             "custom/claude-fable-5.1:batch",
+            "anthropic/claude-fable-5-custom",
+            "anthropic/claude-fable-5:free",
             "google/gemini-4-argon:custom",
             "custom/reasoner:batch",
+            "minimax/minimax-m3.1-flash:free:batch",
+            "meta/muse-spark-open:batch",
+            "deepseek/deepseek-v4.1-flash-1017:batch",
+            "anthropic/claude-haiku-5.5-custom",
+            "google/gemini-3.5-flash-preview:batch",
             "openai/gpt-6.1-sol:free:batch",
             "openai/gpt-6.1-sol-pro-custom",
             "custom/gpt-6-astra-pro",
@@ -1110,6 +1294,7 @@ mod option_tests {
             ("openai/gpt-6-luna", false),
             ("anthropic/claude-sonnet-5.5", false),
             ("anthropic/claude-opus-5.5", false),
+            ("anthropic/claude-fable-5", false),
             ("anthropic/claude-fable-5.1", false),
             ("google/gemini-4-argon", true),
             ("deepseek/deepseek-v4.1-flash-1017", true),

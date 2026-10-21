@@ -155,6 +155,8 @@ fn capture_reasoning_for_replay(response: &mut LLMInferenceResponse) {
 // Keep this list separate from OpenAI: DeepSeek does not accept OpenAI-only
 // request fields such as max_completion_tokens, seed, or service_tier.
 fn add_deepseek_options(payload: &mut serde_json::Value, config: Option<&JobConfig>, model: &str) {
+    // Message preparation has already bounded this by model output and remaining context.
+    let prepared_output_budget = payload["max_tokens"].as_u64();
     // Current documented IDs and the accepted V4 Flash compatibility aliases.
     let supports_thinking_options = ModelCapabilitiesManager::is_current_deepseek(model);
     if let Some(value) = config
@@ -196,6 +198,10 @@ fn add_deepseek_options(payload: &mut serde_json::Value, config: Option<&JobConf
                 _ => (),
             }
         }
+    }
+    // Apply the cap after config, environment, and custom aliases have all been merged.
+    if let Some(budget) = prepared_output_budget {
+        payload["max_tokens"] = json!(payload["max_tokens"].as_u64().unwrap_or(budget).min(budget));
     }
     // Check after other_model_params too, so shared settings cannot bypass the model gate.
     if !supports_thinking_options {
@@ -251,6 +257,43 @@ mod tests {
             response.function_calls[0].provider_metadata.as_ref().unwrap(),
             &json!({"deepseek_reasoning_content":"native reasoning"})
         );
+    }
+
+    #[test]
+    fn deepseek_request_output_overrides_cannot_exceed_prepared_budget() {
+        use shinkai_message_primitives::schemas::subprompts::{SubPrompt, SubPromptType};
+        for id in ["deepseek-flash", "deepseek-v4-pro", "deepseek-chat"] {
+            let model = LLMProviderInterface::DeepSeek(DeepSeek { model_type: id.into() });
+            let mut prompt = Prompt::new();
+            prompt.add_sub_prompts(vec![SubPrompt::Content(SubPromptType::User, "Hello".into(), 100)]);
+            let prepared = deepseek_prepare_messages(&model, prompt, "budget-test".into()).unwrap();
+            let budget = prepared.remaining_output_tokens as u64;
+            assert!(budget > 1024);
+            let mut config = JobConfig::empty();
+            config.max_tokens = Some(budget + 1);
+            let mut payload = json!({"model": id, "stream": true, "max_tokens": budget});
+            add_deepseek_options(&mut payload, Some(&config), id);
+            assert_eq!(payload["max_tokens"], budget);
+            config.max_tokens = Some(1024);
+            let mut payload = json!({"model": id, "stream": true, "max_tokens": budget});
+            add_deepseek_options(&mut payload, Some(&config), id);
+            assert_eq!(payload["max_tokens"], 1024);
+            for params in [
+                json!({"max_tokens": budget + 1}),
+                json!({"max_completion_tokens": budget + 1}),
+                json!({"max_tokens": "invalid"}),
+            ] {
+                config.other_model_params = Some(params);
+                let mut payload = json!({"model": id, "stream": true, "max_tokens": 512});
+                add_deepseek_options(&mut payload, Some(&config), id);
+                assert_eq!(payload["max_tokens"], 512);
+                assert!(payload.get("max_completion_tokens").is_none());
+            }
+            config.other_model_params = Some(json!({"max_tokens": 256, "max_completion_tokens": budget + 1}));
+            let mut payload = json!({"model": id, "stream": true, "max_tokens": 512});
+            add_deepseek_options(&mut payload, Some(&config), id);
+            assert_eq!(payload["max_tokens"], 256);
+        }
     }
 
     #[test]
