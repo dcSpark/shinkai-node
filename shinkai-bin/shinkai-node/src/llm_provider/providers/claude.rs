@@ -713,9 +713,9 @@ impl ClaudeContentCollector {
                 if let Some(block) = self.blocks.get_mut(&index) {
                     if block["type"] == "tool_use" && self.stopped.insert(index) {
                         let input = match self.inputs.remove(&index) {
-                            Some(input) => serde_json::from_str::<JsonValue>(&input)
+                            Some(input) if !input.trim().is_empty() => serde_json::from_str::<JsonValue>(&input)
                                 .map_err(|error| format!("Tool arguments are not valid JSON: {error}")),
-                            None => Ok(block["input"].clone()),
+                            _ => Ok(block["input"].clone()),
                         }
                         .and_then(|input| {
                             input
@@ -1131,6 +1131,29 @@ mod tests {
                 {"type":"tool_result","tool_use_id":"toolu_clock","content":"actual result"}
             ])
         );
+    }
+
+    #[test]
+    fn empty_claude_argument_deltas_preserve_initial_tool_input() {
+        for fragment in ["", " \n\t"] {
+            for input in [json!({}), json!({"initial": true})] {
+                let mut collector = ClaudeContentCollector::default();
+                for event in [
+                    json!({"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"tool-id","name":"tool","input":input}}),
+                    json!({"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":fragment}}),
+                    json!({"type":"content_block_stop","index":0}),
+                ] {
+                    collector.push_event(&claude_sse(event));
+                }
+                let mut calls = collector.take_completed_tools(&None);
+                collector.attach_metadata(&mut calls);
+                assert_eq!(calls.len(), 1);
+                assert_eq!(calls[0].arguments, input.as_object().unwrap().clone());
+                let metadata = calls[0].provider_metadata.as_ref().unwrap();
+                assert!(metadata.get("function_argument_error").is_none());
+                assert_eq!(metadata["claude_content"][0]["input"], input);
+            }
+        }
     }
 
     #[tokio::test]
