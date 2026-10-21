@@ -398,6 +398,7 @@ async fn handle_streaming_response(
                                                                         });
 
                                                                     let function_call = FunctionCall {
+                                                                        provider_metadata: None,
                                                                         name: name.as_str().unwrap_or("").to_string(),
                                                                         arguments: fc_arguments.clone(),
                                                                         tool_router_key,
@@ -635,6 +636,7 @@ async fn handle_non_streaming_response(
                                     });
 
                                     calls.push(FunctionCall {
+                    provider_metadata: None,
                                         name: tool_call.function.name.clone(),
                                         arguments,
                                         tool_router_key,

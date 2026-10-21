@@ -59,31 +59,80 @@ pub fn process_llm_messages(
     let messages_vec = match messages_json {
         serde_json::Value::Array(arr) => {
             // First pass: collect function calls and generate unique IDs
-            let mut function_name_to_tool_id: HashMap<String, String> = HashMap::new();
+            let mut function_name_to_tool_id: HashMap<String, std::collections::VecDeque<String>> = HashMap::new();
 
             for message in &arr {
                 if message.get("role") == Some(&serde_json::Value::String("assistant".to_string())) {
                     if let Some(function_call) = message.get("function_call") {
                         if let Some(name) = function_call.get("name").and_then(|n| n.as_str()) {
-                            let tool_id = format!(
-                                "toolu_{}",
-                                Uuid::new_v4().to_string().replace("-", "")[0..12].to_string()
-                            );
-                            function_name_to_tool_id.insert(name.to_string(), tool_id);
+                            let native_content = function_call
+                                .get("provider_metadata")
+                                .and_then(|metadata| metadata.get("claude_content"))
+                                .and_then(|content| content.as_array());
+                            let native_id = native_content
+                                .and_then(|blocks| {
+                                    blocks.iter().find(|block| {
+                                        block["type"] == "tool_use"
+                                            && block["name"] == sanitize_tool_name(name)
+                                            && !function_name_to_tool_id
+                                                .get(name)
+                                                .map(|ids| {
+                                                    block["id"]
+                                                        .as_str()
+                                                        .map(|id| ids.iter().any(|used| used == id))
+                                                        .unwrap_or(false)
+                                                })
+                                                .unwrap_or(false)
+                                    })
+                                })
+                                .and_then(|block| block["id"].as_str());
+                            let tool_id = function_call
+                                .get("id")
+                                .and_then(|id| id.as_str())
+                                .or(native_id)
+                                .map(str::to_owned)
+                                .unwrap_or_else(|| {
+                                    format!(
+                                        "toolu_{}",
+                                        Uuid::new_v4().to_string().replace("-", "")[0..12].to_string()
+                                    )
+                                });
+                            // Prompt function results use the call ID as their name.
+                            if name != tool_id {
+                                function_name_to_tool_id
+                                    .entry(tool_id.clone())
+                                    .or_default()
+                                    .push_back(tool_id.clone());
+                            }
+                            function_name_to_tool_id
+                                .entry(name.to_string())
+                                .or_default()
+                                .push_back(tool_id);
                         }
                     }
                 }
             }
 
             // Second pass: process messages with generated IDs
+            let mut assistant_tool_ids = function_name_to_tool_id.clone();
+            let mut last_native_content: Option<String> = None;
             arr.into_iter()
-            .map(|mut message| {
+            .filter_map(|mut message| {
+                if message["role"] == "assistant" {
+                    if let Some(content) = message["function_call"]["provider_metadata"]["claude_content"].as_array().cloned() {
+                        let key = serde_json::to_string(&content).unwrap_or_default();
+                        if last_native_content.as_ref() == Some(&key) { return None; }
+                        last_native_content = Some(key);
+                        return Some(serde_json::json!({"role": "assistant", "content": content}));
+                    }
+                }
+                if message["role"] != "function" { last_native_content = None; }
                 if message.get("role") == Some(&serde_json::Value::String("user".to_string())) {
                     let images = message.get("images").cloned();
                     let content = message.get("content").cloned();
-                    
+
                     let mut content_blocks = vec![];
-                    
+
                     // Add text content if present
                     if let Some(text) = content {
                         if let Some(text_str) = text.as_str() {
@@ -95,15 +144,15 @@ pub fn process_llm_messages(
                             }
                         }
                     }
-                    
+
                     // Add image content if present
                     if let Some(serde_json::Value::Array(images_array)) = images {
                         for image in images_array {
-                            
+
                             if let serde_json::Value::String(image_str) = image {
                                 // Check image size - skip if larger than 5MB
                                 const MAX_IMAGE_SIZE: usize = 5 * 1024 * 1024; // 5MB
-                                
+
                                 if image_str.len() > MAX_IMAGE_SIZE {
                                     eprintln!("Skipping image larger than 5MB (size: {} bytes)", image_str.len());
                                     content_blocks.push(serde_json::json!({
@@ -112,7 +161,7 @@ pub fn process_llm_messages(
                                     }));
                                     continue;
                                 }
-                                
+
                                 if let Some(image_type) = get_image_type(&image_str) {
                                     let final_image_type = get_image_type(&image_str).unwrap_or(image_type);
                                     content_blocks.push(serde_json::json!({
@@ -127,7 +176,7 @@ pub fn process_llm_messages(
                             }
                         }
                     }
-                    
+
                     // Set content as array if we have multiple blocks, otherwise as string
                     if content_blocks.len() > 1 {
                         message["content"] = serde_json::Value::Array(content_blocks);
@@ -139,7 +188,7 @@ pub fn process_llm_messages(
                             message["content"] = serde_json::Value::Array(content_blocks);
                         }
                     }
-                    
+
                     message.as_object_mut().unwrap().remove("images");
                 }
 
@@ -155,7 +204,7 @@ pub fn process_llm_messages(
 
                             // Get the pre-generated tool ID
                             let tool_id = if let Some(original_name) = function_call.get("name").and_then(|n| n.as_str()) {
-                                function_name_to_tool_id.get(original_name).cloned()
+                                assistant_tool_ids.get_mut(original_name).and_then(|ids| ids.pop_front())
                                     .unwrap_or_else(|| format!("toolu_{}", Uuid::new_v4().to_string().replace("-", "")[0..12].to_string()))
                             } else {
                                 format!("toolu_{}", Uuid::new_v4().to_string().replace("-", "")[0..12].to_string())
@@ -181,7 +230,7 @@ pub fn process_llm_messages(
                     if let Some(content) = message.get("content").cloned() {
                         // Try to get the function name to find the corresponding tool ID
                         let tool_use_id = if let Some(name) = message.get("name").and_then(|n| n.as_str()) {
-                            function_name_to_tool_id.get(name).cloned()
+                            function_name_to_tool_id.get_mut(name).and_then(|ids| ids.pop_front())
                                 .unwrap_or_else(|| format!("toolu_{}", Uuid::new_v4().to_string().replace("-", "")[0..12].to_string()))
                         } else {
                             // Fallback: generate a new unique ID
@@ -198,9 +247,22 @@ pub fn process_llm_messages(
                     message.as_object_mut().unwrap().remove("name");
                 }
 
-                message
+                Some(message)
             })
-            .collect()
+            .fold(Vec::<serde_json::Value>::new(), |mut messages, message| {
+                let tool_results = message["role"] == "user" && message["content"].as_array().map(|blocks| blocks.iter().all(|block| block["type"] == "tool_result")).unwrap_or(false);
+                if tool_results {
+                    if let Some(last) = messages.last_mut() {
+                        let previous_results = last["role"] == "user" && last["content"].as_array().map(|blocks| blocks.iter().all(|block| block["type"] == "tool_result")).unwrap_or(false);
+                        if previous_results {
+                            last["content"].as_array_mut().unwrap().extend(message["content"].as_array().unwrap().iter().cloned());
+                            return messages;
+                        }
+                    }
+                }
+                messages.push(message);
+                messages
+            })
         }
         _ => vec![],
     };
@@ -259,6 +321,75 @@ mod tests {
         llm_providers::serialized_llm_provider::{Claude, SerializedLLMProvider},
         subprompts::{SubPrompt, SubPromptType},
     };
+
+    #[test]
+    fn test_signed_parallel_prompt_history_round_trip() {
+        let content = json!([
+            {"type": "thinking", "thinking": "", "signature": "signed"},
+            {"type": "tool_use", "name": "first", "id": "toolu_first", "input": {}},
+            {"type": "tool_use", "name": "second", "id": "toolu_second", "input": {}}
+        ]);
+        let mut prompt = Prompt::new();
+        prompt.add_content("Use both tools".into(), SubPromptType::UserLastMessage, 100);
+        for name in ["first", "second"] {
+            let id = format!("toolu_{}", name);
+            prompt.add_function_call(
+                json!({"name": name, "call_id": id, "arguments": {}, "provider_metadata": {"claude_content": content}}),
+                100,
+            );
+            prompt.add_function_call_response(
+                json!({"function_call": {"name": name, "id": id}, "response": "done"}),
+                100,
+            );
+        }
+        let persisted = serde_json::to_string(&prompt).unwrap();
+        let prompt = serde_json::from_str(&persisted).unwrap();
+        let model = LLMProviderInterface::Claude(Claude {
+            model_type: "claude-opus-5-5".into(),
+        });
+        let (result, _) = claude_prepare_messages(&model, prompt).unwrap();
+        let PromptResultEnum::Value(messages) = result.messages else {
+            panic!("Expected JSON messages")
+        };
+        assert_eq!(messages.as_array().unwrap().len(), 3);
+        assert_eq!(messages[1]["content"], content);
+        assert_eq!(messages[2]["content"].as_array().unwrap().len(), 2);
+        assert_eq!(messages[2]["content"][0]["tool_use_id"], "toolu_first");
+        assert_eq!(messages[2]["content"][1]["tool_use_id"], "toolu_second");
+    }
+
+    #[test]
+    fn test_signed_parallel_tool_content_round_trip() {
+        let native = json!([
+            {"type": "thinking", "thinking": "", "signature": "signed-value"},
+            {"type": "redacted_thinking", "data": "encrypted-value"},
+            {"type": "text", "text": "Run both tools."},
+            {"type": "tool_use", "id": "toolu_first", "name": "first", "input": {}},
+            {"type": "tool_use", "id": "toolu_second", "name": "second", "input": {}}
+        ]);
+        let mut messages =
+            vec![serde_json::from_value::<LlmMessage>(json!({"role": "user", "content": "Run tools"})).unwrap()];
+        for name in ["first", "second"] {
+            messages.push(serde_json::from_value(json!({
+                "role": "assistant", "function_call": {"name": name, "arguments": "{}", "provider_metadata": {"claude_content": native}}
+            })).unwrap());
+        }
+        for name in ["first", "second"] {
+            messages
+                .push(serde_json::from_value(json!({"role": "function", "name": name, "content": "done"})).unwrap());
+        }
+        let model = LLMProviderInterface::Claude(Claude {
+            model_type: "claude-opus-5-5".into(),
+        });
+        let (result, _) = process_llm_messages(messages, &model).unwrap();
+        let PromptResultEnum::Value(value) = result.messages else {
+            panic!("Expected JSON messages");
+        };
+        assert_eq!(value.as_array().unwrap().len(), 3);
+        assert_eq!(value[1]["content"], native);
+        assert_eq!(value[2]["content"][0]["tool_use_id"], "toolu_first");
+        assert_eq!(value[2]["content"][1]["tool_use_id"], "toolu_second");
+    }
 
     #[test]
     fn test_claude_prepare_messages_with_images() {
@@ -379,6 +510,7 @@ mod tests {
                     name: "shinkai__echo".to_string(),
                     arguments: "{\"message\":\"hello\"}".to_string(),
                     id: None,
+                    provider_metadata: None,
                 }),
                 functions: None,
                 images: None,

@@ -3,10 +3,9 @@
 
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::providers::shared::openai_api;
-use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResult, PromptResultEnum};
+use crate::managers::model_capabilities_manager::{PromptResult, PromptResultEnum};
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::LLMProviderInterface;
 use shinkai_message_primitives::schemas::prompts::Prompt;
-use shinkai_message_primitives::schemas::subprompts::{SubPrompt, SubPromptType};
 
 // DeepSeek is compatible with the OpenAI API, so we reuse its message
 // preparation and response handling logic.
@@ -18,17 +17,6 @@ pub fn deepseek_prepare_messages(
     prompt: Prompt,
     session_id: String,
 ) -> Result<PromptResult, LLMProviderError> {
-    let mut prompt = prompt.clone();
-
-    // If this is a reasoning model, filter out system prompts before any processing
-    if ModelCapabilitiesManager::has_reasoning_capabilities(model) {
-        prompt.sub_prompts.retain(|sp| match sp {
-            SubPrompt::Content(SubPromptType::System, _, _) => false,
-            SubPrompt::Omni(SubPromptType::System, _, _, _) => false,
-            _ => true,
-        });
-    }
-
     let result = openai_api::openai_prepare_messages(model, prompt)?;
     let tools_json = result.functions.unwrap_or_else(Vec::new);
     let messages_json = result.messages.clone();
@@ -93,6 +81,28 @@ mod tests {
 
     use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::DeepSeek;
     use shinkai_message_primitives::schemas::subprompts::{SubPrompt, SubPromptType};
+
+    #[test]
+    fn reasoning_model_keeps_system_messages() {
+        let mut prompt = Prompt::new();
+        prompt.add_sub_prompts(vec![
+            SubPrompt::Content(SubPromptType::System, "Keep this instruction".to_string(), 100),
+            SubPrompt::Content(SubPromptType::User, "Hello".to_string(), 99),
+        ]);
+        let model = LLMProviderInterface::DeepSeek(DeepSeek {
+            model_type: "deepseek-reasoner".to_string(),
+        });
+        let result = deepseek_prepare_messages(&model, prompt, Uuid::new_v4().to_string()).unwrap();
+        if let PromptResultEnum::Value(messages) = result.messages {
+            assert!(messages
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|message| message["role"] == "system"));
+        } else {
+            panic!("Expected messages");
+        }
+    }
 
     #[test]
     fn test_deepseek_prepare_messages() {

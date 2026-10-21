@@ -118,6 +118,8 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
         _ => vec![],
     };
 
+    let mut replayed_parts = Vec::<serde_json::Value>::new();
+    let mut native_calls = std::collections::HashMap::<String, serde_json::Value>::new();
     // Now build the final structure from messages_vec
     let messages_vec = messages_vec
         .into_iter()
@@ -134,6 +136,36 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
                 .cloned()
                 .unwrap_or(serde_json::Value::String("".to_string()));
 
+            if msg["role"] != "function" && role == "user" {
+                replayed_parts.clear();
+            }
+            if msg["role"] == "function" {
+                if let Some(call) = msg["name"].as_str().and_then(|key| native_calls.get(key)) {
+                    let text = content.as_str().or_else(|| content.pointer("/0/text").and_then(|v| v.as_str())).unwrap_or_default();
+                    let response = serde_json::from_str::<serde_json::Value>(text).unwrap_or_else(|_| serde_json::json!({"result": text}));
+                    let mut result = serde_json::json!({"name": call["name"], "response": if response.is_object() { response } else { serde_json::json!({"result": response}) }});
+                    if let Some(id) = call.get("id") { result["id"] = id.clone(); }
+                    return serde_json::json!({"role": "user", "parts": [{"functionResponse": result}]});
+                }
+            }
+            // Replay the full native assistant turn once for parallel calls.
+            if role == "model" {
+                if let Some(parts) = msg.pointer("/function_call/provider_metadata/gemini_parts").and_then(|p| p.as_array()) {
+                    for part in parts {
+                        if let Some(call) = part.get("functionCall") {
+                            if let Some(key) = call.get("id").or_else(|| call.get("name")).and_then(|v| v.as_str()) {
+                                native_calls.insert(key.to_string(), call.clone());
+                            }
+                        }
+                    }
+                    let parts_value = serde_json::Value::Array(parts.clone());
+                    if replayed_parts.contains(&parts_value) {
+                        return serde_json::json!({});
+                    }
+                    replayed_parts.push(parts_value.clone());
+                    return serde_json::json!({"role": "model", "parts": parts_value});
+                }
+            }
             // Check if this is a "function_response" field (the older logic)
             if let Some(function_response) = msg.get("function_response") {
                 let response = function_response
@@ -243,6 +275,26 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
         })
         .filter(|msg| !msg.as_object().map_or(true, |obj| obj.is_empty()))
         .collect::<Vec<_>>();
+
+    // Parallel results must follow the complete model turn together.
+    let mut grouped_messages: Vec<serde_json::Value> = Vec::new();
+    for message in messages_vec {
+        let is_response = |value: &serde_json::Value| {
+            value["role"] == "user"
+                && value["parts"]
+                    .as_array()
+                    .is_some_and(|parts| !parts.is_empty() && parts.iter().all(|p| p.get("functionResponse").is_some()))
+        };
+        if is_response(&message) && grouped_messages.last().is_some_and(&is_response) {
+            grouped_messages.last_mut().unwrap()["parts"]
+                .as_array_mut()
+                .unwrap()
+                .extend(message["parts"].as_array().unwrap().iter().cloned());
+        } else {
+            grouped_messages.push(message);
+        }
+    }
+    let messages_vec = grouped_messages;
 
     // Convert tools to function declarations
     let function_declarations: Vec<serde_json::Value> = tools

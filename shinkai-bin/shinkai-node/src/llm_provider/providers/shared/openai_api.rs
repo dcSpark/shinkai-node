@@ -148,10 +148,11 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
     )?;
 
     // Convert messages_json and tools_json to Vec<serde_json::Value>
+    let mut replayed_openrouter_turns = std::collections::HashSet::new();
     let messages_vec = match messages_json {
         serde_json::Value::Array(arr) => arr
             .into_iter()
-            .map(|mut message| {
+            .filter_map(|mut message| {
                 let images = message.get("images").cloned();
                 let text = message.get("content").cloned();
 
@@ -193,7 +194,7 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
                         new_message.insert("content".to_string(), content.clone());
                     }
 
-                    return serde_json::Value::Object(new_message);
+                    return Some(serde_json::Value::Object(new_message));
                 }
 
                 // Convert function_call to tool_calls format if needed
@@ -205,14 +206,40 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
                         // Extract the id
                         let call_id = function_call.get("id").and_then(|n| n.as_str()).unwrap_or("unknown");
 
-                        // Generate the complete tool calls structure
-                        let tool_calls = serde_json::json!([
+                        let metadata = function_call.get("provider_metadata");
+                        if matches!(model, LLMProviderInterface::OpenRouter(_)) {
+                            if let Some(native) = metadata
+                                .and_then(|m| m.get("openrouter_assistant"))
+                                .filter(|m| m["role"] == "assistant" && m["tool_calls"].is_array())
                             {
-                                "id": call_id,
-                                "type": "function",
-                                "function": function_call
+                                // The stored Prompt alternates call/result pairs. Restore the complete
+                                // native assistant turn only at its first call, before all tool results.
+                                let identity = serde_json::to_string(&native["tool_calls"]).unwrap_or_default();
+                                if replayed_openrouter_turns.insert(identity) {
+                                    return Some(native.clone());
+                                }
+                                return None;
                             }
-                        ]);
+                        }
+
+                        let mut tool_call = serde_json::json!({
+                            "id": call_id,
+                            "type": "function",
+                            "function": {
+                                "name": function_call["name"],
+                                "arguments": function_call["arguments"]
+                            }
+                        });
+                        if matches!(
+                            model,
+                            LLMProviderInterface::OpenAI(_) | LLMProviderInterface::OpenAILegacy(_)
+                        ) {
+                            if let Some(output) = metadata.and_then(|m| m.get("openai_responses")) {
+                                tool_call["provider_metadata"] = serde_json::json!({"openai_responses": output});
+                            }
+                        }
+                        restore_assistant_reasoning(&mut message, metadata, model);
+                        let tool_calls = serde_json::json!([tool_call]);
 
                         // Add tool_calls to the message and set content to null
                         if let Some(obj) = message.as_object_mut() {
@@ -223,58 +250,14 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
                     }
                 }
 
-                message
+                Some(message)
             })
             .collect(),
         _ => vec![],
     };
 
-    // Build a new merged_messages array, collecting all tool_calls from assistant messages
-    let mut merged_messages: Vec<serde_json::Value> = Vec::new();
-    let mut first_assistant_toolcalls_index: Option<usize> = None;
-    let mut accumulated_tool_calls: Vec<serde_json::Value> = Vec::new();
-
-    for message in messages_vec {
-        let role = message.get("role").and_then(|v| v.as_str());
-        let maybe_tool_calls = message.get("tool_calls");
-
-        // Is this an assistant message that already has a "tool_calls" array?
-        let is_assistant_with_calls =
-            role == Some("assistant") && maybe_tool_calls.is_some() && maybe_tool_calls.unwrap().is_array();
-
-        if is_assistant_with_calls {
-            // If it's the first assistant-with-tool_calls message we've seen,
-            // push it to merged_messages and remember its index.
-            if first_assistant_toolcalls_index.is_none() {
-                first_assistant_toolcalls_index = Some(merged_messages.len());
-                merged_messages.push(message.clone()); // we will replace its tool_calls later
-            }
-            // Either way, accumulate this message's tool_calls
-            if let Some(serde_json::Value::Array(tc)) = maybe_tool_calls {
-                accumulated_tool_calls.extend(tc.clone());
-            }
-            // Note: do NOT push the message again here
-        } else {
-            // Any other message (including user, system, or assistant w/o tool_calls) –
-            // just push it directly into the final conversation flow
-            merged_messages.push(message);
-        }
-    }
-
-    // Finally, if we ever found an assistant-with-tool_calls,
-    // set that single message's tool_calls to the entire accumulated array.
-    if let Some(idx) = first_assistant_toolcalls_index {
-        if let Some(msg) = merged_messages.get_mut(idx) {
-            if let Some(obj) = msg.as_object_mut() {
-                obj.insert(
-                    "tool_calls".to_string(),
-                    serde_json::Value::Array(accumulated_tool_calls),
-                );
-                // Usually you'll want the content to be null in that combined message.
-                obj.insert("content".to_string(), serde_json::Value::Null);
-            }
-        }
-    }
+    // Only adjacent fragments can belong to the same assistant tool turn.
+    let merged_messages = merge_adjacent_tool_calls(messages_vec);
 
     // Flatten the tools array to extract functions directly
     let tools_vec = match tools_json {
@@ -318,12 +301,153 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
     })
 }
 
+fn restore_assistant_reasoning(
+    message: &mut serde_json::Value,
+    metadata: Option<&serde_json::Value>,
+    model: &LLMProviderInterface,
+) {
+    let Some(metadata) = metadata else { return };
+    match model {
+        LLMProviderInterface::DeepSeek(_) => {
+            if let Some(content) = metadata.get("deepseek_reasoning_content").and_then(|v| v.as_str()) {
+                message["reasoning_content"] = serde_json::json!(content);
+            }
+        }
+        LLMProviderInterface::OpenRouter(_) => {
+            if let Some(details) = metadata.get("reasoning_details").filter(|v| v.is_array()) {
+                message["reasoning_details"] = details.clone();
+            }
+        }
+        _ => (),
+    }
+}
+
+fn merge_adjacent_tool_calls(messages: Vec<serde_json::Value>) -> Vec<serde_json::Value> {
+    let mut merged: Vec<serde_json::Value> = Vec::with_capacity(messages.len());
+    for message in messages {
+        let is_tool_fragment = |message: &serde_json::Value| {
+            message["role"] == "assistant"
+                && message["tool_calls"].is_array()
+                && message.get("content").map_or(true, |content| content.is_null())
+        };
+        if is_tool_fragment(&message) {
+            if let Some(previous) = merged.last_mut().filter(|previous| {
+                is_tool_fragment(previous)
+                    && previous.get("reasoning_content") == message.get("reasoning_content")
+                    && previous.get("reasoning_details").is_none()
+                    && message.get("reasoning_details").is_none()
+            }) {
+                previous["tool_calls"]
+                    .as_array_mut()
+                    .unwrap()
+                    .extend(message["tool_calls"].as_array().unwrap().iter().cloned());
+                continue;
+            }
+        }
+        merged.push(message);
+    }
+    merged
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
     use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
     use shinkai_message_primitives::schemas::subprompts::{SubPrompt, SubPromptAssetType, SubPromptType};
+
+    #[test]
+    fn tool_history_restores_provider_reasoning_without_function_metadata() {
+        use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
+            DeepSeek, OpenAI, OpenRouter,
+        };
+        let details = json!([{"type": "reasoning.encrypted", "data": "signed-data", "index": 0}]);
+        let metadata = json!({
+            "deepseek_reasoning_content": "Earlier reasoning",
+            "reasoning_details": details,
+            "openai_responses": {"output": [{"type": "reasoning", "id": "rs_1"}]},
+            "internal": "must not reach the function schema"
+        });
+        let providers = [
+            LLMProviderInterface::DeepSeek(DeepSeek {
+                model_type: "deepseek-flash".to_string(),
+            }),
+            LLMProviderInterface::OpenRouter(OpenRouter {
+                model_type: "anthropic/claude-opus-5.5".to_string(),
+            }),
+            LLMProviderInterface::OpenAI(OpenAI {
+                model_type: "gpt-6.1-sol".to_string(),
+            }),
+        ];
+        for model in providers {
+            let mut prompt = Prompt::new();
+            prompt.add_sub_prompts(vec![SubPrompt::FunctionCall(
+                SubPromptType::Assistant,
+                json!({"call_id": "call_1", "name": "weather", "arguments": {}, "provider_metadata": metadata}),
+                100,
+            )]);
+            let prepared = openai_prepare_messages(&model, prompt).unwrap();
+            let PromptResultEnum::Value(messages) = prepared.messages else {
+                panic!("Expected messages")
+            };
+            let assistant = &messages[0];
+            assert_eq!(assistant["tool_calls"][0]["id"], "call_1");
+            assert_eq!(
+                assistant["tool_calls"][0]["function"],
+                json!({"name": "weather", "arguments": "{}"})
+            );
+            match model {
+                LLMProviderInterface::DeepSeek(_) => {
+                    assert_eq!(assistant["reasoning_content"], "Earlier reasoning");
+                    assert!(assistant.get("reasoning_details").is_none());
+                }
+                LLMProviderInterface::OpenRouter(_) => {
+                    assert_eq!(assistant["reasoning_details"], details);
+                    assert!(assistant.get("reasoning_content").is_none());
+                }
+                _ => {
+                    assert_eq!(
+                        assistant["tool_calls"][0]["provider_metadata"],
+                        json!({"openai_responses": metadata["openai_responses"]})
+                    );
+                    assert!(assistant.get("reasoning_content").is_none());
+                    assert!(assistant.get("reasoning_details").is_none());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn tool_call_groups_preserve_distinct_reasoning() {
+        let messages = json!([
+            {"role": "assistant", "tool_calls": [{"id": "a"}], "reasoning_details": [{"data": "first"}]},
+            {"role": "assistant", "tool_calls": [{"id": "b"}], "reasoning_details": [{"data": "second"}]}
+        ]);
+        assert_eq!(
+            merge_adjacent_tool_calls(messages.as_array().unwrap().clone()),
+            messages.as_array().unwrap().clone()
+        );
+    }
+
+    #[test]
+    fn tool_call_groups_keep_separate_turns_and_text() {
+        let messages = json!([
+            {"role": "assistant", "content": null, "tool_calls": [{"id": "a"}]},
+            {"role": "assistant", "content": null, "tool_calls": [{"id": "b"}]},
+            {"role": "tool", "tool_call_id": "a", "content": "first"},
+            {"role": "tool", "tool_call_id": "b", "content": "second"},
+            {"role": "user", "content": "Next request"},
+            {"role": "assistant", "content": null, "tool_calls": [{"id": "c"}]},
+            {"role": "tool", "tool_call_id": "c", "content": "third"},
+            {"role": "assistant", "content": "Keep this text", "tool_calls": [{"id": "d"}]},
+            {"role": "assistant", "content": null, "tool_calls": [{"id": "e"}]}
+        ]);
+        let original = messages.as_array().unwrap();
+        let merged = merge_adjacent_tool_calls(original.clone());
+        assert_eq!(merged.len(), original.len() - 1);
+        assert_eq!(merged[0]["tool_calls"], json!([{"id": "a"}, {"id": "b"}]));
+        assert_eq!(&merged[1..], &original[2..]);
+    }
 
     #[test]
     fn test_openai_from_llm_messages() {
@@ -586,49 +710,36 @@ mod tests {
     }
 
     #[test]
-    fn test_system_prompt_filtering() {
-        // Create a prompt with both Content and Omni system prompts
-        let sub_prompts = vec![
-            SubPrompt::Content(
-                SubPromptType::System,
-                "System prompt that should be filtered".to_string(),
-                98,
-            ),
-            SubPrompt::Content(SubPromptType::User, "User message that should remain".to_string(), 100),
+    fn deepseek_reasoning_keeps_system_and_user_messages() {
+        use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::DeepSeek;
+        let mut prompt = Prompt::new();
+        prompt.add_sub_prompts(vec![
+            SubPrompt::Content(SubPromptType::System, "Keep this system instruction".to_string(), 98),
+            SubPrompt::Content(SubPromptType::User, "First user message".to_string(), 100),
             SubPrompt::Omni(
                 SubPromptType::UserLastMessage,
-                "Last user message that should remain".to_string(),
+                "Last user message".to_string(),
                 vec![],
                 100,
             ),
-        ];
-
-        let mut prompt = Prompt::new();
-        prompt.add_sub_prompts(sub_prompts);
-
-        // Create a mock model with reasoning capabilities
-        let model = SerializedLLMProvider::mock_provider_with_reasoning().model;
-
-        // Process the prompt
-        let session_id = uuid::Uuid::new_v4().to_string();
-        let result =
-            crate::llm_provider::providers::shared::deepseek_api::deepseek_prepare_messages(&model, prompt, session_id)
-                .expect("Failed to prepare messages");
-
-        // Extract the messages from the result
-        let messages = match &result.messages {
-            PromptResultEnum::Value(value) => value.as_array().unwrap(),
-            _ => panic!("Expected Value variant"),
-        };
-
-        // Verify that only non-system messages remain
-        assert_eq!(messages.len(), 2, "Should only have 2 messages after filtering");
-
-        // Check that the remaining messages are the user messages
-        for message in messages {
-            let role = message["role"].as_str().unwrap();
-            assert_eq!(role, "user", "All remaining messages should be user messages");
-        }
+        ]);
+        let model = LLMProviderInterface::DeepSeek(DeepSeek {
+            model_type: "deepseek-flash".to_string(),
+        });
+        let result = crate::llm_provider::providers::shared::deepseek_api::deepseek_prepare_messages(
+            &model,
+            prompt,
+            uuid::Uuid::new_v4().to_string(),
+        )
+        .expect("Failed to prepare messages");
+        assert_eq!(
+            result.messages,
+            PromptResultEnum::Value(json!([
+                {"role": "system", "content": "Keep this system instruction"},
+                {"role": "user", "content": "First user message"},
+                {"role": "user", "content": "Last user message"}
+            ]))
+        );
     }
 
     #[test]

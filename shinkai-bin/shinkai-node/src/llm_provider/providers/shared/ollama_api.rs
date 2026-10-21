@@ -405,6 +405,7 @@ mod tests {
                 content: None,
                 name: None,
                 function_call: Some(DetailedFunctionCall {
+                    provider_metadata: None,
                     name: "shinkai__echo".to_string(),
                     arguments: "{\"message\":\"hello\"}".to_string(),
                     id: None,
@@ -467,6 +468,7 @@ mod tests {
                 content: None,
                 name: None,
                 function_call: Some(DetailedFunctionCall {
+                    provider_metadata: None,
                     name: "get_weather".to_string(),
                     arguments: "{\"location\":\"Tokyo\"}".to_string(),
                     id: Some("call_123".to_string()),

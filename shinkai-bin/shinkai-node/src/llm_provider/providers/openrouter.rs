@@ -2,7 +2,7 @@ use std::error::Error;
 use std::sync::Arc;
 
 use super::super::error::LLMProviderError;
-use super::shared::openai_api::{openai_prepare_messages, MessageContent, OpenAIResponse};
+use super::shared::openai_api::openai_prepare_messages;
 use super::shared::shared_model_logic::{send_tool_ws_update, send_ws_update};
 use super::LLMService;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
@@ -221,6 +221,7 @@ async fn handle_streaming_response(
     let mut response_text = String::new();
     let mut previous_json_chunk: String = String::new();
     let mut function_calls: Vec<FunctionCall> = Vec::new();
+    let mut state = OpenRouterResponseState::default();
     let mut is_done_sent = false; // Track if any WS message with is_done: true has been sent
 
     while let Some(item) = stream.next().await {
@@ -273,8 +274,13 @@ async fn handle_streaming_response(
                             let data_resp: Result<JsonValue, _> = serde_json::from_str(json_str);
                             match data_resp {
                                 Ok(data) => {
-                                    let new_content =
-                                        process_streaming_chunk(&data, &mut response_text, &mut function_calls, &tools);
+                                    let new_content = process_streaming_chunk(
+                                        &data,
+                                        &mut response_text,
+                                        &mut function_calls,
+                                        &tools,
+                                        &mut state,
+                                    );
 
                                     // Check for finish_reason to determine if stream is done
                                     let is_finished = data
@@ -332,8 +338,13 @@ async fn handle_streaming_response(
                     match data_resp {
                         Ok(data) => {
                             previous_json_chunk = "".to_string();
-                            let new_content =
-                                process_streaming_chunk(&data, &mut response_text, &mut function_calls, &tools);
+                            let new_content = process_streaming_chunk(
+                                &data,
+                                &mut response_text,
+                                &mut function_calls,
+                                &tools,
+                                &mut state,
+                            );
 
                             // Check for finish_reason to determine if stream is done
                             let is_finished = data
@@ -401,6 +412,8 @@ async fn handle_streaming_response(
         )
         .await;
     }
+
+    state.attach_reasoning(&mut function_calls);
 
     Ok(LLMInferenceResponse::new(
         response_text,
@@ -472,70 +485,16 @@ async fn handle_non_streaming_response(
                             });
                         }
 
-                        let data: OpenAIResponse = serde_json::from_value(value).map_err(LLMProviderError::SerdeError)?;
-
-                        let response_string: String = data
-                            .choices
-                            .iter()
-                            .filter_map(|choice| match &choice.message.content {
-                                Some(MessageContent::Text(text)) => {
-                                    // Unescape the JSON string
-                                    let cleaned_json_str = text.replace("\\\"", "\"").replace("\\n", "\n");
-                                    Some(cleaned_json_str)
-                                }
-                                Some(MessageContent::ImageUrl { .. }) => None,
-                                Some(MessageContent::FunctionCall(_)) => None,
-                                None => None,
-                            })
-                            .collect::<Vec<String>>()
-                            .join(" ");
-
-                        let function_call: Option<FunctionCall> = data.choices.iter().find_map(|choice| {
-                            choice.message.tool_calls.as_ref().and_then(|tool_calls| {
-                                tool_calls.first().map(|tool_call| {
-                                    let arguments = serde_json::from_str::<serde_json::Value>(&tool_call.function.arguments)
-                                        .ok()
-                                        .and_then(|args_value: serde_json::Value| args_value.as_object().cloned())
-                                        .unwrap_or_else(|| serde_json::Map::new());
-
-                                    // Extract tool_router_key from tools array
-                                    let tool_router_key = tools.as_ref().and_then(|tools_array| {
-                                        tools_array.iter().find_map(|tool| {
-                                            if tool.get("name")?.as_str()? == tool_call.function.name {
-                                                tool.get("tool_router_key").and_then(|key| key.as_str().map(|s| s.to_string()))
-                                            } else {
-                                                None
-                                            }
-                                        })
-                                    });
-
-                                    FunctionCall {
-                                        name: tool_call.function.name.clone(),
-                                        arguments,
-                                        tool_router_key,
-                                        response: None,
-                                        index: 0,
-                                        id: Some(tool_call.id.clone()),
-                                        call_type: Some(tool_call.call_type.clone()),
-                                    }
-                                })
-                            })
-                        });
-
-                        // Send WebSocket update for tool call
-                        if let Some(ref function_call) = function_call {
+                        let mut response_string = String::new();
+                        let mut function_calls = Vec::new();
+                        let mut state = OpenRouterResponseState::default();
+                        process_streaming_chunk(&value, &mut response_string, &mut function_calls, &tools, &mut state);
+                        state.attach_reasoning(&mut function_calls);
+                        for function_call in &function_calls {
                             let _ = send_tool_ws_update(&ws_manager_trait, inbox_name.clone(), function_call).await;
                         }
-
-                        eprintln!("Function Call: {:?}", function_call);
-                        eprintln!("Response String: {:?}", response_string);
                         return Ok(LLMInferenceResponse::new(
-                            response_string,
-                            None,
-                            json!({}),
-                            function_call.map_or_else(Vec::new, |fc| vec![fc]),
-                            Vec::new(),
-                            None,
+                            response_string, None, json!({}), function_calls, Vec::new(), None,
                         ));
                     }
                     Err(e) => {
@@ -552,114 +511,103 @@ async fn handle_non_streaming_response(
     }
 }
 
+#[derive(Default)]
+struct OpenRouterResponseState {
+    reasoning_details: Vec<JsonValue>,
+    content: String,
+    arguments: std::collections::HashMap<u64, String>,
+}
+
+impl OpenRouterResponseState {
+    fn attach_reasoning(&self, calls: &mut [FunctionCall]) {
+        if calls.is_empty() {
+            return;
+        }
+        let native_calls: Vec<_> = calls.iter().map(|call| json!({
+            "id": call.id, "type": call.call_type.as_deref().unwrap_or("function"),
+            "function": {"name": call.name, "arguments": self.arguments.get(&call.index).cloned().unwrap_or_else(|| serde_json::to_string(&call.arguments).unwrap_or_default())}
+        })).collect();
+        let mut assistant = json!({"role":"assistant", "content": if self.content.is_empty() { JsonValue::Null } else { json!(self.content) }, "tool_calls": native_calls});
+        if !self.reasoning_details.is_empty() {
+            assistant["reasoning_details"] = json!(self.reasoning_details);
+        }
+        for call in calls {
+            call.provider_metadata =
+                Some(json!({"reasoning_details":self.reasoning_details, "openrouter_assistant":assistant}));
+        }
+    }
+}
+
 fn process_streaming_chunk(
     data: &JsonValue,
     response_text: &mut String,
     function_calls: &mut Vec<FunctionCall>,
     tools: &Option<Vec<JsonValue>>,
+    state: &mut OpenRouterResponseState,
 ) -> String {
     let mut new_content = String::new();
-    if let Some(choices) = data.get("choices") {
-        for choice in choices.as_array().unwrap_or(&vec![]) {
-            // Handle streaming delta content
-            if let Some(delta) = choice.get("delta") {
-                if let Some(content) = delta.get("content") {
-                    let content_str = content.as_str().unwrap_or("");
-                    response_text.push_str(content_str);
-                    new_content.push_str(content_str); // Track new content for WS update
-                }
-
-                // Handle streaming tool calls
-                if let Some(tool_calls) = delta.get("tool_calls") {
-                    if let Some(tool_calls_array) = tool_calls.as_array() {
-                        for tool_call in tool_calls_array {
-                            if let Some(function) = tool_call.get("function") {
-                                if let Some(name) = function.get("name") {
-                                    let fc_arguments = function
-                                        .get("arguments")
-                                        .and_then(|args| args.as_str())
-                                        .and_then(|args_str| serde_json::from_str(args_str).ok())
-                                        .and_then(|args_value: serde_json::Value| args_value.as_object().cloned())
-                                        .unwrap_or_else(|| serde_json::Map::new());
-
-                                    // Extract tool_router_key
-                                    let tool_router_key = tools.as_ref().and_then(|tools_array| {
-                                        tools_array.iter().find_map(|tool| {
-                                            if tool.get("name")?.as_str()? == name.as_str().unwrap_or("") {
-                                                tool.get("tool_router_key")
-                                                    .and_then(|key| key.as_str().map(|s| s.to_string()))
-                                            } else {
-                                                None
-                                            }
-                                        })
-                                    });
-
-                                    function_calls.push(FunctionCall {
-                                        name: name.as_str().unwrap_or("").to_string(),
-                                        arguments: fc_arguments.clone(),
-                                        tool_router_key,
-                                        response: None,
-                                        index: function_calls.len() as u64,
-                                        id: tool_call.get("id").and_then(|id| id.as_str()).map(|s| s.to_string()),
-                                        call_type: tool_call
-                                            .get("type")
-                                            .and_then(|t| t.as_str())
-                                            .map(|s| s.to_string())
-                                            .or(Some("function".to_string())),
-                                    });
-                                }
-                            }
-                        }
-                    }
-                }
+    // A request selects one completion. Do not mix reasoning from other choices.
+    if let Some(choice) = data.get("choices").and_then(|c| c.as_array()).and_then(|c| c.first()) {
+        if let Some(message) = choice.get("delta").or_else(|| choice.get("message")) {
+            if let Some(content) = message.get("content").and_then(|c| c.as_str()) {
+                state.content.push_str(content);
+                response_text.push_str(content);
+                new_content.push_str(content);
             }
-
-            // Handle non-streaming message format (fallback)
-            if let Some(message) = choice.get("message") {
-                if let Some(content) = message.get("content") {
-                    let content_str = content.as_str().unwrap_or("");
-                    response_text.push_str(content_str);
-                    new_content.push_str(content_str); // Track new content for WS update
-                }
-                if let Some(tool_calls) = message.get("tool_calls") {
-                    if let Some(tool_calls_array) = tool_calls.as_array() {
-                        for tool_call in tool_calls_array {
-                            if let Some(function) = tool_call.get("function") {
-                                if let Some(name) = function.get("name") {
-                                    let fc_arguments = function
-                                        .get("arguments")
-                                        .and_then(|args| args.as_str())
-                                        .and_then(|args_str| serde_json::from_str(args_str).ok())
-                                        .and_then(|args_value: serde_json::Value| args_value.as_object().cloned())
-                                        .unwrap_or_else(|| serde_json::Map::new());
-
-                                    // Extract tool_router_key
-                                    let tool_router_key = tools.as_ref().and_then(|tools_array| {
-                                        tools_array.iter().find_map(|tool| {
-                                            if tool.get("name")?.as_str()? == name.as_str().unwrap_or("") {
-                                                tool.get("tool_router_key")
-                                                    .and_then(|key| key.as_str().map(|s| s.to_string()))
-                                            } else {
-                                                None
-                                            }
-                                        })
-                                    });
-
-                                    function_calls.push(FunctionCall {
-                                        name: name.as_str().unwrap_or("").to_string(),
-                                        arguments: fc_arguments.clone(),
-                                        tool_router_key,
-                                        response: None,
-                                        index: function_calls.len() as u64,
-                                        id: tool_call.get("id").and_then(|id| id.as_str()).map(|s| s.to_string()),
-                                        call_type: tool_call
-                                            .get("type")
-                                            .and_then(|t| t.as_str())
-                                            .map(|s| s.to_string())
-                                            .or(Some("function".to_string())),
-                                    });
+            // OpenRouter requires the complete sequence, unchanged and in arrival order.
+            // https://openrouter.ai/docs/guides/best-practices/reasoning-tokens
+            if let Some(details) = message.get("reasoning_details").and_then(|r| r.as_array()) {
+                state.reasoning_details.extend(details.iter().cloned());
+            }
+            if let Some(tool_calls) = message.get("tool_calls").and_then(|t| t.as_array()) {
+                for (position, tool_call) in tool_calls.iter().enumerate() {
+                    let index = tool_call
+                        .get("index")
+                        .and_then(|i| i.as_u64())
+                        .unwrap_or(position as u64);
+                    let function = tool_call.get("function");
+                    let call_position = function_calls.iter().position(|c| c.index == index).unwrap_or_else(|| {
+                        function_calls.push(FunctionCall {
+                            name: String::new(),
+                            arguments: serde_json::Map::new(),
+                            tool_router_key: None,
+                            response: None,
+                            index,
+                            id: None,
+                            call_type: Some("function".into()),
+                            provider_metadata: None,
+                        });
+                        function_calls.len() - 1
+                    });
+                    let call = &mut function_calls[call_position];
+                    if let Some(id) = tool_call.get("id").and_then(|id| id.as_str()) {
+                        call.id = Some(id.into());
+                    }
+                    if let Some(kind) = tool_call.get("type").and_then(|t| t.as_str()) {
+                        call.call_type = Some(kind.into());
+                    }
+                    if let Some(name) = function.and_then(|f| f.get("name")).and_then(|n| n.as_str()) {
+                        call.name.push_str(name);
+                        call.tool_router_key = tools.as_ref().and_then(|tools| {
+                            tools.iter().find_map(|tool| {
+                                let definition = tool.get("function").unwrap_or(tool);
+                                if definition.get("name").and_then(|n| n.as_str()) == Some(call.name.as_str()) {
+                                    definition
+                                        .get("tool_router_key")
+                                        .or_else(|| tool.get("tool_router_key"))
+                                        .and_then(|key| key.as_str())
+                                        .map(str::to_owned)
+                                } else {
+                                    None
                                 }
-                            }
+                            })
+                        });
+                    }
+                    if let Some(arguments) = function.and_then(|f| f.get("arguments")).and_then(|a| a.as_str()) {
+                        let buffer = state.arguments.entry(index).or_default();
+                        buffer.push_str(arguments);
+                        if let Ok(JsonValue::Object(arguments)) = serde_json::from_str(buffer) {
+                            call.arguments = arguments;
                         }
                     }
                 }
@@ -715,5 +663,127 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
                 };
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod reasoning_details_tests {
+    use super::*;
+
+    #[test]
+    fn streaming_reasoning_survives_fragmented_parallel_tool_calls() {
+        let mut state = OpenRouterResponseState::default();
+        let mut text = String::new();
+        let mut calls = Vec::new();
+        let first = json!({"type":"reasoning.text", "text":"Plan", "index":0, "signature":null});
+        let second =
+            json!({"type":"reasoning.encrypted", "data":"opaque-signature", "format":"google-gemini-v1", "index":1});
+        for delta in [
+            json!({"reasoning_details":[first.clone()]}),
+            json!({"tool_calls":[{"index":0,"id":"call_0","type":"function","function":{"name":"lookup","arguments":"{\"city\":"}}]}),
+            json!({"reasoning_details":[second.clone()],"tool_calls":[{"index":0,"function":{"arguments":"\"Paris\"}"}},{"index":1,"id":"call_1","function":{"name":"clock","arguments":"{}"}}]}),
+        ] {
+            process_streaming_chunk(
+                &json!({"choices":[{"delta":delta}]}),
+                &mut text,
+                &mut calls,
+                &None,
+                &mut state,
+            );
+        }
+        state.attach_reasoning(&mut calls);
+        assert!(text.is_empty());
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].arguments.get("city"), Some(&json!("Paris")));
+        assert_eq!(calls[0].id.as_deref(), Some("call_0"));
+        for call in calls {
+            assert_eq!(
+                call.provider_metadata.as_ref().unwrap()["reasoning_details"],
+                json!([first.clone(), second.clone()])
+            );
+            assert_eq!(
+                call.provider_metadata.as_ref().unwrap()["openrouter_assistant"]["tool_calls"]
+                    .as_array()
+                    .unwrap()
+                    .len(),
+                2
+            );
+        }
+    }
+
+    #[test]
+    fn parallel_tool_turn_roundtrips_through_production_prompt_once() {
+        let details = json!([{"type":"reasoning.encrypted","data":"signed","index":0}]);
+        let mut prompt = Prompt::new();
+        // Two distinct turns intentionally have identical reasoning. Their call IDs
+        // establish turn identity; equal reasoning must not combine them.
+        for prefix in ["first", "second"] {
+            let response = json!({"choices":[{"message":{
+                "role":"assistant", "content":"I will check both.", "reasoning_details":details,
+                "tool_calls":[
+                    {"id":format!("{prefix}_a"),"type":"function","function":{"name":"lookup","arguments":"{\"city\":\"Paris\"}"}},
+                    {"id":format!("{prefix}_b"),"type":"function","function":{"name":"clock","arguments":"{}"}}
+                ]
+            }}]});
+            let mut state = OpenRouterResponseState::default();
+            let mut calls = Vec::new();
+            process_streaming_chunk(&response, &mut String::new(), &mut calls, &None, &mut state);
+            state.attach_reasoning(&mut calls);
+            for call in calls {
+                prompt.add_function_call(json!({"call_id":call.id,"name":call.name,"arguments":call.arguments,"provider_metadata":call.provider_metadata}),100);
+                prompt.add_function_call_response(
+                    json!({"function_call":{"id":call.id,"name":call.name},"response":"ok"}),
+                    100,
+                );
+            }
+        }
+        let provider = LLMProviderInterface::OpenRouter(OpenRouter {
+            model_type: "anthropic/claude-opus-5.5".into(),
+        });
+        let prepared = openai_prepare_messages(&provider, prompt).unwrap();
+        let PromptResultEnum::Value(messages) = prepared.messages else {
+            panic!("Expected messages")
+        };
+        let messages = messages.as_array().unwrap();
+        assert_eq!(messages.len(), 6);
+        for (offset, prefix) in [(0, "first"), (3, "second")] {
+            assert_eq!(messages[offset]["role"], "assistant");
+            assert_eq!(messages[offset]["content"], "I will check both.");
+            assert_eq!(messages[offset]["reasoning_details"], details);
+            assert_eq!(messages[offset]["tool_calls"].as_array().unwrap().len(), 2);
+            assert_eq!(messages[offset]["tool_calls"][0]["id"], format!("{prefix}_a"));
+            assert_eq!(messages[offset]["tool_calls"][1]["id"], format!("{prefix}_b"));
+            for (result_index, suffix) in [(offset + 1, "a"), (offset + 2, "b")] {
+                assert_eq!(messages[result_index]["role"], "tool");
+                assert_eq!(messages[result_index]["tool_call_id"], format!("{prefix}_{suffix}"));
+                assert!(messages[result_index].get("reasoning_details").is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn nonstreaming_keeps_all_tool_calls_and_complete_reasoning() {
+        let details = json!([
+            {"type":"reasoning.text","text":"Plan","signature":"signed","index":0},
+            {"type":"reasoning.encrypted","data":"opaque","index":1}
+        ]);
+        let response = json!({"choices":[{"message":{
+            "content":null,"reasoning_details":details,
+            "tool_calls":[
+                {"id":"a","type":"function","function":{"name":"one","arguments":"{}"}},
+                {"id":"b","type":"function","function":{"name":"two","arguments":"{\"x\":2}"}}
+            ]
+        }}]});
+        let mut state = OpenRouterResponseState::default();
+        let mut calls = Vec::new();
+        process_streaming_chunk(&response, &mut String::new(), &mut calls, &None, &mut state);
+        state.attach_reasoning(&mut calls);
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[1].arguments.get("x"), Some(&json!(2)));
+        assert_eq!(
+            calls[0].provider_metadata.as_ref().unwrap()["reasoning_details"],
+            details
+        );
+        assert_eq!(calls[0].provider_metadata, calls[1].provider_metadata);
     }
 }

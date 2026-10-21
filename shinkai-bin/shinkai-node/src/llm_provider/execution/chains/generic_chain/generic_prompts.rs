@@ -154,6 +154,7 @@ impl JobPromptGenerator {
             for function_call in function_calls {
                 // Convert FunctionCall to Value
                 let function_call_value = json!({
+                    "provider_metadata": function_call.function_call.provider_metadata,
                     "name": function_call.function_call.name,
                     "call_id": function_call.function_call.id,
                     "arguments": function_call.function_call.arguments

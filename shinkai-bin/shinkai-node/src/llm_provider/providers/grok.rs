@@ -44,7 +44,7 @@ impl LLMService for Grok {
         let session_id = Uuid::new_v4().to_string();
         if let Some(base_url) = url {
             if let Some(key) = api_key {
-                let url = format!("{}/v1/chat/completions", base_url);
+                let url = grok_chat_url(base_url);
                 let is_stream = config.as_ref().and_then(|c| c.stream).unwrap_or(true);
 
                 let result = openai_prepare_messages(&model, prompt)?;
@@ -365,6 +365,7 @@ async fn handle_streaming_response(
                                                                         });
 
                                                                     let function_call = FunctionCall {
+                                                                        provider_metadata: None,
                                                                         name: name.as_str().unwrap_or("").to_string(),
                                                                         arguments: fc_arguments.clone(),
                                                                         tool_router_key,
@@ -586,6 +587,7 @@ async fn handle_non_streaming_response(
                                     });
 
                                     calls.push(FunctionCall {
+                    provider_metadata: None,
                                         name: tool_call.function.name.clone(),
                                         arguments,
                                         tool_router_key,
@@ -634,6 +636,19 @@ async fn handle_non_streaming_response(
     }
 }
 
+fn grok_chat_url(base_url: &str) -> String {
+    let base_url = base_url.trim_end_matches('/');
+    if base_url.ends_with("/v1") {
+        format!("{}/chat/completions", base_url)
+    } else {
+        format!("{}/v1/chat/completions", base_url)
+    }
+}
+
+fn grok_is_reasoning_model(model: &str) -> bool {
+    (model.starts_with("grok-4") && !model.contains("non-reasoning")) || model.starts_with("grok-3-mini")
+}
+
 fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobConfig>) {
     // Helper function to read and parse environment variables
     fn read_env_var<T: std::str::FromStr>(key: &str) -> Option<T> {
@@ -659,11 +674,16 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
         payload["max_completion_tokens"] = serde_json::json!(max_tokens);
     }
 
+    if let Some(effort) = config.and_then(|c| c.reasoning_effort.as_ref()) {
+        payload["reasoning_effort"] = json!(effort);
+    }
+
     // Handle other model params
     if let Some(other_params) = config.and_then(|c| c.other_model_params.as_ref()) {
         if let Some(obj) = other_params.as_object() {
             for (key, value) in obj {
                 match key.as_str() {
+                    "reasoning_effort" => payload["reasoning_effort"] = value.clone(),
                     "frequency_penalty" => payload["frequency_penalty"] = value.clone(),
                     "logit_bias" => payload["logit_bias"] = value.clone(),
                     "logprobs" => payload["logprobs"] = value.clone(),
@@ -680,5 +700,61 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
                 };
             }
         }
+    }
+    // The older Grok 4 models do not support adjustable reasoning effort.
+    let model = payload["model"].as_str().unwrap_or_default();
+    let supports_effort = model.starts_with("grok-3-mini")
+        || ["grok-4.5", "grok-4.6", "grok-4.7"]
+            .iter()
+            .any(|prefix| model.starts_with(prefix));
+    let is_reasoning = grok_is_reasoning_model(model);
+    if !supports_effort {
+        payload.as_object_mut().unwrap().remove("reasoning_effort");
+    }
+    // xAI rejects penalties and stop sequences for reasoning models.
+    if is_reasoning {
+        let payload = payload.as_object_mut().unwrap();
+        for key in ["presence_penalty", "frequency_penalty", "stop"] {
+            payload.remove(key);
+        }
+    }
+}
+
+#[cfg(test)]
+mod request_tests {
+    use super::*;
+
+    #[test]
+    fn grok_url_accepts_root_and_versioned_base() {
+        for base in [
+            "https://api.x.ai",
+            "https://api.x.ai/",
+            "https://api.x.ai/v1",
+            "https://api.x.ai/v1/",
+        ] {
+            assert_eq!(grok_chat_url(base), "https://api.x.ai/v1/chat/completions");
+        }
+    }
+
+    #[test]
+    fn grok_reasoning_options_remove_rejected_fields() {
+        let mut config = JobConfig::empty();
+        config.reasoning_effort = Some("high".to_string());
+        config.other_model_params = Some(json!({"presence_penalty": 0.5, "frequency_penalty": 0.5, "stop": ["END"]}));
+        for model in ["grok-4.7", "grok-4.6", "grok-4.5", "grok-4", "grok-3-mini"] {
+            let mut payload = json!({"model": model});
+            add_options_to_payload(&mut payload, Some(&config));
+            if model == "grok-4" {
+                assert!(payload.get("reasoning_effort").is_none());
+            } else {
+                assert_eq!(payload["reasoning_effort"], "high");
+            }
+            for field in ["presence_penalty", "frequency_penalty", "stop"] {
+                assert!(payload.get(field).is_none(), "{} contains {}", model, field);
+            }
+        }
+        let mut payload = json!({"model": "grok-4-1-fast-non-reasoning"});
+        add_options_to_payload(&mut payload, Some(&config));
+        assert_eq!(payload["presence_penalty"], 0.5);
     }
 }

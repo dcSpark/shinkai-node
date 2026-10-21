@@ -140,26 +140,6 @@ impl LLMService for Claude {
                     payload.as_object_mut().unwrap().remove("top_p");
                 }
 
-                // If thinking is enabled, subtract the thinking budget from the max_tokens
-                if let Some(thinking) = payload.get("thinking") {
-                    if let Some(thinking_type) = thinking.get("type") {
-                        if thinking_type.as_str() == Some("enabled") {
-                            if let (Some(max_tokens), Some(budget_tokens)) =
-                                (payload["max_tokens"].as_u64(), thinking["budget_tokens"].as_u64())
-                            {
-                                // Ensure we don't underflow and maintain a minimum of 1 token for actual output
-                                let adjusted_max_tokens = if budget_tokens >= max_tokens {
-                                    1 // Minimum token count for output
-                                } else {
-                                    max_tokens - budget_tokens
-                                };
-
-                                payload["max_tokens"] = serde_json::json!(adjusted_max_tokens);
-                            }
-                        }
-                    }
-                }
-
                 // Print payload as a pretty JSON string
                 let mut payload_log = payload.clone();
                 truncate_image_content_in_claude_payload(&mut payload_log);
@@ -278,6 +258,7 @@ async fn handle_streaming_response(
     let mut processed_tool: Option<ProcessedTool> = None;
     let mut function_calls = Vec::new();
     let mut buffer = String::new();
+    let mut native_content = ClaudeContentCollector::default();
 
     while let Some(item) = stream.next().await {
         // Check if we need to stop the LLM job
@@ -321,6 +302,7 @@ async fn handle_streaming_response(
                     match parse_one_event(&buffer) {
                         Ok((processed_chunk, consumed_bytes)) => {
                             // Remove only the processed part from the buffer
+                            native_content.push_event(&buffer[..consumed_bytes]);
                             buffer.drain(..consumed_bytes);
 
                             // Update response text
@@ -369,6 +351,7 @@ async fn handle_streaming_response(
                                     response: None,
                                     index: function_calls.len() as u64,
                                     id: None,
+                                    provider_metadata: None,
                                     call_type: Some("function".to_string()),
                                 };
 
@@ -431,6 +414,13 @@ async fn handle_streaming_response(
                 return Err(LLMProviderError::NetworkError(e.to_string()));
             }
         }
+    }
+
+    let content = native_content.content();
+    let native_tools: Vec<_> = content.iter().filter(|block| block["type"] == "tool_use").collect();
+    for (call, block) in function_calls.iter_mut().zip(native_tools) {
+        call.id = block["id"].as_str().map(str::to_owned);
+        call.provider_metadata = Some(json!({"claude_content": content.clone()}));
     }
 
     Ok(LLMInferenceResponse::new(
@@ -539,7 +529,8 @@ async fn handle_non_streaming_response(
                                         tool_router_key,
                                         response: None,
                                         index: function_calls.len() as u64,
-                                        id: None,
+                                        id: content_block["id"].as_str().map(str::to_owned),
+                                        provider_metadata: Some(json!({"claude_content": content.clone()})),
                                         call_type: Some("function".to_string()),
                                     };
 
@@ -605,9 +596,6 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
     }
 
     // Read options from environment variables or config and add them directly to the payload
-    if let Some(seed) = get_value("LLM_SEED", config.and_then(|c| c.seed.as_ref())) {
-        payload["seed"] = serde_json::json!(seed);
-    }
     if let Some(temp) = get_value("LLM_TEMPERATURE", config.and_then(|c| c.temperature.as_ref())) {
         payload["temperature"] = serde_json::json!(temp);
     }
@@ -619,7 +607,7 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
     }
 
     if let Some(max_tokens) = get_value("LLM_MAX_TOKENS", config.and_then(|c| c.max_tokens.as_ref())) {
-        payload["max_completion_tokens"] = serde_json::json!(max_tokens);
+        payload["max_tokens"] = serde_json::json!(max_tokens);
     }
     if let Some(thinking) = get_value("LLM_THINKING", config.and_then(|c| c.thinking.as_ref())) {
         // Check if there are actual tool calls in the messages - if so, disable thinking to avoid API errors
@@ -630,7 +618,28 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
             .map(|messages| has_tool_calls_in_messages(messages))
             .unwrap_or(false);
 
-        if thinking && !has_tool_calls {
+        let preserved_thinking = payload["messages"]
+            .as_array()
+            .map(|messages| {
+                messages
+                    .iter()
+                    .filter(|message| message["role"] == "assistant")
+                    .all(|message| {
+                        let blocks = message["content"].as_array();
+                        !blocks
+                            .map(|blocks| blocks.iter().any(|block| block["type"] == "tool_use"))
+                            .unwrap_or(false)
+                            || blocks
+                                .map(|blocks| {
+                                    blocks.iter().any(|block| {
+                                        block["type"] == "thinking" || block["type"] == "redacted_thinking"
+                                    })
+                                })
+                                .unwrap_or(false)
+                    })
+            })
+            .unwrap_or(false);
+        if thinking && (!has_tool_calls || preserved_thinking) {
             let reasoning_effort = get_value("LLM_REASONING_EFFORT", config.and_then(|c| c.reasoning_effort.as_ref()));
             let budget_tokens = match reasoning_effort {
                 Some(effort) => match effort.to_string().as_str() {
@@ -666,22 +675,107 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
         if let Some(obj) = other_params.as_object() {
             for (key, value) in obj {
                 match key.as_str() {
-                    "frequency_penalty" => payload["frequency_penalty"] = value.clone(),
-                    "logit_bias" => payload["logit_bias"] = value.clone(),
-                    "logprobs" => payload["logprobs"] = value.clone(),
-                    "top_logprobs" => payload["top_logprobs"] = value.clone(),
-                    "max_completion_tokens" => payload["max_completion_tokens"] = value.clone(),
-                    "n" => payload["n"] = value.clone(),
-                    "presence_penalty" => payload["presence_penalty"] = value.clone(),
-                    "response_format" => payload["response_format"] = value.clone(),
-                    "service_tier" => payload["service_tier"] = value.clone(),
-                    "stop" => payload["stop"] = value.clone(),
-                    "stream_options" => payload["stream_options"] = value.clone(),
-                    "parallel_tool_calls" => payload["parallel_tool_calls"] = value.clone(),
+                    "max_completion_tokens" | "max_tokens" => payload["max_tokens"] = value.clone(),
+                    "stop" | "stop_sequences" => payload["stop_sequences"] = value.clone(),
+                    "service_tier" | "output_config" | "metadata" => payload[key] = value.clone(),
                     _ => (),
                 };
             }
         }
+    }
+    // Current Claude models use adaptive thinking and reject sampling overrides.
+    let model = payload["model"].as_str().unwrap_or_default();
+    let adaptive = model.starts_with("claude-opus-4-6")
+        || model.starts_with("claude-sonnet-4-6")
+        || model.starts_with("claude-opus-4-7")
+        || model.starts_with("claude-opus-4-8")
+        || model.starts_with("claude-opus-5")
+        || model.starts_with("claude-sonnet-5")
+        || model.starts_with("claude-haiku-5")
+        || model.starts_with("claude-fable-5");
+    let always_thinking = model.starts_with("claude-opus-5-5")
+        || model.starts_with("claude-sonnet-5-5")
+        || model.starts_with("claude-fable-5");
+    let fixed_sampling = adaptive && !model.starts_with("claude-opus-4-6") && !model.starts_with("claude-sonnet-4-6");
+    if adaptive && (always_thinking || payload["thinking"]["type"] == "enabled") {
+        payload["thinking"] = serde_json::json!({"type": "adaptive"});
+        if let Some(effort) = get_value("LLM_REASONING_EFFORT", config.and_then(|c| c.reasoning_effort.as_ref())) {
+            if matches!(effort.as_str(), "low" | "medium" | "high" | "xhigh" | "max") {
+                payload["output_config"]["effort"] = serde_json::json!(effort);
+            }
+        }
+    }
+    if fixed_sampling {
+        for key in ["temperature", "top_p", "top_k"] {
+            payload.as_object_mut().unwrap().remove(key);
+        }
+    }
+    // max_tokens includes thinking. A manual budget must be smaller than it.
+    if let Some(budget) = payload["thinking"]["budget_tokens"].as_u64() {
+        if let Some(max_tokens) = payload["max_tokens"].as_u64() {
+            if max_tokens <= 1024 {
+                payload["thinking"] = serde_json::json!({"type": "disabled"});
+            } else if budget >= max_tokens {
+                payload["thinking"]["budget_tokens"] = serde_json::json!(max_tokens - 1);
+            }
+        }
+    }
+}
+
+/// Rebuild native content by block index without changing signed thinking data.
+#[derive(Default)]
+struct ClaudeContentCollector {
+    blocks: std::collections::BTreeMap<u64, JsonValue>,
+    inputs: std::collections::HashMap<u64, String>,
+}
+
+impl ClaudeContentCollector {
+    fn push_event(&mut self, event: &str) {
+        let data = event
+            .lines()
+            .filter_map(|line| line.strip_prefix("data: "))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let Ok(value) = serde_json::from_str::<JsonValue>(&data) else {
+            return;
+        };
+        let index = value["index"].as_u64().unwrap_or(0);
+        match value["type"].as_str() {
+            Some("content_block_start") => {
+                self.blocks.insert(index, value["content_block"].clone());
+            }
+            Some("content_block_delta") => {
+                let delta = &value["delta"];
+                if delta["type"] == "input_json_delta" {
+                    self.inputs
+                        .entry(index)
+                        .or_default()
+                        .push_str(delta["partial_json"].as_str().unwrap_or_default());
+                } else if let Some(block) = self.blocks.get_mut(&index) {
+                    let field = match delta["type"].as_str() {
+                        Some("thinking_delta") => "thinking",
+                        Some("signature_delta") => "signature",
+                        Some("text_delta") => "text",
+                        _ => return,
+                    };
+                    let mut text = block[field].as_str().unwrap_or_default().to_owned();
+                    text.push_str(delta[field].as_str().unwrap_or_default());
+                    block[field] = json!(text);
+                }
+            }
+            Some("content_block_stop") => {
+                if let (Some(input), Some(block)) = (self.inputs.remove(&index), self.blocks.get_mut(&index)) {
+                    if let Ok(input) = serde_json::from_str::<JsonValue>(&input) {
+                        block["input"] = input;
+                    }
+                }
+            }
+            _ => (),
+        }
+    }
+
+    fn content(&self) -> Vec<JsonValue> {
+        self.blocks.values().cloned().collect()
     }
 }
 
@@ -923,6 +1017,47 @@ fn process_chunk(chunk: &[u8]) -> Result<ProcessedChunk, LLMProviderError> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn test_signed_content_stream_collection() {
+        let events = [
+            json!({"type": "content_block_start", "index": 0, "content_block": {"type": "thinking", "thinking": "", "signature": ""}}),
+            json!({"type": "content_block_delta", "index": 0, "delta": {"type": "thinking_delta", "thinking": "Think"}}),
+            json!({"type": "content_block_delta", "index": 0, "delta": {"type": "signature_delta", "signature": "signed"}}),
+            json!({"type": "content_block_start", "index": 1, "content_block": {"type": "redacted_thinking", "data": "opaque"}}),
+            json!({"type": "content_block_start", "index": 2, "content_block": {"type": "tool_use", "id": "toolu_a", "name": "tool", "input": {}}}),
+            json!({"type": "content_block_delta", "index": 2, "delta": {"type": "input_json_delta", "partial_json": "{\"query\":\"test\"}"}}),
+            json!({"type": "content_block_stop", "index": 2}),
+        ];
+        let mut collector = ClaudeContentCollector::default();
+        for event in events {
+            collector.push_event(&format!("event: test\ndata: {}\n\n", event));
+        }
+        assert_eq!(
+            collector.content(),
+            vec![
+                json!({"type": "thinking", "thinking": "Think", "signature": "signed"}),
+                json!({"type": "redacted_thinking", "data": "opaque"}),
+                json!({"type": "tool_use", "id": "toolu_a", "name": "tool", "input": {"query": "test"}}),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_current_claude_request_options() {
+        let mut config = JobConfig::empty();
+        config.max_tokens = Some(8192);
+        config.thinking = Some(false);
+        config.temperature = Some(0.3);
+        config.reasoning_effort = Some("high".into());
+        let mut payload = serde_json::json!({"model": "claude-opus-5-5", "max_tokens": 4096});
+        add_options_to_payload(&mut payload, Some(&config));
+        assert_eq!(payload["max_tokens"], 8192);
+        assert_eq!(payload["thinking"]["type"], "adaptive");
+        assert_eq!(payload["output_config"]["effort"], "high");
+        assert!(payload.get("temperature").is_none());
+        assert!(payload.get("max_completion_tokens").is_none());
+    }
+
     use super::*;
 
     #[tokio::test]

@@ -45,7 +45,7 @@ impl LLMService for OpenAI {
         if let Some(base_url) = url {
             if let Some(key) = api_key {
                 // Use the Responses API endpoint
-                let url = format!("{}{}", base_url, "/v1/responses");
+                let url = openai_endpoint(base_url, "responses");
 
                 // Enable streaming if requested (SSE)
                 let is_stream = config.as_ref().and_then(|c| c.stream).unwrap_or(true);
@@ -73,6 +73,8 @@ impl LLMService for OpenAI {
                     "input": input_messages,
                     "max_output_tokens": result.remaining_output_tokens,
                     "stream": is_stream,
+                    "store": false,
+                    "include": ["reasoning.encrypted_content"],
                 });
 
                 if !tools_json.is_empty() {
@@ -112,6 +114,8 @@ impl LLMService for OpenAI {
                             obj.insert("description".to_string(), desc);
                         }
                         obj.insert("parameters".to_string(), parameters);
+                        // Existing tools can have optional fields and additional properties.
+                        obj.insert("strict".to_string(), json!(false));
                         tools_for_responses.push(JsonValue::Object(obj));
                     }
 
@@ -245,64 +249,13 @@ async fn handle_non_streaming_response_responses(
         }
     }
 
-    // 3) Tool/function calls (Responses API)
-    let mut function_calls: Vec<FunctionCall> = Vec::new();
-
-    // Responses API may include an `output` array with items of various types
-    if let Some(output_items) = response_json.get("output").and_then(|v| v.as_array()) {
-        for item in output_items {
-            // Heuristic: check common fields
-            if let Some(item_type) = item.get("type").and_then(|t| t.as_str()) {
-                if item_type.eq_ignore_ascii_case("tool_call") || item_type.eq_ignore_ascii_case("function_call") {
-                    // Example expected shapes (best-effort):
-                    // - {"type":"tool_call","id":"...","name":"foo","arguments":{...} | "{...}"}
-                    // - {"type":"function_call","id":"...","function":{"name":"foo","arguments":{...} | "{...}"}}
-                    let function_obj = item.get("function");
-                    let name_opt = item
-                        .get("name")
-                        .and_then(|n| n.as_str())
-                        .map(|s| s.to_string())
-                        .or_else(|| {
-                            function_obj
-                                .and_then(|f| f.get("name"))
-                                .and_then(|n| n.as_str())
-                                .map(|s| s.to_string())
-                        });
-                    let id_opt = item
-                        .get("call_id")
-                        .and_then(|id| id.as_str())
-                        .map(|s| s.to_string())
-                        .or_else(|| item.get("id").and_then(|id| id.as_str()).map(|s| s.to_string()));
-
-                    if let Some(name) = name_opt {
-                        let raw_args = item
-                            .get("arguments")
-                            .cloned()
-                            .or_else(|| function_obj.and_then(|f| f.get("arguments")).cloned());
-
-                        let args_map = match raw_args {
-                            Some(JsonValue::String(s)) => serde_json::from_str::<serde_json::Value>(&s)
-                                .ok()
-                                .and_then(|v| v.as_object().cloned())
-                                .unwrap_or_default(),
-                            Some(JsonValue::Object(map)) => map,
-                            _ => serde_json::Map::new(),
-                        };
-
-                        function_calls.push(FunctionCall {
-                            name,
-                            arguments: args_map,
-                            tool_router_key: None,
-                            response: None,
-                            index: function_calls.len() as u64,
-                            id: id_opt,
-                            call_type: Some("function".to_string()),
-                        });
-                    }
-                }
-            }
-        }
-    }
+    let function_calls = extract_native_function_calls(
+        response_json
+            .get("output")
+            .and_then(JsonValue::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or(&[]),
+    );
 
     // Send a final WebSocket update if needed
     if let Some(inbox_name) = inbox_name.as_ref() {
@@ -385,6 +338,7 @@ async fn handle_streaming_response_responses(
     }
     let mut tools_map: HashMap<String, ToolAccum> = HashMap::new();
     let mut function_calls: Vec<FunctionCall> = Vec::new();
+    let mut native_output: Vec<JsonValue> = Vec::new();
 
     // SSE parsing loop
     while let Some(item) = stream.next().await {
@@ -579,6 +533,7 @@ async fn handle_streaming_response_responses(
                                                 .and_then(|v| v.as_object().cloned())
                                                 .unwrap_or_default();
                                             function_calls.push(FunctionCall {
+                                                provider_metadata: None,
                                                 name,
                                                 arguments: args_map,
                                                 tool_router_key: None,
@@ -707,6 +662,7 @@ async fn handle_streaming_response_responses(
                                                 .and_then(|v| v.as_object().cloned())
                                                 .unwrap_or_default();
                                             function_calls.push(FunctionCall {
+                                                provider_metadata: None,
                                                 name,
                                                 arguments: args_map,
                                                 tool_router_key: None,
@@ -745,6 +701,7 @@ async fn handle_streaming_response_responses(
                                                 .and_then(|v| v.as_object().cloned())
                                                 .unwrap_or_default();
                                             function_calls.push(FunctionCall {
+                                                provider_metadata: None,
                                                 name,
                                                 arguments: args_map,
                                                 tool_router_key: None,
@@ -770,6 +727,11 @@ async fn handle_streaming_response_responses(
                         }
                         // Completion end
                         "response.completed" => {
+                            if let Ok(v) = serde_json::from_str::<JsonValue>(&data_buf) {
+                                if let Some(output) = v.pointer("/response/output").and_then(JsonValue::as_array) {
+                                    native_output = output.clone();
+                                }
+                            }
                             // finalize any remaining tool calls
                             let ids: Vec<String> = tools_map.keys().cloned().collect();
                             for id in ids {
@@ -780,6 +742,7 @@ async fn handle_streaming_response_responses(
                                             .and_then(|v| v.as_object().cloned())
                                             .unwrap_or_default();
                                         function_calls.push(FunctionCall {
+                                            provider_metadata: None,
                                             name,
                                             arguments: args_map,
                                             tool_router_key: None,
@@ -857,6 +820,11 @@ async fn handle_streaming_response_responses(
                             }
                         }
                         "response.output_item.done" => {
+                            if let Ok(v) = serde_json::from_str::<JsonValue>(&data_buf) {
+                                if let Some(item) = v.get("item") {
+                                    native_output.push(item.clone());
+                                }
+                            }
                             // Check if this is a completed function call
                             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&data_buf) {
                                 if let Some(item) = v.get("item") {
@@ -900,7 +868,11 @@ async fn handle_streaming_response_responses(
         }
     }
 
-    // End of stream
+    // Completed native items contain the final arguments, call IDs, and encrypted reasoning.
+    let native_calls = extract_native_function_calls(&native_output);
+    if !native_calls.is_empty() {
+        function_calls = native_calls;
+    }
 
     Ok(LLMInferenceResponse::new(
         response_text,
@@ -915,6 +887,46 @@ async fn handle_streaming_response_responses(
         None,
     ))
 }
+// Keep the native response together so parallel calls replay their shared reasoning once.
+fn extract_native_function_calls(output: &[JsonValue]) -> Vec<FunctionCall> {
+    output
+        .iter()
+        .filter(|item| item["type"] == "function_call")
+        .filter_map(|item| {
+            let name = item.get("name")?.as_str()?.to_string();
+            let arguments = match item.get("arguments") {
+                Some(JsonValue::String(args)) => serde_json::from_str::<JsonValue>(args).ok()?.as_object()?.clone(),
+                Some(JsonValue::Object(args)) => args.clone(),
+                _ => return None,
+            };
+            Some(FunctionCall {
+                name,
+                arguments,
+                tool_router_key: None,
+                response: None,
+                index: 0,
+                id: item.get("call_id").and_then(JsonValue::as_str).map(str::to_owned),
+                call_type: Some("function".to_string()),
+                provider_metadata: Some(json!({"openai_responses": {"output": output}})),
+            })
+        })
+        .enumerate()
+        .map(|(index, mut call)| {
+            call.index = index as u64;
+            call
+        })
+        .collect()
+}
+
+pub(super) fn openai_endpoint(base_url: &str, endpoint: &str) -> String {
+    let base = base_url.trim_end_matches('/');
+    if base.ends_with("/v1") {
+        format!("{base}/{endpoint}")
+    } else {
+        format!("{base}/v1/{endpoint}")
+    }
+}
+
 fn add_options_to_payload_responses(
     payload: &mut serde_json::Value,
     config: Option<&JobConfig>,
@@ -928,9 +940,6 @@ fn add_options_to_payload_responses(
         config_value.cloned().or_else(|| read_env_var::<T>(env_key))
     }
 
-    if let Some(seed) = get_value("LLM_SEED", config.and_then(|c| c.seed.as_ref())) {
-        payload["seed"] = serde_json::json!(seed);
-    }
     // Disable sampling params for reasoning-capable models
     if !is_reasoning_model {
         if let Some(temp) = get_value("LLM_TEMPERATURE", config.and_then(|c| c.temperature.as_ref())) {
@@ -953,9 +962,15 @@ fn add_options_to_payload_responses(
     if is_reasoning_model {
         let thinking_enabled = config.and_then(|c| c.thinking).unwrap_or(false);
         if thinking_enabled {
-            let effort = config
+            let mut effort = config
                 .and_then(|c| c.reasoning_effort.clone())
                 .unwrap_or_else(|| "medium".to_string());
+            let model = payload["model"].as_str().unwrap_or_default();
+            if model.starts_with("gpt-6") && effort == "minimal"
+                || (model.starts_with("gpt-6-astra") || model.starts_with("gpt-6.1-sol")) && effort == "none"
+            {
+                effort = "low".to_string();
+            }
             payload["reasoning"] = json!({"effort": effort, "summary": "detailed"});
         } else if let Some(obj) = payload.as_object_mut() {
             obj.remove("reasoning");
@@ -969,21 +984,20 @@ fn add_options_to_payload_responses(
         if let Some(obj) = other_params.as_object() {
             for (key, value) in obj {
                 match key.as_str() {
-                    // Carry over common sampling/behavior fields
-                    "frequency_penalty" => payload["frequency_penalty"] = value.clone(),
-                    "logit_bias" => payload["logit_bias"] = value.clone(),
-                    "logprobs" => payload["logprobs"] = value.clone(),
-                    "top_logprobs" => payload["top_logprobs"] = value.clone(),
-                    "n" => payload["n"] = value.clone(),
-                    "presence_penalty" => payload["presence_penalty"] = value.clone(),
-                    "response_format" => payload["response_format"] = value.clone(),
-                    "service_tier" => payload["service_tier"] = value.clone(),
-                    "stop" => payload["stop"] = value.clone(),
-                    "parallel_tool_calls" => payload["parallel_tool_calls"] = value.clone(),
-                    // Skip sampling params on reasoning models
-                    "temperature" if is_reasoning_model => (),
-                    "top_p" if is_reasoning_model => (),
-                    "top_k" if is_reasoning_model => (),
+                    // Responses has a different schema from Chat Completions.
+                    "service_tier" | "parallel_tool_calls" | "store" | "truncation" => payload[key] = value.clone(),
+                    "response_format" => {
+                        let mut format = value.clone();
+                        if value["type"] == "json_schema" {
+                            if let Some(schema) = value.get("json_schema").and_then(|v| v.as_object()) {
+                                format = JsonValue::Object(schema.clone());
+                                format["type"] = json!("json_schema");
+                            }
+                        }
+                        payload["text"]["format"] = format;
+                    }
+                    "temperature" | "top_p" if !is_reasoning_model => payload[key] = value.clone(),
+                    "top_logprobs" if !is_reasoning_model => payload[key] = value.clone(),
                     _ => (),
                 };
             }
@@ -1022,9 +1036,34 @@ fn transform_input_messages_for_responses(messages_json: serde_json::Value) -> s
     // Track assistant-emitted tool calls by id so we can pair them with outputs
     let mut call_map: HashMap<String, (String, String)> = HashMap::new(); // id -> (name, args)
     let mut emitted_call_ids: HashSet<String> = HashSet::new();
+    let mut emitted_native_outputs: HashSet<String> = HashSet::new();
     if let Some(arr) = messages_json.as_array() {
         for msg in arr {
             let role = msg.get("role").and_then(|r| r.as_str()).unwrap_or("");
+            if role == "assistant" {
+                let native = msg.get("tool_calls").and_then(JsonValue::as_array).and_then(|calls| {
+                    calls.iter().find_map(|call| {
+                        call.pointer("/provider_metadata/openai_responses/output")
+                            .or_else(|| call.pointer("/function/provider_metadata/openai_responses/output"))
+                            .and_then(JsonValue::as_array)
+                    })
+                });
+                if let Some(items) = native {
+                    // Prompt history can split parallel calls across assistant/tool pairs.
+                    // Each pair carries the same complete native response.
+                    if !emitted_native_outputs.insert(serde_json::to_string(items).unwrap()) {
+                        continue;
+                    }
+                    // Metadata is repeated on each call, but the response is replayed only once.
+                    for item in items {
+                        if let Some(id) = item.get("call_id").and_then(JsonValue::as_str) {
+                            emitted_call_ids.insert(id.to_owned());
+                        }
+                        out.push(item.clone());
+                    }
+                    continue;
+                }
+            }
             // Skip legacy 'function' role
             if role == "function" {
                 continue;
@@ -1204,7 +1243,160 @@ fn transform_input_messages_for_responses(messages_json: serde_json::Value) -> s
 
 #[cfg(test)]
 mod tests {
+    use super::JobConfig;
     use serde_json::json;
+
+    #[test]
+    fn test_prompt_parallel_calls_replay_native_output_once() {
+        let output = json!([
+            {"type": "reasoning", "id": "rs_parallel", "summary": [], "encrypted_content": "opaque"},
+            {"type": "function_call", "id": "fc_a", "call_id": "call_a", "name": "lookup",
+             "arguments": "{\"key\":1}", "status": "completed"},
+            {"type": "function_call", "id": "fc_b", "call_id": "call_b", "name": "lookup",
+             "arguments": "{\"key\":2}", "status": "completed"}
+        ]);
+        let calls = super::extract_native_function_calls(output.as_array().unwrap());
+        let mut prompt = super::Prompt::new();
+        for call in calls {
+            prompt.add_function_call(
+                json!({
+                    "name": call.name, "arguments": call.arguments, "call_id": call.id,
+                    "provider_metadata": call.provider_metadata
+                }),
+                100,
+            );
+            prompt.add_function_call_response(
+                json!({
+                    "function_call": {"name": call.name, "id": call.id}, "response": "found"
+                }),
+                100,
+            );
+        }
+        let prompt = serde_json::from_str(&serde_json::to_string(&prompt).unwrap()).unwrap();
+        let model = super::LLMProviderInterface::OpenAI(super::OpenAI {
+            model_type: "gpt-6.1-sol".to_string(),
+        });
+        let prepared = super::openai_prepare_messages(&model, prompt).unwrap();
+        let super::PromptResultEnum::Value(messages) = prepared.messages else {
+            panic!("Expected messages")
+        };
+        let replay = super::transform_input_messages_for_responses(messages);
+        let replay = replay.as_array().unwrap();
+        assert_eq!(replay.len(), 5);
+        assert_eq!(&replay[..3], output.as_array().unwrap().as_slice());
+        assert_eq!(replay[3]["call_id"], "call_a");
+        assert_eq!(replay[4]["call_id"], "call_b");
+        assert_eq!(replay[3]["type"], "function_call_output");
+        assert_eq!(replay[4]["type"], "function_call_output");
+    }
+
+    #[test]
+    fn test_native_reasoning_parallel_calls_round_trip() {
+        let output = json!([
+            {"type": "reasoning", "id": "rs_1", "summary": [], "encrypted_content": "encrypted-state"},
+            {"type": "message", "id": "msg_1", "status": "completed", "role": "assistant",
+             "content": [{"type": "output_text", "text": "I will check both." , "annotations": []}]},
+            {"type": "function_call", "id": "fc_1", "call_id": "call_1", "name": "lookup",
+             "arguments": "{\"key\":1}", "status": "completed"},
+            {"type": "function_call", "id": "fc_2", "call_id": "call_2", "name": "lookup",
+             "arguments": "{\"key\":2}", "status": "completed"}
+        ]);
+        let calls = super::extract_native_function_calls(output.as_array().unwrap());
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].id.as_deref(), Some("call_1"));
+        assert_eq!(calls[1].index, 1);
+        let tool_calls: Vec<_> = calls
+            .iter()
+            .map(|call| {
+                json!({
+                    "id": call.id, "type": "function", "provider_metadata": call.provider_metadata,
+                    "function": {"name": call.name, "arguments": serde_json::to_string(&call.arguments).unwrap()}
+                })
+            })
+            .collect();
+        // A database serialization round trip must keep the opaque reasoning data.
+        let messages = json!([
+            {"role": "assistant", "content": "I will check both.", "tool_calls": tool_calls},
+            {"role": "tool", "tool_call_id": "call_1", "content": "one"},
+            {"role": "tool", "tool_call_id": "call_2", "content": "two"}
+        ]);
+        let restored = serde_json::from_str(&serde_json::to_string(&messages).unwrap()).unwrap();
+        let replay = super::transform_input_messages_for_responses(restored);
+        let replay = replay.as_array().unwrap();
+        assert_eq!(replay.len(), 6);
+        assert_eq!(&replay[..4], output.as_array().unwrap().as_slice());
+        assert_eq!(
+            replay[4],
+            json!({"type": "function_call_output", "call_id": "call_1", "output": "one"})
+        );
+        assert_eq!(
+            replay[5],
+            json!({"type": "function_call_output", "call_id": "call_2", "output": "two"})
+        );
+    }
+
+    #[test]
+    fn test_current_responses_options() {
+        let config: JobConfig = serde_json::from_value(json!({
+            "thinking": true,
+            "reasoning_effort": "none",
+            "temperature": 0.3,
+            "other_model_params": {
+                "frequency_penalty": 1, "logprobs": true, "top_logprobs": 2,
+                "n": 2, "stop": ["end"], "response_format": {"type": "json_object"}
+            }
+        }))
+        .unwrap();
+        for model in ["gpt-6-astra", "gpt-6.1-sol"] {
+            let mut payload = json!({"model": model});
+            super::add_options_to_payload_responses(&mut payload, Some(&config), true);
+            assert_eq!(payload["reasoning"]["effort"], "low");
+            assert_eq!(payload["text"]["format"]["type"], "json_object");
+            for key in [
+                "temperature",
+                "frequency_penalty",
+                "logprobs",
+                "top_logprobs",
+                "n",
+                "stop",
+                "response_format",
+                "seed",
+            ] {
+                assert!(payload.get(key).is_none(), "unexpected Responses option: {key}");
+            }
+        }
+    }
+
+    #[test]
+    fn test_responses_json_schema_format() {
+        let mut config = JobConfig::empty();
+        config.other_model_params = Some(json!({"response_format": {
+            "type": "json_schema", "json_schema": {
+                "name": "answer", "strict": true,
+                "schema": {"type": "object", "properties": {}, "additionalProperties": false}
+            }
+        }}));
+        let mut payload = json!({"model": "gpt-6.1-sol"});
+        super::add_options_to_payload_responses(&mut payload, Some(&config), true);
+        assert_eq!(payload["text"]["format"]["name"], "answer");
+        assert_eq!(payload["text"]["format"]["type"], "json_schema");
+        assert!(payload["text"]["format"].get("json_schema").is_none());
+    }
+
+    #[test]
+    fn test_openai_endpoint() {
+        for base in [
+            "https://api.openai.com",
+            "https://api.openai.com/",
+            "https://api.openai.com/v1",
+            "https://api.openai.com/v1/",
+        ] {
+            assert_eq!(
+                super::openai_endpoint(base, "responses"),
+                "https://api.openai.com/v1/responses"
+            );
+        }
+    }
 
     #[test]
     fn test_extract_reasoning_summary_from_output() {

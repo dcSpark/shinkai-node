@@ -73,10 +73,31 @@ impl LLMService for OpenAILegacy {
         db: Arc<SqliteManager>,
         tracing_message_id: Option<String>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
+        // GPT-6 tool calls require the Responses API.
+        if self.model_type.starts_with("gpt-6") {
+            let provider = shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::OpenAI {
+                model_type: self.model_type.clone(),
+            };
+            return provider
+                .call_api(
+                    client,
+                    url,
+                    api_key,
+                    prompt,
+                    model,
+                    inbox_name,
+                    ws_manager_trait,
+                    config,
+                    llm_stopper,
+                    db,
+                    tracing_message_id,
+                )
+                .await;
+        }
         let session_id = Uuid::new_v4().to_string();
         if let Some(base_url) = url {
             if let Some(key) = api_key {
-                let url = format!("{}{}", base_url, "/v1/chat/completions");
+                let url = super::openai_responses::openai_endpoint(base_url, "chat/completions");
 
                 let is_stream = config.as_ref().and_then(|c| c.stream).unwrap_or(true);
 
@@ -283,6 +304,7 @@ fn finalize_function_call_sync(
             .clone()
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let new_function_call = FunctionCall {
+            provider_metadata: None,
             name: name.clone(),
             arguments: fc_arguments,
             tool_router_key,
@@ -1136,22 +1158,15 @@ pub async fn handle_non_streaming_response(
 
                 match data_resp {
                     Ok(value) => {
-                        // Extract reasoning_content (if any) to prepend to final response
-                        let reasoning_concat = value
-                            .get("choices")
-                            .and_then(|c| c.as_array())
-                            .map(|arr| {
-                                arr.iter()
-                                    .filter_map(|choice| {
-                                        choice
-                                            .get("message")
-                                            .and_then(|m| m.get("reasoning_content"))
-                                            .and_then(|rc| rc.as_str())
-                                    })
-                                    .collect::<Vec<_>>()
-                                    .join("")
-                            })
-                            .unwrap_or_default();
+                        let selected_message = value.pointer("/choices/0/message").cloned().unwrap_or_default();
+                        let reasoning_concat = selected_message["reasoning_content"].as_str().unwrap_or_default().to_string();
+                        let mut provider_metadata = serde_json::Map::new();
+                        if !reasoning_concat.is_empty() {
+                            provider_metadata.insert("deepseek_reasoning_content".into(), json!(reasoning_concat));
+                        }
+                        if let Some(details) = selected_message.get("reasoning_details") {
+                            provider_metadata.insert("reasoning_details".into(), details.clone());
+                        }
 
                         if let Some(error) = value.get("error") {
                             let code = error.get("code").and_then(|c| c.as_str());
@@ -1172,58 +1187,39 @@ pub async fn handle_non_streaming_response(
 
                         let data: OpenAIResponse = serde_json::from_value(value).map_err(LLMProviderError::SerdeError)?;
 
-                        let response_string: String = data
-                            .choices
-                            .iter()
-                            .filter_map(|choice| match &choice.message.content {
-                                Some(MessageContent::Text(text)) => {
-                                    // Unescape the JSON string
-                                    let cleaned_json_str = text.replace("\\\"", "\"").replace("\\n", "\n");
-                                    Some(cleaned_json_str)
+                        // Each choice is an alternative completion. Use one complete choice.
+                        let selected = data.choices.first();
+                        let response_string = selected.and_then(|choice| match &choice.message.content {
+                            Some(MessageContent::Text(text)) => Some(text.clone()),
+                            _ => None,
+                        }).unwrap_or_default();
+
+                        let function_calls: Vec<FunctionCall> = selected
+                            .and_then(|choice| choice.message.tool_calls.as_ref())
+                            .into_iter().flatten().enumerate().map(|(index, tool_call)| {
+                                let arguments = serde_json::from_str::<JsonValue>(&tool_call.function.arguments)
+                                    .ok().and_then(|value| value.as_object().cloned()).unwrap_or_default();
+                                let tool_router_key = tools.as_ref().and_then(|definitions| {
+                                    definitions.iter().find_map(|tool| {
+                                        let function = tool.get("function").unwrap_or(tool);
+                                        if function.get("name").and_then(|name| name.as_str()) == Some(tool_call.function.name.as_str()) {
+                                            function.get("tool_router_key").or_else(|| tool.get("tool_router_key"))
+                                                .and_then(|key| key.as_str()).map(str::to_owned)
+                                        } else { None }
+                                    })
+                                });
+                                FunctionCall {
+                                    provider_metadata: if provider_metadata.is_empty() { None } else { Some(JsonValue::Object(provider_metadata.clone())) },
+                                    name: tool_call.function.name.clone(), arguments, tool_router_key,
+                                    response: None, index: index as u64, id: Some(tool_call.id.clone()),
+                                    call_type: Some(tool_call.call_type.clone()),
                                 }
-                                Some(MessageContent::ImageUrl { .. }) => None,
-                                Some(MessageContent::FunctionCall(_)) => None,
-                                None => None,
-                            })
-                            .collect::<Vec<String>>()
-                            .join(" ");
-
-                        let function_call: Option<FunctionCall> = data.choices.iter().find_map(|choice| {
-                            choice.message.tool_calls.as_ref().and_then(|tool_calls| {
-                                tool_calls.first().map(|tool_call| {
-                                    let arguments = serde_json::from_str::<serde_json::Value>(&tool_call.function.arguments)
-                                        .ok()
-                                        .and_then(|args_value: serde_json::Value| args_value.as_object().cloned())
-                                        .unwrap_or_else(|| serde_json::Map::new());
-
-                                    // Extract tool_router_key
-                                    let tool_router_key = tools.as_ref().and_then(|tools_array| {
-                                        tools_array.iter().find_map(|tool| {
-                                            if tool.get("name")?.as_str()? == tool_call.function.name {
-                                                tool.get("tool_router_key").and_then(|key| key.as_str().map(|s| s.to_string()))
-                                            } else {
-                                                None
-                                            }
-                                        })
-                                    });
-
-                                    FunctionCall {
-                                        name: tool_call.function.name.clone(),
-                                        arguments,
-                                        tool_router_key,
-                                        response: None,
-                                        index: 0,
-                                        id: Some(tool_call.id.clone()),
-                                        call_type: Some(tool_call.call_type.clone()),
-                                    }
-                                })
-                            })
-                        });
-                        eprintln!("Function Call: {:?}", function_call);
+                            }).collect();
+                        eprintln!("Function Calls: {:?}", function_calls);
                         eprintln!("Response String: {:?}", response_string);
 
                         // Updated WS message handling for tooling
-                        if let Some(ref function_call) = function_call {
+                        for function_call in &function_calls {
                             let _ = send_tool_ws_update(&ws_manager_trait, inbox_name.clone(), function_call).await;
                         }
 
@@ -1231,7 +1227,7 @@ pub async fn handle_non_streaming_response(
                             response_string,
                             if reasoning_concat.is_empty() { None } else { Some(reasoning_concat) },
                             json!({}),
-                            function_call.map_or_else(Vec::new, |fc| vec![fc]),
+                            function_calls,
                             Vec::new(),
                             None,
                         ));
@@ -2139,6 +2135,72 @@ mod tests {
             ]
         });
         assert_eq!(serde_json::to_value(&fc.arguments).unwrap(), expected_args);
+    }
+
+    #[tokio::test]
+    async fn test_non_streaming_keeps_parallel_calls_and_router_keys() {
+        let mut server = mockito::Server::new_async().await;
+        let call = |id: &str, name: &str| {
+            json!({
+                "id": id, "type": "function", "function": {"name": name, "arguments": "{\"value\":1}"}
+            })
+        };
+        let details = json!([{ "type": "reasoning.encrypted", "data": "signed" }]);
+        let mock = server
+            .mock("POST", "/chat/completions")
+            .with_header("content-type", "application/json")
+            .with_body(
+                json!({
+                    "id": "response", "object": "chat.completion", "created": 1,
+                "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
+                    "choices": [
+                        {"index": 0, "message": {"role": "assistant", "content": null,
+                            "reasoning_content": "reason", "reasoning_details": details,
+                            "tool_calls": [call("native-first", "first"), call("native-second", "second")]
+                        }, "finish_reason": "tool_calls"},
+                        {"index": 1, "message": {"role": "assistant", "content": "alternative",
+                            "tool_calls": [call("ignored", "third")]}, "finish_reason": "tool_calls"}
+                    ]
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+        let response = handle_non_streaming_response(
+            &Client::new(),
+            format!("{}/chat/completions", server.url()),
+            json!({"stream": false}),
+            "test-key".into(),
+            None,
+            Arc::new(LLMStopper::new()),
+            None,
+            Some(vec![
+                json!({"type": "function", "function": {"name": "first", "tool_router_key": "router-first"}}),
+                json!({"name": "second", "tool_router_key": "router-second"}),
+            ]),
+            None,
+        )
+        .await
+        .unwrap();
+        mock.assert_async().await;
+        assert!(response.response_string.is_empty());
+        assert_eq!(response.reasoning_content.as_deref(), Some("reason"));
+        assert_eq!(response.function_calls.len(), 2);
+        for (index, (id, key)) in [("native-first", "router-first"), ("native-second", "router-second")]
+            .into_iter()
+            .enumerate()
+        {
+            let call = &response.function_calls[index];
+            assert_eq!(call.id.as_deref(), Some(id));
+            assert_eq!(call.index, index as u64);
+            assert_eq!(call.tool_router_key.as_deref(), Some(key));
+            assert_eq!(call.arguments["value"], 1);
+            assert_eq!(call.provider_metadata.as_ref().unwrap()["reasoning_details"], details);
+            assert_eq!(
+                call.provider_metadata.as_ref().unwrap()["deepseek_reasoning_content"],
+                "reason"
+            );
+        }
     }
 
     #[test]

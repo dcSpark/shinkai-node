@@ -65,6 +65,8 @@ struct InlineData {
 
 #[derive(Debug, Deserialize)]
 struct FunctionCallResponse {
+    #[serde(default)]
+    id: Option<String>,
     name: String,
     args: serde_json::Value,
 }
@@ -125,6 +127,46 @@ struct GeminiError {
     status: String,
 }
 
+fn gemini_generation_config(model: &str, config: Option<&JobConfig>) -> serde_json::Value {
+    let mut generation_config = json!({
+        "temperature": config.and_then(|c| c.temperature).unwrap_or(1.0),
+        "maxOutputTokens": config.and_then(|c| c.max_tokens).unwrap_or(8192)
+    });
+    if let Some(top_k) = config.and_then(|c| c.top_k) {
+        generation_config["topK"] = json!(top_k);
+    }
+    if let Some(top_p) = config.and_then(|c| c.top_p) {
+        generation_config["topP"] = json!(top_p);
+    }
+    let current_thinking = model.starts_with("gemini-3") || model.starts_with("gemini-4");
+    if current_thinking || config.and_then(|c| c.thinking) == Some(true) {
+        let effort = config.and_then(|c| c.reasoning_effort.as_deref());
+        if current_thinking {
+            let level = match effort {
+                Some("low") => "low",
+                Some("high" | "xhigh" | "max") => "high",
+                _ if model.contains("pro") => "high",
+                _ => "medium",
+            };
+            generation_config["thinkingConfig"] = json!({
+                "thinkingLevel": level,
+                "includeThoughts": config.and_then(|c| c.thinking).unwrap_or(false)
+            });
+        } else {
+            let budget = match effort {
+                Some("low") => 1024,
+                Some("medium") => 8192,
+                Some("high") => 24576,
+                _ => -1,
+            };
+            generation_config["thinkingConfig"] = json!({
+                "thinkingBudget": budget, "includeThoughts": true
+            });
+        }
+    }
+    generation_config
+}
+
 #[async_trait]
 impl LLMService for Gemini {
     async fn call_api(
@@ -162,27 +204,7 @@ impl LLMService for Gemini {
                     }
                 };
 
-                let mut generation_config = json!({
-                    "temperature": config.as_ref().and_then(|c| c.temperature).unwrap_or(0.9),
-                    "topK": config.as_ref().and_then(|c| c.top_k).unwrap_or(1),
-                    "topP": config.as_ref().and_then(|c| c.top_p).unwrap_or(1.0),
-                    "maxOutputTokens": config.as_ref().and_then(|c| c.max_tokens).unwrap_or(8192)
-                });
-
-                // Add thinkingConfig if thinking is enabled
-                if let Some(true) = config.as_ref().and_then(|c| c.thinking) {
-                    let thinking_budget = match config.as_ref().and_then(|c| c.reasoning_effort.as_deref()) {
-                        Some("low") => 1024,
-                        Some("medium") => 8192,
-                        Some("high") => 24576,
-                        _ => -1, // Default unlimited budget
-                    };
-
-                    generation_config["thinkingConfig"] = json!({
-                        "thinkingBudget": thinking_budget,
-                        "includeThoughts": true
-                    });
-                }
+                let generation_config = gemini_generation_config(&self.model_type, config.as_ref());
 
                 let mut payload = json!({
                     "generationConfig": generation_config,
@@ -256,6 +278,7 @@ impl LLMService for Gemini {
                 let mut is_done = false;
                 let mut finish_reason = None;
                 let mut function_calls = Vec::new();
+                let mut native_parts = Vec::new();
                 let mut in_thinking = false;
                 let mut thinking_started = false;
 
@@ -275,6 +298,7 @@ impl LLMService for Gemini {
                                 &mut is_done,
                                 &mut finish_reason,
                                 &mut function_calls,
+                                &mut native_parts,
                                 &mut in_thinking,
                                 &mut thinking_started,
                             )
@@ -327,6 +351,7 @@ async fn process_chunk(
     is_done: &mut bool,
     finish_reason: &mut Option<String>,
     function_calls: &mut Vec<FunctionCall>,
+    native_parts: &mut Vec<JsonValue>,
     in_thinking: &mut bool,
     thinking_started: &mut bool,
 ) -> Result<(), LLMProviderError> {
@@ -370,6 +395,7 @@ async fn process_chunk(
                     is_done,
                     finish_reason,
                     function_calls,
+                    native_parts,
                     in_thinking,
                     thinking_started,
                 )
@@ -420,9 +446,16 @@ async fn process_gemini_response(
     is_done: &bool,
     finish_reason: &mut Option<String>,
     function_calls: &mut Vec<FunctionCall>,
+    native_parts: &mut Vec<JsonValue>,
     in_thinking: &mut bool,
     thinking_started: &mut bool,
 ) -> Result<(), LLMProviderError> {
+    if let Some(parts) = value
+        .pointer("/candidates/0/content/parts")
+        .and_then(|parts| parts.as_array())
+    {
+        native_parts.extend(parts.iter().cloned());
+    }
     if let Ok(response) = serde_json::from_value::<GeminiStreamingResponse>(value) {
         for candidate in &response.candidates {
             // Always update finish reason from candidate
@@ -496,6 +529,11 @@ async fn process_gemini_response(
             }
         }
     }
+    // Keep every native part, including empty signature parts, in its original
+    // order. Each parallel call carries the same complete assistant turn.
+    for call in function_calls {
+        call.provider_metadata = Some(json!({"gemini_parts": native_parts}));
+    }
     Ok(())
 }
 
@@ -514,7 +552,8 @@ async fn process_function_call(
             .and_then(|key| key.as_str().map(|s| s.to_string())),
         response: None,
         index: function_calls.len() as u64,
-        id: None,
+        id: function_call.id.clone(),
+        provider_metadata: None,
         call_type: Some("function".to_string()),
     };
     function_calls.push(fc.clone());
@@ -532,6 +571,99 @@ mod tests {
     use std::sync::Arc;
     use tempfile::NamedTempFile;
     use tokio::sync::Mutex;
+
+    #[tokio::test]
+    async fn gemini_signature_round_trip_keeps_parallel_native_parts() {
+        use shinkai_message_primitives::schemas::subprompts::{SubPrompt, SubPromptType};
+        let parts = json!([
+            {"text": "", "thought": true, "thoughtSignature": "signed-thought"},
+            {"functionCall": {"name": "weather", "args": {"city": "Paris"}, "id": "call-1"}, "thoughtSignature": "signed-call"},
+            {"functionCall": {"name": "weather", "args": {"city": "London"}, "id": "call-2"}}
+        ]);
+        let db = setup_test_db().await;
+        let mut thinking = String::new();
+        let mut regular = String::new();
+        let mut files = Vec::new();
+        let mut calls = Vec::new();
+        let mut native_parts = Vec::new();
+        let mut finish_reason = None;
+        let mut in_thinking = false;
+        let mut thinking_started = false;
+        for chunk_parts in [json!([parts[0], parts[1]]), json!([parts[2]])] {
+            process_gemini_response(
+                json!({"candidates": [{"content": {"role": "model", "parts": chunk_parts}}]}),
+                &mut thinking,
+                &mut regular,
+                &mut files,
+                "test",
+                &None,
+                &None,
+                &db,
+                &false,
+                &mut finish_reason,
+                &mut calls,
+                &mut native_parts,
+                &mut in_thinking,
+                &mut thinking_started,
+            )
+            .await
+            .unwrap();
+        }
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].id.as_deref(), Some("call-1"));
+        assert_eq!(calls[1].id.as_deref(), Some("call-2"));
+        let metadata = json!({"gemini_parts": parts});
+        assert!(calls
+            .iter()
+            .all(|call| call.provider_metadata.as_ref() == Some(&metadata)));
+        let mut prompt = Prompt::new();
+        prompt.add_sub_prompts(vec![SubPrompt::Content(
+            SubPromptType::User,
+            "Get the weather".into(),
+            100,
+        )]);
+        for call in calls {
+            let mut function = serde_json::to_value(call).unwrap();
+            // The saved assistant call has no tool result yet.
+            function.as_object_mut().unwrap().remove("response");
+            prompt.add_function_call(function.clone(), 100);
+            prompt.add_function_call_response(
+                json!({"function_call": function, "response": "{\"temperature\":20}"}),
+                100,
+            );
+        }
+        let model = LLMProviderInterface::Gemini(Gemini {
+            model_type: "gemini-3.8-flash".into(),
+        });
+        let result = gemini_prepare_messages(&model, prompt).unwrap();
+        let PromptResultEnum::Value(payload) = result.messages else {
+            panic!("Expected JSON payload")
+        };
+        let contents = payload["contents"].as_array().unwrap();
+        let model_turns: Vec<_> = contents.iter().filter(|c| c["role"] == "model").collect();
+        assert_eq!(model_turns.len(), 1);
+        assert_eq!(model_turns[0]["parts"], parts);
+        let results = contents.last().unwrap()["parts"].as_array().unwrap();
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0]["functionResponse"]["id"], "call-1");
+        assert_eq!(results[1]["functionResponse"]["id"], "call-2");
+        assert_eq!(results[0]["functionResponse"]["name"], "weather");
+    }
+
+    #[test]
+    fn test_current_gemini_thinking_levels() {
+        let mut config = JobConfig::empty();
+        config.thinking = Some(true);
+        config.reasoning_effort = Some("high".into());
+        for model in ["gemini-4-argon", "gemini-3.8-flash", "gemini-3.5-flash-lite"] {
+            let value = gemini_generation_config(model, Some(&config));
+            assert_eq!(value["thinkingConfig"]["thinkingLevel"], "high");
+            assert!(value["thinkingConfig"].get("thinkingBudget").is_none());
+            assert!(value.get("topK").is_none());
+        }
+        let value = gemini_generation_config("gemini-2.5-flash", Some(&config));
+        assert_eq!(value["thinkingConfig"]["thinkingBudget"], 24576);
+    }
 
     async fn setup_test_db() -> SqliteManager {
         let temp_file = NamedTempFile::new().unwrap();
@@ -577,6 +709,7 @@ mod tests {
         let mut is_done = false;
         let mut finish_reason = None;
         let mut function_calls = Vec::new();
+        let mut native_parts = Vec::new();
         let mut in_thinking = false;
         let mut thinking_started = false;
 
@@ -593,6 +726,7 @@ mod tests {
             &mut is_done,
             &mut finish_reason,
             &mut function_calls,
+            &mut native_parts,
             &mut in_thinking,
             &mut thinking_started,
         )
@@ -658,6 +792,7 @@ mod tests {
         let mut is_done = false;
         let mut finish_reason = None;
         let mut function_calls = Vec::new();
+        let mut native_parts = Vec::new();
         let mut in_thinking = false;
         let mut thinking_started = false;
 
@@ -674,6 +809,7 @@ mod tests {
             &mut is_done,
             &mut finish_reason,
             &mut function_calls,
+            &mut native_parts,
             &mut in_thinking,
             &mut thinking_started,
         )
@@ -742,6 +878,7 @@ mod tests {
         let mut is_done = false;
         let mut finish_reason = None;
         let mut function_calls = Vec::new();
+        let mut native_parts = Vec::new();
         let mut in_thinking = false;
         let mut thinking_started = false;
 
@@ -758,6 +895,7 @@ mod tests {
             &mut is_done,
             &mut finish_reason,
             &mut function_calls,
+            &mut native_parts,
             &mut in_thinking,
             &mut thinking_started,
         )
@@ -828,6 +966,7 @@ mod tests {
         let mut regular_content = String::new();
         let mut generated_files = Vec::new();
         let mut function_calls = Vec::new();
+        let mut native_parts = Vec::new();
         let session_id = "test_session_id";
         let ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
         let inbox_name: Option<InboxName> = None;
@@ -853,6 +992,7 @@ mod tests {
                 &mut is_done,
                 &mut finish_reason,
                 &mut function_calls,
+                &mut native_parts,
                 &mut in_thinking,
                 &mut thinking_started,
             )
@@ -974,6 +1114,7 @@ mod tests {
         let mut regular_content = String::new();
         let mut generated_files = Vec::new();
         let mut function_calls = Vec::new();
+        let mut native_parts = Vec::new();
         let session_id = "test_session_id";
         let ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
         let inbox_name: Option<InboxName> = None;
@@ -999,6 +1140,7 @@ mod tests {
                 &mut is_done,
                 &mut finish_reason,
                 &mut function_calls,
+                &mut native_parts,
                 &mut in_thinking,
                 &mut thinking_started,
             )
@@ -1038,6 +1180,7 @@ mod tests {
         let mut is_done = false;
         let mut finish_reason = None;
         let mut function_calls = Vec::new();
+        let mut native_parts = Vec::new();
         let mut in_thinking = false;
         let mut thinking_started = false;
 
@@ -1054,6 +1197,7 @@ mod tests {
             &mut is_done,
             &mut finish_reason,
             &mut function_calls,
+            &mut native_parts,
             &mut in_thinking,
             &mut thinking_started,
         )
@@ -1140,6 +1284,7 @@ mod tests {
         let mut is_done = false;
         let mut finish_reason = None;
         let mut function_calls = Vec::new();
+        let mut native_parts = Vec::new();
         let mut in_thinking = false;
         let mut thinking_started = false;
 
@@ -1156,6 +1301,7 @@ mod tests {
             &mut is_done,
             &mut finish_reason,
             &mut function_calls,
+            &mut native_parts,
             &mut in_thinking,
             &mut thinking_started,
         )

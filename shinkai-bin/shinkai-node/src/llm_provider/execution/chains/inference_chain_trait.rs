@@ -403,6 +403,8 @@ impl InferenceChainResult {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct FunctionCall {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_metadata: Option<serde_json::Value>,
     pub name: String,
     pub arguments: serde_json::Map<String, serde_json::Value>,
     pub tool_router_key: Option<String>,
@@ -416,6 +418,7 @@ pub struct FunctionCall {
 impl FunctionCall {
     pub fn to_metadata(&self) -> FunctionCallMetadata {
         FunctionCallMetadata {
+            provider_metadata: self.provider_metadata.clone(),
             name: self.name.clone(),
             arguments: self.arguments.clone(),
             tool_router_key: self.tool_router_key.clone(),
@@ -819,5 +822,36 @@ impl Clone for MockInferenceChainContext {
             job_filenames: self.job_filenames.clone(),
             llm_provider: self.llm_provider.clone(),
         }
+    }
+}
+
+#[cfg(test)]
+mod provider_metadata_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_stored_tool_call_provider_metadata_round_trip() {
+        let legacy = json!({"name": "tool", "arguments": {}, "tool_router_key": null,
+            "response": null, "index": 0, "id": "call-1", "type": "function"});
+        let mut call: FunctionCall = serde_json::from_value(legacy).unwrap();
+        assert!(call.provider_metadata.is_none());
+        call.provider_metadata = Some(json!({"claude_content": [
+            {"type": "thinking", "thinking": "private", "signature": "signed-value"}
+        ]}));
+        let stored = crate::managers::tool_router::ToolCallFunctionResponse {
+            function_call: call,
+            response: "result".into(),
+        };
+        let loaded: crate::managers::tool_router::ToolCallFunctionResponse =
+            serde_json::from_str(&serde_json::to_string(&stored).unwrap()).unwrap();
+        assert_eq!(
+            loaded.function_call.provider_metadata,
+            stored.function_call.provider_metadata
+        );
+        assert_eq!(
+            loaded.function_call.to_metadata().provider_metadata,
+            stored.function_call.provider_metadata
+        );
     }
 }

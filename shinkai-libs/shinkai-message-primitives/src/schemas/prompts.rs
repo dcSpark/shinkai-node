@@ -396,8 +396,7 @@ impl Prompt {
         // Accumulator for ExtraContext content
         let mut extra_context_content = String::new();
         let mut last_user_message: Option<LlmMessage> = None;
-        let mut function_calls: Vec<LlmMessage> = Vec::new();
-        let mut function_call_responses: Vec<LlmMessage> = Vec::new();
+        let mut tool_messages: Vec<LlmMessage> = Vec::new();
 
         for sub_prompt in &self.sub_prompts {
             match sub_prompt {
@@ -437,6 +436,7 @@ impl Prompt {
                             .to_string();
 
                         new_message.function_call = Some(DetailedFunctionCall {
+                            provider_metadata: content.get("provider_metadata").cloned().filter(|v| !v.is_null()),
                             name: name.to_string(),
                             arguments,
                             id: if call_id.is_empty() { None } else { Some(call_id) },
@@ -444,7 +444,7 @@ impl Prompt {
                     }
                     current_length +=
                         sub_prompt.count_tokens_with_pregenerated_completion_message(&new_message, token_counter);
-                    function_calls.push(new_message);
+                    tool_messages.push(new_message);
                 }
                 SubPrompt::FunctionCallResponse(_, content, _) => {
                     let mut new_message = LlmMessage {
@@ -474,7 +474,7 @@ impl Prompt {
 
                     current_length +=
                         sub_prompt.count_tokens_with_pregenerated_completion_message(&new_message, token_counter);
-                    function_call_responses.push(new_message);
+                    tool_messages.push(new_message);
                 }
                 SubPrompt::Content(SubPromptType::UserLastMessage, content, _) => {
                     last_user_message = Some(LlmMessage {
@@ -539,15 +539,8 @@ impl Prompt {
             tiktoken_messages.push(combined_message);
         }
 
-        // Add function calls after the last user message
-        for function_call in function_calls {
-            tiktoken_messages.push(function_call);
-        }
-
-        // Add function call responses after function calls
-        for response in function_call_responses {
-            tiktoken_messages.push(response);
-        }
+        // Keep tool turns in their original order after the current user message.
+        tiktoken_messages.extend(tool_messages);
 
         (tiktoken_messages, current_length)
     }
@@ -632,5 +625,69 @@ impl Prompt {
         let output = messages.join(" ");
         // eprintln!("generate_genericapi_messages output: {:?}", output);
         Ok(output)
+    }
+}
+
+#[cfg(test)]
+mod provider_history_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_provider_metadata_prompt_round_trip() {
+        let mut prompt = Prompt::new();
+        prompt.add_content("Use two tools".into(), SubPromptType::UserLastMessage, 100);
+        for (name, signature) in [("first", "signed-one"), ("second", "signed-two")] {
+            prompt.add_function_call(
+                json!({
+                    "name": name, "call_id": name, "arguments": {},
+                    "provider_metadata": {"gemini_parts": [{"thoughtSignature": signature}]}
+                }),
+                100,
+            );
+            prompt.add_function_call_response(
+                json!({
+                    "function_call": {"name": name, "id": name}, "response": "done"
+                }),
+                100,
+            );
+        }
+        let saved = serde_json::to_string(&prompt).unwrap();
+        let loaded: Prompt = serde_json::from_str(&saved).unwrap();
+        let (messages, _) = loaded.generate_chat_completion_messages(None, &|_| 0);
+        assert_eq!(
+            messages.iter().map(|m| m.role.as_deref().unwrap()).collect::<Vec<_>>(),
+            ["user", "assistant", "function", "assistant", "function"]
+        );
+        assert_eq!(
+            messages[1]
+                .function_call
+                .as_ref()
+                .unwrap()
+                .provider_metadata
+                .as_ref()
+                .unwrap()["gemini_parts"][0]["thoughtSignature"],
+            "signed-one"
+        );
+        assert_eq!(
+            messages[3]
+                .function_call
+                .as_ref()
+                .unwrap()
+                .provider_metadata
+                .as_ref()
+                .unwrap()["gemini_parts"][0]["thoughtSignature"],
+            "signed-two"
+        );
+    }
+
+    #[test]
+    fn test_old_function_history_has_no_provider_metadata() {
+        let call: DetailedFunctionCall = serde_json::from_value(json!({
+            "name": "legacy", "arguments": "{}", "id": "old-id"
+        }))
+        .unwrap();
+        assert!(call.provider_metadata.is_none());
+        assert!(serde_json::to_value(call).unwrap().get("provider_metadata").is_none());
     }
 }

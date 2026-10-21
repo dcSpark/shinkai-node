@@ -393,6 +393,7 @@ async fn process_stream(
                                 });
 
                                 let function_call = FunctionCall {
+                                    provider_metadata: None,
                                     name: name.clone(),
                                     arguments: arguments.clone(),
                                     tool_router_key,
@@ -575,6 +576,7 @@ async fn handle_non_streaming_response(
                                             });
 
                                             let function_call = FunctionCall {
+                    provider_metadata: None,
                                                 name: name.to_string(),
                                                 arguments: arguments.clone(),
                                                 tool_router_key,

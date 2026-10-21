@@ -323,6 +323,7 @@ mod tests {
                 content: None,
                 name: None,
                 function_call: Some(DetailedFunctionCall {
+                    provider_metadata: None,
                     name: "concat_strings".to_string(),
                     arguments: "{\"first_string\":\"hola\",\"second_string\":\"chao\"}".to_string(),
                     id: None,
