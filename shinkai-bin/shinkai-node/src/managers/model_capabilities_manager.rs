@@ -189,29 +189,18 @@ impl ModelCapabilitiesManager {
 
     fn get_openrouter_capabilities(model: &str) -> Vec<ModelCapability> {
         let mut capabilities = vec![ModelCapability::TextInference];
-        let modalities = Self::current_openrouter_metadata(model)
-            .map(|m| (m.2, m.3, m.4))
+        // The shared OpenAI request builder encodes image parts only. Provider
+        // audio/video metadata does not make those inputs usable by this adapter.
+        let supports_images = Self::current_openrouter_metadata(model)
+            .map(|m| m.2)
             .or_else(|| {
                 get_openrouter_model(model)
                     .and_then(|m| m.architecture.as_ref())
-                    .map(|a| {
-                        (
-                            a.input_modalities.iter().any(|m| m == "image"),
-                            a.input_modalities.iter().any(|m| m == "audio"),
-                            a.input_modalities.iter().any(|m| m == "video"),
-                        )
-                    })
-            });
-        if let Some((image, audio, video)) = modalities {
-            for (supported, capability) in [
-                (image, ModelCapability::ImageAnalysis),
-                (audio, ModelCapability::AudioAnalysis),
-                (video, ModelCapability::VideoAnalysis),
-            ] {
-                if supported {
-                    capabilities.push(capability);
-                }
-            }
+                    .map(|a| a.input_modalities.iter().any(|m| m == "image"))
+            })
+            .unwrap_or(false);
+        if supports_images {
+            capabilities.push(ModelCapability::ImageAnalysis);
         }
         if get_openrouter_model(model)
             .and_then(|m| m.architecture.as_ref())
@@ -1257,6 +1246,12 @@ impl ModelCapabilitiesManager {
                     4096
                 }
             }
+            // These MLX conversions link to Qwen's original model card, which
+            // recommends 81,920 output tokens for complex reasoning. Exo's API
+            // accepts max_tokens without a separate fixed generation ceiling.
+            // https://huggingface.co/Qwen/Qwen3.5-9B#best-practices
+            // https://github.com/exo-explore/exo/blob/main/docs/api.md
+            LLMProviderInterface::Exo(model) if Self::is_verified_exo_qwen(&model.model_type) => 81_920,
             LLMProviderInterface::Exo(_) => 4096,
             LLMProviderInterface::Gemini(gemini) => Self::get_gemini_max_output_tokens(gemini.model_type.as_str()),
             LLMProviderInterface::OpenRouter(openrouter) => {
@@ -1784,6 +1779,25 @@ mod current_model_tests {
     }
 
     #[test]
+    fn openrouter_only_advertises_media_encoded_by_its_adapter() {
+        use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::OpenRouter;
+        for id in [
+            "meta/muse-spark-open",
+            "minimax/minimax-m3.1-flash:free",
+            "google/gemini-4-argon",
+        ] {
+            let model = LLMProviderInterface::OpenRouter(OpenRouter { model_type: id.into() });
+            let capabilities = ModelCapabilitiesManager::get_llm_provider_capabilities(&model);
+            assert!(capabilities.contains(&ModelCapability::TextInference));
+            assert!(capabilities.contains(&ModelCapability::ImageAnalysis));
+            assert!(!capabilities.contains(&ModelCapability::AudioAnalysis));
+            assert!(!capabilities.contains(&ModelCapability::VideoAnalysis));
+            assert!(ModelCapabilitiesManager::has_tool_capabilities(&model, None));
+            assert!(ModelCapabilitiesManager::has_reasoning_capabilities(&model));
+        }
+    }
+
+    #[test]
     fn verified_exo_ids_have_context_images_and_tools() {
         for model_type in [
             "Qwen/Qwen3.5-9B",
@@ -1797,6 +1811,15 @@ mod current_model_tests {
                 ModelCapabilitiesManager::get_max_tokens(&model),
                 262_144,
                 "{model_type}"
+            );
+            assert_eq!(
+                ModelCapabilitiesManager::get_max_output_tokens(&model),
+                81_920,
+                "{model_type}"
+            );
+            assert_eq!(
+                ModelCapabilitiesManager::get_remaining_output_tokens(&model, 262_144 - 512),
+                512
             );
             assert!(
                 ModelCapabilitiesManager::get_llm_provider_capabilities(&model)
@@ -1813,6 +1836,7 @@ mod current_model_tests {
                 model_type: model_type.into(),
             });
             assert_eq!(ModelCapabilitiesManager::get_max_tokens(&model), 4096);
+            assert_eq!(ModelCapabilitiesManager::get_max_output_tokens(&model), 4096);
             assert!(!ModelCapabilitiesManager::get_llm_provider_capabilities(&model)
                 .contains(&ModelCapability::ImageAnalysis));
             assert!(!ModelCapabilitiesManager::has_tool_capabilities(&model, Some(true)));

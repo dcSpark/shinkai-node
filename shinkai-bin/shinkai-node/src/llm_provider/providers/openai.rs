@@ -248,10 +248,11 @@ fn finalize_function_call_sync(
     partial_fc: &mut PartialFunctionCall,
     function_calls: &mut Vec<FunctionCall>,
     tools: &Option<Vec<JsonValue>>,
+    completed: bool,
 ) {
     for (index, mut pending) in std::mem::take(&mut partial_fc.indexed_calls) {
         let before = function_calls.len();
-        finalize_function_call_sync(&mut pending, function_calls, tools);
+        finalize_function_call_sync(&mut pending, function_calls, tools, completed);
         if let Some(call) = function_calls.get_mut(before) {
             call.index = index;
         }
@@ -269,7 +270,12 @@ fn finalize_function_call_sync(
 
         // If it starts with {\" but not with quotes, let's wrap in outer quotes:
         // so that it becomes a JSON string (which will parse as Value::String).
-        let mut wrapped_args = raw_args.to_owned();
+        // Some compatible providers omit arguments for completed zero-parameter calls.
+        let mut wrapped_args = if completed && raw_args.is_empty() {
+            "{}".to_string()
+        } else {
+            raw_args.to_owned()
+        };
         if raw_args.starts_with("{\\") && !raw_args.starts_with("\"{\\") {
             wrapped_args = format!("\"{}\"", raw_args);
         }
@@ -437,7 +443,7 @@ pub async fn parse_openai_stream_chunk(
             if line == "[DONE]" {
                 // If we were accumulating a function call, finalize it
                 if !partial_fc.indexed_calls.is_empty() || partial_fc.is_accumulating && partial_fc.name.is_some() {
-                    finalize_function_call_sync(partial_fc, function_calls, tools);
+                    finalize_function_call_sync(partial_fc, function_calls, tools, true);
                 }
                 continue;
             }
@@ -477,7 +483,7 @@ pub async fn parse_openai_stream_chunk(
         if chunk.trim() == "[DONE]" {
             // If we were accumulating a function call, finalize it
             if !partial_fc.indexed_calls.is_empty() || partial_fc.is_accumulating && partial_fc.name.is_some() {
-                finalize_function_call_sync(partial_fc, function_calls, tools);
+                finalize_function_call_sync(partial_fc, function_calls, tools, true);
             }
             if let Some(inbox_name) = inbox_name.as_ref() {
                 let _ = send_ws_update(
@@ -535,7 +541,7 @@ pub async fn parse_openai_stream_chunk(
                     match serde_json::from_str::<JsonValue>(&partial_fc.arguments) {
                         Ok(_) => {
                             // We have a complete valid JSON object, finalize the function call
-                            finalize_function_call_sync(partial_fc, function_calls, tools);
+                            finalize_function_call_sync(partial_fc, function_calls, tools, false);
                         }
                         Err(_) => {
                             // Not a complete valid JSON yet, continue
@@ -652,13 +658,17 @@ pub async fn parse_openai_stream_chunk(
                                     // changes
                                     if let Some(old_name) = &partial_fc.name {
                                         if !old_name.is_empty() && old_name != name {
-                                            finalize_function_call_sync(partial_fc, function_calls, tools);
+                                            finalize_function_call_sync(partial_fc, function_calls, tools, false);
                                         }
                                     }
                                     partial_fc.name = Some(name.to_string());
                                     partial_fc.is_accumulating = true;
                                     // Legacy function_call format doesn't have IDs, so we clear it
                                     partial_fc.id = None;
+                                }
+                                if fc.get("arguments").is_some_and(|arguments| !arguments.is_string()) {
+                                    // Keep non-string input invalid after empty-argument normalization.
+                                    partial_fc.arguments.push_str("null");
                                 }
                             }
 
@@ -689,10 +699,13 @@ pub async fn parse_openai_stream_chunk(
                                     if let Some(kind) = call["type"].as_str() {
                                         pending.call_type = Some(kind.into());
                                     }
-                                    if let Some(arguments) =
-                                        call.pointer("/function/arguments").and_then(|value| value.as_str())
-                                    {
-                                        pending.arguments.push_str(arguments);
+                                    if let Some(arguments) = call.pointer("/function/arguments") {
+                                        if let Some(arguments) = arguments.as_str() {
+                                            pending.arguments.push_str(arguments);
+                                        } else {
+                                            // Null remains a non-object even when it is the only fragment.
+                                            pending.arguments.push_str("null");
+                                        }
                                     }
                                 }
                             }
@@ -700,12 +713,12 @@ pub async fn parse_openai_stream_chunk(
 
                         // If finish_reason == "function_call", finalize the partial
                         if finish_reason == "function_call" || finish_reason == "tool_calls" {
-                            finalize_function_call_sync(partial_fc, function_calls, tools);
+                            finalize_function_call_sync(partial_fc, function_calls, tools, true);
                         } else if finish_reason == "stop" {
                             // If the user or model stops, we can finalize
                             // any function call that wasn't yet finished.
                             if partial_fc.name.is_some() || !partial_fc.indexed_calls.is_empty() {
-                                finalize_function_call_sync(partial_fc, function_calls, tools);
+                                finalize_function_call_sync(partial_fc, function_calls, tools, true);
                             }
 
                             // Close reasoning tag if it was started but not closed
@@ -724,6 +737,8 @@ pub async fn parse_openai_stream_chunk(
                                 }
                                 partial_fc.reasoning_started = false;
                             }
+                        } else if !finish_reason.is_empty() {
+                            finalize_function_call_sync(partial_fc, function_calls, tools, false);
                         }
                     }
                 }
@@ -1052,8 +1067,8 @@ pub async fn handle_streaming_response_with_identity_mode(
     }
 
     // If there's an unfinalized function call at the end, finalize it
-    if !partial_fc.indexed_calls.is_empty() || partial_fc.name.is_some() && !partial_fc.arguments.is_empty() {
-        finalize_function_call_sync(&mut partial_fc, &mut function_calls, &tools);
+    if !partial_fc.indexed_calls.is_empty() || partial_fc.name.is_some() {
+        finalize_function_call_sync(&mut partial_fc, &mut function_calls, &tools, false);
     }
 
     // Create the response object
@@ -1191,7 +1206,16 @@ pub async fn handle_non_streaming_response(
                 let data_resp: Result<JsonValue, _> = serde_json::from_str(&response_text);
 
                 match data_resp {
-                    Ok(value) => {
+                    Ok(mut value) => {
+                        let arguments_complete = value.pointer("/choices/0/finish_reason").and_then(|reason| reason.as_str())
+                            .is_some_and(|reason| matches!(reason, "tool_calls" | "function_call" | "stop"));
+                        if let Some(calls) = value.pointer_mut("/choices/0/message/tool_calls").and_then(|calls| calls.as_array_mut()) {
+                            for call in calls {
+                                if let Some(function) = call.get_mut("function").and_then(|function| function.as_object_mut()) {
+                                    function.entry("arguments".to_string()).or_insert_with(|| json!(""));
+                                }
+                            }
+                        }
                         let selected_message = value.pointer("/choices/0/message").cloned().unwrap_or_default();
                         let reasoning_concat = selected_message["reasoning_content"].as_str().filter(|value| !value.is_empty())
                             .or_else(|| selected_message["reasoning"].as_str()).unwrap_or_default().to_string();
@@ -1227,7 +1251,10 @@ pub async fn handle_non_streaming_response(
                         let function_calls: Vec<FunctionCall> = selected
                             .and_then(|choice| choice.message.tool_calls.as_ref())
                             .into_iter().flatten().enumerate().map(|(index, tool_call)| {
-                                let parsed_arguments = serde_json::from_str::<JsonValue>(&tool_call.function.arguments)
+                                let raw_arguments = if arguments_complete && tool_call.function.arguments.trim().is_empty() {
+                                    "{}"
+                                } else { &tool_call.function.arguments };
+                                let parsed_arguments = serde_json::from_str::<JsonValue>(raw_arguments)
                                     .map_err(|error| format!("Tool arguments are not valid JSON: {error}"))
                                     .and_then(|value| value.as_object().cloned()
                                         .ok_or_else(|| "Tool arguments must be a JSON object".to_string()));
@@ -2474,6 +2501,163 @@ mod tests {
             .unwrap();
             mock.assert_async().await;
             assert_eq!(response.response_string, if stopped { "" } else { "complete answer" });
+        }
+    }
+
+    async fn assert_completed_argument_execution(call: &FunctionCall, allowed: bool) {
+        use crate::llm_provider::execution::chains::generic_chain::generic_inference_chain::execute_valid_function_call;
+        use crate::managers::tool_router::ToolCallFunctionResponse;
+        let mut executed = false;
+        let result = execute_valid_function_call(call, async {
+            executed = true;
+            Ok(ToolCallFunctionResponse {
+                function_call: call.clone(),
+                response: "executed".into(),
+            })
+        })
+        .await;
+        assert_eq!(executed, allowed);
+        assert_eq!(result.is_ok(), allowed);
+        if !allowed {
+            assert!(call.provider_metadata.as_ref().unwrap()["function_argument_error"].is_string());
+        }
+    }
+
+    #[tokio::test]
+    async fn empty_stream_arguments_require_completion_before_zero_parameter_execution() {
+        let tools = Some(vec![json!({"type": "function", "function": {
+            "name": "zero_arg_tool", "tool_router_key": "zero_arg_tool",
+            "parameters": {"type": "object", "properties": {}, "required": []}
+        }})]);
+        for arguments in [
+            None,
+            Some(json!("")),
+            Some(json!(" \n\t")),
+            Some(json!("{bad")),
+            Some(json!("[]")),
+            Some(json!("null")),
+            Some(json!(null)),
+            Some(json!({})),
+        ] {
+            for finish in ["tool_calls", "done", "length", "eof"] {
+                let blank = arguments.as_ref().map_or(true, |value| {
+                    value.as_str().is_some_and(|value| value.trim().is_empty())
+                });
+                let mut function = json!({"name": "zero_arg_tool"});
+                if let Some(arguments) = &arguments {
+                    function["arguments"] = arguments.clone();
+                }
+                let mut buffer = format!(
+                    "data: {}\n\n",
+                    json!({"choices": [{"index": 0, "delta": {
+                        "tool_calls": [{"index": 0, "id": "native-call", "type": "function", "function": function}]
+                    }}]})
+                );
+                let mut text = String::new();
+                let mut reasoning = String::new();
+                let mut calls = Vec::new();
+                let mut partial = PartialFunctionCall::default();
+                parse_openai_stream_chunk(
+                    &mut buffer,
+                    &mut text,
+                    &mut reasoning,
+                    &mut calls,
+                    &mut partial,
+                    &tools,
+                    &None,
+                    None,
+                    "test",
+                )
+                .await
+                .unwrap();
+                // An identity-only delta cannot create an executable zero-parameter call.
+                assert!(calls.is_empty());
+                assert_eq!(partial.indexed_calls[&0].name.as_deref(), Some("zero_arg_tool"));
+                if finish == "eof" {
+                    // The transport uses the incomplete policy for pending calls at raw EOF.
+                    finalize_function_call_sync(&mut partial, &mut calls, &tools, false);
+                } else {
+                    buffer = if finish == "done" {
+                        "data: [DONE]\n\n".into()
+                    } else {
+                        format!(
+                            "data: {}\n\ndata: [DONE]\n\n",
+                            json!({"choices": [{"index": 0, "delta": {}, "finish_reason": finish}]})
+                        )
+                    };
+                    parse_openai_stream_chunk(
+                        &mut buffer,
+                        &mut text,
+                        &mut reasoning,
+                        &mut calls,
+                        &mut partial,
+                        &tools,
+                        &None,
+                        None,
+                        "test",
+                    )
+                    .await
+                    .unwrap();
+                }
+                assert_eq!(calls.len(), 1);
+                let call = &calls[0];
+                assert_eq!(call.id.as_deref(), Some("native-call"));
+                assert_eq!(call.tool_router_key.as_deref(), Some("zero_arg_tool"));
+                assert!(call.arguments.is_empty());
+                assert_completed_argument_execution(call, blank && matches!(finish, "tool_calls" | "done")).await;
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn completed_nonstreaming_zero_parameter_calls_accept_blank_or_missing_arguments() {
+        let tools = Some(vec![json!({"type": "function", "function": {
+            "name": "zero_arg_tool", "tool_router_key": "zero_arg_tool",
+            "parameters": {"type": "object", "properties": {}, "required": []}
+        }})]);
+        for arguments in [
+            None,
+            Some(""),
+            Some(" \n\t"),
+            Some("{bad"),
+            Some("[]"),
+            Some("null"),
+            Some("{}"),
+        ] {
+            for finish in ["tool_calls", "length"] {
+                let mut server = mockito::Server::new_async().await;
+                let mut function = json!({"name": "zero_arg_tool"});
+                if let Some(arguments) = arguments {
+                    function["arguments"] = json!(arguments);
+                }
+                let mock = server.mock("POST", "/chat/completions").with_header("content-type", "application/json")
+                    .with_body(json!({"id":"response", "object":"chat.completion", "created":1,
+                        "usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2},
+                        "choices":[{"index":0,"message":{"role":"assistant","content":null,
+                            "tool_calls":[{"id":"native-call","type":"function","function":function}]}, "finish_reason":finish}]
+                    }).to_string()).create_async().await;
+                let response = handle_non_streaming_response(
+                    &Client::new(),
+                    format!("{}/chat/completions", server.url()),
+                    json!({"stream":false}),
+                    "test-key".into(),
+                    None,
+                    Arc::new(LLMStopper::new()),
+                    None,
+                    tools.clone(),
+                    None,
+                )
+                .await
+                .unwrap();
+                mock.assert_async().await;
+                assert_eq!(response.function_calls.len(), 1);
+                let call = &response.function_calls[0];
+                assert_eq!(call.id.as_deref(), Some("native-call"));
+                assert_eq!(call.tool_router_key.as_deref(), Some("zero_arg_tool"));
+                let allowed = arguments == Some("{}")
+                    || finish == "tool_calls" && arguments.map_or(true, |value| value.trim().is_empty());
+                assert_completed_argument_execution(call, allowed).await;
+            }
         }
     }
 

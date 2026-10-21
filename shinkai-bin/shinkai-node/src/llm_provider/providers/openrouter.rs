@@ -267,7 +267,8 @@ async fn handle_streaming_response(
                         if line.starts_with("data: ") {
                             let json_str = &line[6..]; // Remove "data: " prefix
                             if json_str == "[DONE]" {
-                                // End of stream
+                                // A terminal marker confirms completion unless the choice was truncated.
+                                state.arguments_complete.get_or_insert(true);
                                 continue;
                             }
 
@@ -283,19 +284,7 @@ async fn handle_streaming_response(
                                     );
 
                                     // Check for finish_reason to determine if stream is done
-                                    let is_finished = data
-                                        .get("choices")
-                                        .and_then(|choices| choices.as_array())
-                                        .map(|choices_array| {
-                                            choices_array.iter().any(|choice| {
-                                                choice
-                                                    .get("finish_reason")
-                                                    .and_then(|fr| fr.as_str())
-                                                    .map(|fr| !fr.is_empty())
-                                                    .unwrap_or(false)
-                                            })
-                                        })
-                                        .unwrap_or(false);
+                                    let is_finished = selected_choice_finished(&data);
 
                                     // Send WebSocket update with incremental content (like OpenAI)
                                     let _ = send_ws_update(
@@ -347,19 +336,7 @@ async fn handle_streaming_response(
                             );
 
                             // Check for finish_reason to determine if stream is done
-                            let is_finished = data
-                                .get("choices")
-                                .and_then(|choices| choices.as_array())
-                                .map(|choices_array| {
-                                    choices_array.iter().any(|choice| {
-                                        choice
-                                            .get("finish_reason")
-                                            .and_then(|fr| fr.as_str())
-                                            .map(|fr| !fr.is_empty())
-                                            .unwrap_or(false)
-                                    })
-                                })
-                                .unwrap_or(false);
+                            let is_finished = selected_choice_finished(&data);
 
                             // Send WebSocket update with incremental content
                             let _ = send_ws_update(
@@ -511,16 +488,38 @@ async fn handle_non_streaming_response(
     }
 }
 
+fn selected_choice(data: &JsonValue) -> Option<&JsonValue> {
+    let choices = data.get("choices")?.as_array()?;
+    choices
+        .iter()
+        .find(|choice| choice["index"].as_u64() == Some(0))
+        .or_else(|| choices.iter().find(|choice| choice.get("index").is_none()))
+}
+
+fn selected_choice_finished(data: &JsonValue) -> bool {
+    selected_choice(data)
+        .and_then(|choice| choice.get("finish_reason"))
+        .and_then(|reason| reason.as_str())
+        .is_some_and(|reason| !reason.is_empty())
+}
+
 #[derive(Default)]
 struct OpenRouterResponseState {
     reasoning_details: Vec<JsonValue>,
     content: String,
     arguments: std::collections::HashMap<u64, JsonValue>,
+    arguments_complete: Option<bool>,
 }
 
 impl OpenRouterResponseState {
     fn update_call_arguments(&self, call: &mut FunctionCall) {
         let arguments = match self.arguments.get(&call.index) {
+            Some(JsonValue::String(arguments))
+                if self.arguments_complete == Some(true) && arguments.trim().is_empty() =>
+            {
+                Ok(json!({}))
+            }
+            None if self.arguments_complete == Some(true) => Ok(json!({})),
             Some(JsonValue::String(arguments)) => serde_json::from_str::<JsonValue>(arguments)
                 .map_err(|error| format!("Tool arguments are not valid JSON: {error}")),
             Some(_) => Err("Tool arguments must be a JSON-encoded object string".to_string()),
@@ -566,7 +565,15 @@ impl OpenRouterResponseState {
             .iter()
             .map(|call| {
                 let mut function = json!({"name": call.name});
-                if let Some(arguments) = self.arguments.get(&call.index) {
+                let raw_arguments = self.arguments.get(&call.index);
+                if self.arguments_complete == Some(true)
+                    && raw_arguments.map_or(true, |arguments| {
+                        arguments.as_str().is_some_and(|arguments| arguments.trim().is_empty())
+                    })
+                {
+                    // Replay completed zero-parameter calls using the required argument-string shape.
+                    function["arguments"] = json!("{}");
+                } else if let Some(arguments) = raw_arguments {
                     function["arguments"] = arguments.clone();
                 }
                 json!({"id": call.id, "type": call.call_type.as_deref().unwrap_or("function"), "function": function})
@@ -593,7 +600,14 @@ fn process_streaming_chunk(
 ) -> String {
     let mut new_content = String::new();
     // A request selects one completion. Do not mix reasoning from other choices.
-    if let Some(choice) = data.get("choices").and_then(|c| c.as_array()).and_then(|c| c.first()) {
+    if let Some(choice) = selected_choice(data) {
+        if let Some(reason) = choice
+            .get("finish_reason")
+            .and_then(|reason| reason.as_str())
+            .filter(|reason| !reason.is_empty())
+        {
+            state.arguments_complete = Some(matches!(reason, "tool_calls" | "function_call" | "stop"));
+        }
         if let Some(message) = choice.get("delta").or_else(|| choice.get("message")) {
             if let Some(content) = message.get("content").and_then(|c| c.as_str()) {
                 state.content.push_str(content);
@@ -681,7 +695,7 @@ fn preset_options(model: &str) -> Option<(bool, &'static [&'static str], &'stati
         "openai/gpt-6-luna" | "openai/gpt-6-luna-pro" | "openai/gpt-6-sol" | "openai/gpt-6-sol-pro" => {
             Some((false, &["none", "low", "medium", "high", "xhigh", "max"], OPENAI))
         }
-        "anthropic/claude-sonnet-5.5" => Some((
+        "anthropic/claude-sonnet-5.5" | "anthropic/claude-opus-5.5" | "anthropic/claude-fable-5.1" => Some((
             true,
             EFFORTS,
             &["max_completion_tokens", "response_format", "stop", "verbosity"],
@@ -827,7 +841,13 @@ mod option_tests {
 
     #[test]
     fn typed_reasoning_options_use_openrouter_shape() {
-        for model in ["openai/gpt-6-astra", "openai/gpt-6.1-sol", "openai/gpt-6-luna"] {
+        for model in [
+            "openai/gpt-6-astra",
+            "openai/gpt-6.1-sol",
+            "openai/gpt-6-luna",
+            "anthropic/claude-opus-5.5",
+            "anthropic/claude-fable-5.1",
+        ] {
             for effort in ["low", "medium", "high", "xhigh", "max"] {
                 let mut payload = json!({"model": model});
                 let mut config = JobConfig::empty();
@@ -847,6 +867,8 @@ mod option_tests {
             "openai/gpt-6-astra",
             "openai/gpt-6.1-sol",
             "anthropic/claude-sonnet-5.5",
+            "anthropic/claude-opus-5.5",
+            "anthropic/claude-fable-5.1",
             "google/gemini-4-argon",
         ] {
             let mut payload = json!({"model": model});
@@ -921,6 +943,8 @@ mod option_tests {
         for model in [
             "openai/gpt-6.1-sol:batch",
             "anthropic/claude-sonnet-5.5:batch",
+            "anthropic/claude-opus-5.5:batch",
+            "anthropic/claude-fable-5.1:batch",
             "google/gemini-4-argon:batch",
         ] {
             for thinking in [false, true] {
@@ -1024,6 +1048,8 @@ mod option_tests {
         for model in [
             "openai/gpt-6.1-sol:free",
             "anthropic/claude-sonnet-5.5:nitro",
+            "anthropic/claude-opus-5.5-custom",
+            "custom/claude-fable-5.1:batch",
             "google/gemini-4-argon:custom",
             "custom/reasoner:batch",
             "openai/gpt-6.1-sol:free:batch",
@@ -1075,6 +1101,8 @@ mod option_tests {
             ("openai/gpt-6.1-sol", false),
             ("openai/gpt-6-luna", false),
             ("anthropic/claude-sonnet-5.5", false),
+            ("anthropic/claude-opus-5.5", false),
+            ("anthropic/claude-fable-5.1", false),
             ("google/gemini-4-argon", true),
             ("deepseek/deepseek-v4.1-flash-1017", true),
         ] {
@@ -1123,6 +1151,126 @@ mod argument_tests {
         assert_eq!(result.is_ok(), allowed);
         if !allowed {
             assert!(result.unwrap_err().to_string().contains("Invalid function arguments"));
+        }
+    }
+
+    #[tokio::test]
+    async fn empty_arguments_only_execute_after_confirmed_completion() {
+        let tools = Some(vec![json!({"type": "function", "function": {
+            "name": "zero_arg_tool", "tool_router_key": "zero_arg_tool",
+            "parameters": {"type": "object", "properties": {}, "required": []}
+        }})]);
+        for arguments in [
+            None,
+            Some(json!("")),
+            Some(json!(" \n\t")),
+            Some(json!("{bad")),
+            Some(json!("[]")),
+            Some(json!(null)),
+        ] {
+            for finish in [None, Some("tool_calls"), Some("length")] {
+                let blank = arguments.as_ref().map_or(true, |value| {
+                    value.as_str().is_some_and(|value| value.trim().is_empty())
+                });
+                let mut function = json!({"name": "zero_arg_tool"});
+                if let Some(arguments) = &arguments {
+                    function["arguments"] = arguments.clone();
+                }
+                let mut calls = Vec::new();
+                let mut state = OpenRouterResponseState::default();
+                process_streaming_chunk(
+                    &json!({"choices": [{"index": 0, "delta": {
+                        "tool_calls": [{"index": 0, "id": "native-call", "type": "function", "function": function}]
+                    }}]}),
+                    &mut String::new(),
+                    &mut calls,
+                    &tools,
+                    &mut state,
+                );
+                // An identity-only or blank argument delta is still an incomplete call.
+                assert!(calls[0].provider_metadata.as_ref().unwrap()["function_argument_error"].is_string());
+                assert_execution_allowed(&calls[0], false).await;
+                if let Some(finish) = finish {
+                    process_streaming_chunk(
+                        &json!({"choices": [{"index": 0, "delta": {}, "finish_reason": finish}]}),
+                        &mut String::new(),
+                        &mut calls,
+                        &tools,
+                        &mut state,
+                    );
+                }
+                // No finish marker represents the raw EOF path. attach_reasoning must keep its guard.
+                state.attach_reasoning(&mut calls);
+                let call = &calls[0];
+                assert_eq!(call.id.as_deref(), Some("native-call"));
+                assert_eq!(call.tool_router_key.as_deref(), Some("zero_arg_tool"));
+                assert!(call.arguments.is_empty());
+                assert_execution_allowed(call, blank && finish == Some("tool_calls")).await;
+                let native_function =
+                    &call.provider_metadata.as_ref().unwrap()["openrouter_assistant"]["tool_calls"][0]["function"];
+                let mut expected_function = function.clone();
+                if blank && finish == Some("tool_calls") {
+                    expected_function["arguments"] = json!("{}");
+                }
+                assert_eq!(native_function, &expected_function);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn completed_zero_parameter_calls_replay_canonical_arguments_and_signed_reasoning() {
+        for arguments in [None, Some(""), Some(" \n\t")] {
+            let mut function = json!({"name": "zero_arg_tool"});
+            if let Some(arguments) = arguments {
+                function["arguments"] = json!(arguments);
+            }
+            let mut assistant = json!({
+                "role": "assistant", "content": null,
+                "reasoning_details": [{"type": "reasoning.encrypted", "data": "signed-opaque", "index": 0}],
+                "tool_calls": [{"id": "native-call", "type": "function", "function": function}]
+            });
+            let mut calls = Vec::new();
+            let mut state = OpenRouterResponseState::default();
+            process_streaming_chunk(
+                &json!({"choices": [{"index": 0, "message": assistant, "finish_reason": "tool_calls"}]}),
+                &mut String::new(),
+                &mut calls,
+                &None,
+                &mut state,
+            );
+            state.attach_reasoning(&mut calls);
+            let call = &calls[0];
+            assert_execution_allowed(call, true).await;
+            assistant["tool_calls"][0]["function"]["arguments"] = json!("{}");
+            assert_eq!(
+                call.provider_metadata.as_ref().unwrap()["openrouter_assistant"],
+                assistant
+            );
+            let mut prompt = Prompt::new();
+            prompt.add_function_call(json!({
+                "name": call.name, "call_id": call.id, "arguments": call.arguments, "provider_metadata": call.provider_metadata
+            }), 100);
+            prompt.add_function_call_response(
+                json!({
+                    "function_call": {"name": call.name, "id": call.id}, "response": "actual zero-parameter result"
+                }),
+                100,
+            );
+            let prompt = serde_json::from_str(&serde_json::to_string(&prompt).unwrap()).unwrap();
+            let provider = LLMProviderInterface::OpenRouter(OpenRouter {
+                model_type: "anthropic/claude-opus-5.5".into(),
+            });
+            let prepared = openai_prepare_messages(&provider, prompt).unwrap();
+            let PromptResultEnum::Value(messages) = prepared.messages else {
+                panic!("Expected messages");
+            };
+            assert_eq!(messages.as_array().unwrap().len(), 2);
+            assert_eq!(messages[0], assistant);
+            assert_eq!(messages[0]["tool_calls"][0]["function"]["arguments"], "{}");
+            assert_eq!(
+                messages[1],
+                json!({"role": "tool", "tool_call_id": "native-call", "content": "actual zero-parameter result"})
+            );
         }
     }
 
@@ -1242,6 +1390,105 @@ mod argument_tests {
 #[cfg(test)]
 mod reasoning_details_tests {
     use super::*;
+
+    #[test]
+    fn websocket_completion_only_uses_the_selected_choice() {
+        for (choices, finished) in [
+            (json!([{ "index": 1, "finish_reason": "stop" }]), false),
+            (
+                json!([{ "index": 1, "finish_reason": "stop" }, { "index": 0, "finish_reason": null }]),
+                false,
+            ),
+            (
+                json!([{ "index": 0, "finish_reason": "" }, { "index": 1, "finish_reason": "tool_calls" }]),
+                false,
+            ),
+            (
+                json!([{ "index": 1, "finish_reason": null }, { "index": 0, "finish_reason": "tool_calls" }]),
+                true,
+            ),
+            (
+                json!([{ "index": 0, "finish_reason": "length" }, { "index": 1, "finish_reason": null }]),
+                true,
+            ),
+            (json!([{ "finish_reason": "stop" }]), true),
+            (
+                json!([{ "finish_reason": "stop" }, { "index": 0, "finish_reason": null }]),
+                false,
+            ),
+            (json!([]), false),
+        ] {
+            assert_eq!(selected_choice_finished(&json!({"choices": choices})), finished);
+        }
+    }
+
+    #[test]
+    fn separate_and_mixed_choices_never_share_tool_arguments_or_reasoning() {
+        let selected_details = json!([{ "type": "reasoning.encrypted", "data": "selected-signed", "index": 0 }]);
+        let other = json!({"index": 1, "delta": {
+            "content": "discard", "reasoning_details": [{"data": "other-signed"}],
+            "tool_calls": [{"index": 0, "id": "other-call", "function": {"name": "other", "arguments": "corruption"}}]
+        }, "finish_reason": "length"});
+        for selected_first in [false, true] {
+            let mut state = OpenRouterResponseState::default();
+            let mut text = String::new();
+            let mut calls = Vec::new();
+            process_streaming_chunk(&json!({"choices": [other]}), &mut text, &mut calls, &None, &mut state);
+            assert!(calls.is_empty());
+            assert!(text.is_empty());
+            assert!(state.arguments_complete.is_none());
+            process_streaming_chunk(
+                &json!({"choices": [{"index": 0, "delta": {
+                    "content": "selected", "reasoning_details": selected_details,
+                    "tool_calls": [{"index": 0, "id": "selected-call", "type": "function", "function": {"name": "lookup", "arguments": "{\"city\":"}}]
+                }}]}),
+                &mut text,
+                &mut calls,
+                &None,
+                &mut state,
+            );
+            process_streaming_chunk(&json!({"choices": [other]}), &mut text, &mut calls, &None, &mut state);
+            let selected = json!({"index": 0, "delta": {"content": " result", "tool_calls": [{"index": 0, "function": {"arguments": "\"Paris\"}"}}]}, "finish_reason": "tool_calls"});
+            let choices = if selected_first {
+                json!([selected, other])
+            } else {
+                json!([other, selected])
+            };
+            process_streaming_chunk(&json!({"choices": choices}), &mut text, &mut calls, &None, &mut state);
+            state.attach_reasoning(&mut calls);
+            assert_eq!(text, "selected result");
+            assert_eq!(calls.len(), 1);
+            assert_eq!(calls[0].id.as_deref(), Some("selected-call"));
+            assert_eq!(calls[0].name, "lookup");
+            assert_eq!(calls[0].arguments["city"], "Paris");
+            let metadata = calls[0].provider_metadata.as_ref().unwrap();
+            assert!(metadata.get("function_argument_error").is_none());
+            assert_eq!(metadata["reasoning_details"], selected_details);
+            assert_eq!(
+                metadata["openrouter_assistant"]["tool_calls"][0]["function"]["arguments"],
+                "{\"city\":\"Paris\"}"
+            );
+        }
+        // Compatible responses can omit choice.index; an explicit zero still takes priority.
+        let mut state = OpenRouterResponseState::default();
+        let mut text = String::new();
+        let mut calls = Vec::new();
+        process_streaming_chunk(
+            &json!({"choices": [{"delta": {"content": "legacy"}}]}),
+            &mut text,
+            &mut calls,
+            &None,
+            &mut state,
+        );
+        process_streaming_chunk(
+            &json!({"choices": [{"delta": {"content": "discard"}}, {"index": 0, "delta": {"content": " zero"}}]}),
+            &mut text,
+            &mut calls,
+            &None,
+            &mut state,
+        );
+        assert_eq!(text, "legacy zero");
+    }
 
     #[test]
     fn streaming_reasoning_survives_fragmented_parallel_tool_calls() {

@@ -133,7 +133,7 @@ impl LLMService for Claude {
                 }
 
                 // Add options to payload
-                add_options_to_payload(&mut payload, config.as_ref());
+                add_options_to_payload(&mut payload, config.as_ref())?;
 
                 // If model is Opus 4.1, remove top_p parameter from payload
                 if self.model_type.starts_with("claude-opus-4-1") {
@@ -528,7 +528,7 @@ fn has_tool_calls_in_messages(messages: &serde_json::Value) -> bool {
     false
 }
 
-fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobConfig>) {
+fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobConfig>) -> Result<(), LLMProviderError> {
     // Helper function to read and parse environment variables
     fn read_env_var<T: std::str::FromStr>(key: &str) -> Option<T> {
         std::env::var(key).ok().and_then(|val| val.parse::<T>().ok())
@@ -640,6 +640,7 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
     let always_thinking = model.starts_with("claude-opus-5-5")
         || model.starts_with("claude-sonnet-5-5")
         || model.starts_with("claude-fable-5");
+    let haiku_5_5 = model == "claude-haiku-5-5";
     let fixed_sampling = adaptive && !model.starts_with("claude-opus-4-6") && !model.starts_with("claude-sonnet-4-6");
     if adaptive && (always_thinking || payload["thinking"]["type"] == "enabled") {
         payload["thinking"] = serde_json::json!({"type": "adaptive"});
@@ -647,6 +648,21 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
             if matches!(effort.as_str(), "low" | "medium" | "high" | "xhigh" | "max") {
                 payload["output_config"]["effort"] = serde_json::json!(effort);
             }
+        }
+    }
+    // Haiku effort also controls visible output when thinking is disabled.
+    if haiku_5_5 {
+        if let Some(effort) = get_value("LLM_REASONING_EFFORT", config.and_then(|c| c.reasoning_effort.as_ref())) {
+            if matches!(effort.as_str(), "low" | "medium" | "high" | "xhigh" | "max") {
+                payload["output_config"]["effort"] = serde_json::json!(effort);
+            }
+        }
+        if !matches!(payload["thinking"]["type"].as_str(), Some("enabled" | "adaptive"))
+            && matches!(payload["output_config"]["effort"].as_str(), Some("xhigh" | "max"))
+        {
+            return Err(LLMProviderError::InputProcessingError(
+                "Claude Haiku 5.5 requires thinking for xhigh or max effort. Enable thinking or select low, medium, or high effort.".into(),
+            ));
         }
     }
     if fixed_sampling {
@@ -664,6 +680,7 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
             }
         }
     }
+    Ok(())
 }
 
 /// Rebuild native content by block index without changing signed thinking data.
@@ -1258,6 +1275,65 @@ mod tests {
     }
 
     #[test]
+    fn haiku_effort_is_independent_of_thinking_and_rejects_invalid_off_settings() {
+        let mut config = JobConfig::empty();
+        for effort in ["low", "medium", "high", "xhigh", "max"] {
+            config.reasoning_effort = Some(effort.into());
+            for thinking in [true, false] {
+                config.thinking = Some(thinking);
+                let mut payload = json!({"model": "claude-haiku-5-5", "max_tokens": 8192});
+                let result = add_options_to_payload(&mut payload, Some(&config));
+                if !thinking && matches!(effort, "xhigh" | "max") {
+                    assert!(
+                        matches!(result, Err(LLMProviderError::InputProcessingError(message)) if message.contains("requires thinking"))
+                    );
+                } else {
+                    result.unwrap();
+                    assert_eq!(payload["output_config"]["effort"], effort);
+                    assert_eq!(
+                        payload["thinking"]["type"],
+                        if thinking { "adaptive" } else { "disabled" }
+                    );
+                }
+            }
+        }
+        config.reasoning_effort = None;
+        config.thinking = Some(false);
+        config.other_model_params = Some(json!({"output_config": {"effort": "max"}}));
+        let mut payload = json!({"model": "claude-haiku-5-5", "max_tokens": 8192});
+        assert!(add_options_to_payload(&mut payload, Some(&config)).is_err());
+        config.thinking = None;
+        for effort in ["xhigh", "max"] {
+            config.other_model_params = None;
+            config.reasoning_effort = Some(effort.into());
+            let mut payload = json!({"model": "claude-haiku-5-5", "max_tokens": 8192});
+            assert!(add_options_to_payload(&mut payload, Some(&config)).is_err());
+            config.reasoning_effort = None;
+            config.other_model_params = Some(json!({"output_config": {"effort": effort}}));
+            let mut payload = json!({"model": "claude-haiku-5-5", "max_tokens": 8192});
+            assert!(add_options_to_payload(&mut payload, Some(&config)).is_err());
+        }
+        config.other_model_params = None;
+        config.reasoning_effort = Some("low".into());
+        let mut payload = json!({"model": "claude-haiku-5-5", "max_tokens": 8192});
+        add_options_to_payload(&mut payload, Some(&config)).unwrap();
+        assert_eq!(payload["output_config"]["effort"], "low");
+        assert!(payload.get("thinking").is_none());
+        config.thinking = Some(false);
+        config.reasoning_effort = Some("max".into());
+        for model in ["claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-1"] {
+            let mut payload = json!({"model": model, "max_tokens": 8192});
+            add_options_to_payload(&mut payload, Some(&config)).unwrap();
+            assert_eq!(payload["thinking"]["type"], "adaptive");
+            assert_eq!(payload["output_config"]["effort"], "max");
+        }
+        let mut payload = json!({"model": "claude-3-7-sonnet", "max_tokens": 8192});
+        add_options_to_payload(&mut payload, Some(&config)).unwrap();
+        assert_eq!(payload["thinking"]["type"], "disabled");
+        assert!(payload.get("output_config").is_none());
+    }
+
+    #[test]
     fn test_current_claude_request_options() {
         let mut config = JobConfig::empty();
         config.max_tokens = Some(8192);
@@ -1265,7 +1341,7 @@ mod tests {
         config.temperature = Some(0.3);
         config.reasoning_effort = Some("high".into());
         let mut payload = serde_json::json!({"model": "claude-opus-5-5", "max_tokens": 4096});
-        add_options_to_payload(&mut payload, Some(&config));
+        add_options_to_payload(&mut payload, Some(&config)).unwrap();
         assert_eq!(payload["max_tokens"], 8192);
         assert_eq!(payload["thinking"]["type"], "adaptive");
         assert_eq!(payload["output_config"]["effort"], "high");
