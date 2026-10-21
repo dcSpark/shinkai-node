@@ -77,6 +77,8 @@ impl From<InvoiceError> for AgentOfferingManagerError {
 
 pub struct ExtAgentOfferingsManager {
     pub db: Weak<SqliteManager>,
+    facilitator: FacilitatorConfig,
+    settle_with_test_facilitator: bool,
     pub node_name: ShinkaiName,
     // The secret key used for signing operations.
     pub my_signature_secret_key: SigningKey,
@@ -173,6 +175,8 @@ impl ExtAgentOfferingsManager {
         .await;
 
         Self {
+            facilitator: FacilitatorConfig::default(),
+            settle_with_test_facilitator: false,
             db,
             node_name,
             my_signature_secret_key,
@@ -185,6 +189,23 @@ impl ExtAgentOfferingsManager {
             wallet_manager,
             libp2p_event_sender,
         }
+    }
+
+    /// Use a local facilitator and exercise settlement in an isolated integration test.
+    /// The loopback restriction prevents this test setting from settling real payments.
+    pub fn use_local_test_facilitator(&mut self, facilitator: FacilitatorConfig) -> Result<(), String> {
+        let url = url::Url::parse(&facilitator.url).map_err(|e| e.to_string())?;
+        let loopback = url
+            .host_str()
+            .and_then(|host| host.parse::<std::net::IpAddr>().ok())
+            .map(|ip| ip.is_loopback())
+            .unwrap_or(false);
+        if url.scheme() != "http" || !loopback {
+            return Err("The test facilitator must use HTTP on a loopback IP address".into());
+        }
+        self.facilitator = facilitator;
+        self.settle_with_test_facilitator = true;
+        Ok(())
     }
 
     /// Update the libp2p event sender after initialization
@@ -840,7 +861,7 @@ impl ExtAgentOfferingsManager {
                     pay_to: payment_requirements.pay_to.clone(),
                     payment: transaction_signed,
                     x402_version: 1, // or your version
-                    facilitator: FacilitatorConfig::default(),
+                    facilitator: self.facilitator.clone(),
                 }
             } else {
                 x402::verify_payment::Input {
@@ -849,7 +870,7 @@ impl ExtAgentOfferingsManager {
                     pay_to: payment_requirements.pay_to.clone(),
                     payment: transaction_signed,
                     x402_version: 1, // or your version
-                    facilitator: FacilitatorConfig::default(),
+                    facilitator: self.facilitator.clone(),
                 }
             };
 
@@ -909,7 +930,7 @@ impl ExtAgentOfferingsManager {
         let is_testing = std::env::var("IS_TESTING").ok().map(|v| v == "1").unwrap_or(false);
         let mut settlement_response: Option<String> = None;
 
-        if !is_testing && !is_free_tool {
+        if (!is_testing || self.settle_with_test_facilitator) && !is_free_tool {
             let output = output_opt.as_ref().expect("Missing verification output");
             // Extract decoded_payment for settlement
             let decoded_payment = output.valid.as_ref().unwrap().decoded_payment.clone();
@@ -925,13 +946,12 @@ impl ExtAgentOfferingsManager {
             let settle_input = SettleInput {
                 payment: decoded_payment,
                 accepts: payment_requirements,
-                facilitator: FacilitatorConfig::default(),
+                facilitator: self.facilitator.clone(),
             };
             let settle_result = settle_payment(settle_input).await.map_err(|e| {
                 AgentOfferingManagerError::OperationFailed(format!("Payment settlement failed: {:?}", e))
             })?;
-            let shinkai_non_rust_code::functions::x402::settle_payment::Output { valid, invalid } =
-                settle_result;
+            let shinkai_non_rust_code::functions::x402::settle_payment::Output { valid, invalid } = settle_result;
             if let Some(valid_output) = valid {
                 println!(
                     "✅ Settlement succeeded for invoice {}. payment_response: {}",
@@ -946,9 +966,10 @@ impl ExtAgentOfferingsManager {
                         e
                     ))
                 })?;
-                return Err(AgentOfferingManagerError::OperationFailed(
-                    format!("Payment settlement failed: {}", invalid_output.error),
-                ));
+                return Err(AgentOfferingManagerError::OperationFailed(format!(
+                    "Payment settlement failed: {}",
+                    invalid_output.error
+                )));
             } else {
                 return Err(AgentOfferingManagerError::OperationFailed(
                     "Payment settlement returned no output".to_string(),

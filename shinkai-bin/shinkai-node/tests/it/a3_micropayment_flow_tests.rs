@@ -24,9 +24,9 @@ use shinkai_tools_primitives::tools::network_tool::NetworkTool;
 use shinkai_tools_primitives::tools::parameters::Parameters;
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader, ShinkaiToolWithAssets};
 use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
-use std::net::{IpAddr, Ipv4Addr, TcpListener};
+use std::net::TcpListener;
 use std::sync::Arc;
-use std::{net::SocketAddr, time::Duration};
+use std::time::Duration;
 use tokio::runtime::Runtime;
 
 use super::utils::node_test_api::api_registration_device_node_profile_main;
@@ -184,10 +184,14 @@ fn micropayment_flow_test() {
         }
 
         // Create node1 and node2
-        assert!(port_is_available(12000), "Port 12000 is not available");
-        assert!(port_is_available(12001), "Port 12001 is not available");
+        let listener1 = TcpListener::bind("127.0.0.1:0").unwrap();
+        let listener2 = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr1 = listener1.local_addr().unwrap();
+        let addr2 = listener2.local_addr().unwrap();
+        drop((listener1, listener2));
+        assert!(port_is_available(addr1.port()), "Node 1 port is not available");
+        assert!(port_is_available(addr2.port()), "Node 2 port is not available");
         
-        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12000);
         let node1 = Node::new(
             node1_identity_name.to_string(),
             addr1,
@@ -210,7 +214,6 @@ fn micropayment_flow_test() {
         )
         .await;
 
-        let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12001);
         let node2 = Node::new(
             node2_identity_name.to_string(),
             addr2,
@@ -307,6 +310,8 @@ fn micropayment_flow_test() {
         );
 
         eprintln!("Starting nodes");
+        let _relay = super::utils::local_relay::LocalRelay::start(&[&node1, &node2]).await;
+
         // Start node1 and node2
         let node1_clone = Arc::clone(&node1);
         let node1_handler = tokio::spawn(async move {
@@ -611,7 +616,7 @@ fn micropayment_flow_test() {
                     .send(NodeCommand::V2ApiRestoreLocalEthersWallet {
                         bearer: api_v2_key.to_string(),
                         network: x402_types::Network::BaseSepolia,
-                        source: WalletSource::Mnemonic(std::env::var("RESTORE_WALLET_MNEMONICS_NODE2").unwrap()),
+                        source: WalletSource::Mnemonic("test test test test test test test test test test test junk".to_string()),
                         role: WalletRole::Both,
                         res: sender,
                     })
@@ -907,7 +912,8 @@ fn micropayment_flow_test() {
 
                 let mut found_processed_invoice = false;
                 let mut resp: Result<Value, APIError> = Ok(serde_json::json!({}));
-                for _ in 0..20 {
+                // Permit the first Deno tool run to load its dependencies.
+                for _ in 0..180 {
                     let (sender, receiver) = async_channel::bounded(1);
                     node2_commands_sender
                         .send(NodeCommand::V2ApiListInvoices {
