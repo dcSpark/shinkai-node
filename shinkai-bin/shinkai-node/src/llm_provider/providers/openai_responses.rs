@@ -387,6 +387,20 @@ async fn handle_streaming_response_responses(
                 if let Some(ev) = event_type {
                     // handle event
                     match ev.as_str() {
+                        "response.failed" | "response.incomplete" | "error" => {
+                            let details = serde_json::from_str::<JsonValue>(&data_buf)
+                                .unwrap_or_else(|_| json!({"message":data_buf}));
+                            let provider_details = details
+                                .pointer("/response/error")
+                                .filter(|value| !value.is_null())
+                                .or_else(|| details.pointer("/response/incomplete_details"))
+                                .or_else(|| details.get("error"))
+                                .unwrap_or(&details);
+                            return Err(LLMProviderError::APIError(format!(
+                                "OpenAI Responses stream {}: {}",
+                                ev, provider_details
+                            )));
+                        }
                         // Text deltas
                         "response.output_text.delta" => {
                             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&data_buf) {
@@ -1354,6 +1368,77 @@ mod tests {
             panic!("Expected messages")
         };
         super::transform_input_messages_for_responses(messages)
+    }
+
+    #[tokio::test]
+    async fn responses_sse_terminal_errors_do_not_return_partial_success() {
+        for (event, details, expected) in [
+            (
+                "response.failed",
+                json!({"type":"response.failed", "response":{"error":{"code":"server_error","message":"provider failed"}}}),
+                "provider failed",
+            ),
+            (
+                "response.incomplete",
+                json!({"type":"response.incomplete", "response":{"incomplete_details":{"reason":"max_output_tokens"}}}),
+                "max_output_tokens",
+            ),
+            (
+                "error",
+                json!({"type":"error", "code":"rate_limit_exceeded","message":"provider limit"}),
+                "provider limit",
+            ),
+        ] {
+            let mut server = mockito::Server::new_async().await;
+            let body = format!("event: response.output_text.delta\ndata: {{\"delta\":\"partial\"}}\n\nevent: {event}\ndata: {details}\n\n");
+            let mock = server
+                .mock("POST", "/responses")
+                .with_header("content-type", "text/event-stream")
+                .with_body(body)
+                .create_async()
+                .await;
+            let result = super::handle_streaming_response_responses(
+                &reqwest::Client::new(),
+                format!("{}/responses", server.url()),
+                json!({"model":"gpt-6.1-sol","stream":true}),
+                "test-key".into(),
+                None,
+                None,
+                std::sync::Arc::new(super::LLMStopper::new()),
+                "test".into(),
+            )
+            .await;
+            mock.assert_async().await;
+            let error = result.unwrap_err().to_string();
+            assert!(error.contains(event), "{error}");
+            assert!(error.contains(expected), "{error}");
+        }
+    }
+
+    #[tokio::test]
+    async fn responses_sse_completed_stream_returns_success() {
+        let mut server = mockito::Server::new_async().await;
+        let body = "event: response.output_text.delta\ndata: {\"delta\":\"complete answer\"}\n\nevent: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[]}}\n\n";
+        let mock = server
+            .mock("POST", "/responses")
+            .with_header("content-type", "text/event-stream")
+            .with_body(body)
+            .create_async()
+            .await;
+        let response = super::handle_streaming_response_responses(
+            &reqwest::Client::new(),
+            format!("{}/responses", server.url()),
+            json!({"model":"gpt-6.1-sol","stream":true}),
+            "test-key".into(),
+            None,
+            None,
+            std::sync::Arc::new(super::LLMStopper::new()),
+            "test".into(),
+        )
+        .await
+        .unwrap();
+        mock.assert_async().await;
+        assert_eq!(response.response_string, "complete answer");
     }
 
     #[test]

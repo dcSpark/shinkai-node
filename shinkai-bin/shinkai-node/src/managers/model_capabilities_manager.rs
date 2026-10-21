@@ -1178,6 +1178,26 @@ impl ModelCapabilitiesManager {
         match model {
             LLMProviderInterface::OpenAI(openai) => Self::get_openai_max_output_tokens(&openai.model_type),
             LLMProviderInterface::OpenAILegacy(openai) => Self::get_openai_max_output_tokens(&openai.model_type),
+            // Documented generation budgets, not copies of the context windows.
+            // https://docs.together.ai/docs/kimi-k3-quickstart
+            // https://docs.together.ai/docs/deepseek-v4-quickstart
+            LLMProviderInterface::TogetherAI(provider) if provider.model_type == "moonshotai/Kimi-K3" => 131_072,
+            LLMProviderInterface::TogetherAI(provider) if provider.model_type == "deepseek-ai/DeepSeek-V4-Pro-0813" => {
+                384_000
+            }
+            // Together's Flash model page recommends 256K or more output tokens.
+            // https://www.together.ai/models/deepseek-v4-1-flash-1017
+            LLMProviderInterface::TogetherAI(provider)
+                if provider.model_type == "deepseek-ai/DeepSeek-V4.1-Flash-1017" =>
+            {
+                262_144
+            }
+            // Upstream Qwen README recommends 81,920 for complex reasoning.
+            // https://huggingface.co/Qwen/Qwen3.5-9B/blob/main/README.md
+            LLMProviderInterface::TogetherAI(provider) if provider.model_type == "Qwen/Qwen3.5-9B" => 81_920,
+            // Upstream MiniMax API recommends 128K; Together does not publish an output maximum.
+            // https://platform.minimax.io/docs/api-reference/text-chat-openai
+            LLMProviderInterface::TogetherAI(provider) if provider.model_type == "MiniMaxAI/MiniMax-M3" => 131_072,
             LLMProviderInterface::TogetherAI(_) => {
                 if Self::get_max_tokens(model) <= 8000 {
                     2800
@@ -1677,6 +1697,28 @@ mod current_model_tests {
         assert!(!ModelCapabilitiesManager::has_reasoning_capabilities(&unknown));
         assert!(!ModelCapabilitiesManager::get_llm_provider_capabilities(&unknown)
             .contains(&ModelCapability::ImageAnalysis));
+    }
+
+    #[test]
+    fn current_together_output_budgets_preserve_legacy_fallback() {
+        use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::TogetherAI;
+        for (id, expected) in [
+            ("moonshotai/Kimi-K3", 131_072),
+            ("MiniMaxAI/MiniMax-M3", 131_072),
+            ("Qwen/Qwen3.5-9B", 81_920),
+            ("deepseek-ai/DeepSeek-V4-Pro-0813", 384_000),
+            ("deepseek-ai/DeepSeek-V4.1-Flash-1017", 262_144),
+            ("unknown/model", 2800),
+            ("moonshotai/Kimi-K3-unverified", 2800),
+            ("togethercomputer/llama-2-70b-chat", 2800),
+        ] {
+            let model = LLMProviderInterface::TogetherAI(TogetherAI { model_type: id.into() });
+            assert_eq!(
+                ModelCapabilitiesManager::get_max_output_tokens(&model),
+                expected,
+                "{id}"
+            );
+        }
     }
 
     #[test]

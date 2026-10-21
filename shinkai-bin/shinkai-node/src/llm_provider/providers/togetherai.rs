@@ -220,6 +220,40 @@ mod tests {
     use super::*;
 
     #[test]
+    fn together_request_uses_verified_output_budget_and_clamps_user_cap() {
+        use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
+        use shinkai_message_primitives::schemas::subprompts::SubPromptType;
+
+        let model_id = "moonshotai/Kimi-K3";
+        let model = LLMProviderInterface::TogetherAI(TogetherAI {
+            model_type: model_id.into(),
+        });
+        let supported = ModelCapabilitiesManager::get_max_output_tokens(&model);
+        let mut prompt = Prompt::new();
+        prompt.add_content("Reply briefly.".into(), SubPromptType::UserLastMessage, 100);
+        let prepared = openai_prepare_messages(&model, prompt).unwrap();
+        let remaining = prepared.remaining_output_tokens;
+        assert!(
+            remaining > 8192,
+            "A short prompt must permit more than the old 4096-token cap"
+        );
+        assert_eq!(remaining, supported);
+        let PromptResultEnum::Value(messages) = prepared.messages else {
+            panic!("Expected prepared chat messages");
+        };
+
+        for requested in [8192, 1024, remaining as u64 + 1] {
+            let mut config = JobConfig::empty();
+            config.max_tokens = Some(requested);
+            let payload = chat_payload(model_id, messages.clone(), &[], remaining, Some(&config));
+            assert_eq!(payload["max_tokens"].as_u64(), Some(requested.min(remaining as u64)));
+            assert_eq!(payload["messages"], messages);
+        }
+        let payload = chat_payload(model_id, messages, &[], remaining, None);
+        assert_eq!(payload["max_tokens"].as_u64(), Some(remaining as u64));
+    }
+
+    #[test]
     fn together_reasoning_options_follow_each_model_contract() {
         let mut config = JobConfig::empty();
         config.thinking = Some(true);

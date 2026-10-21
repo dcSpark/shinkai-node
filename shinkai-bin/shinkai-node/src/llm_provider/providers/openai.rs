@@ -1201,13 +1201,8 @@ pub async fn handle_non_streaming_response(
                     Ok(value) => {
                         let selected_message = value.pointer("/choices/0/message").cloned().unwrap_or_default();
                         let reasoning_concat = selected_message["reasoning_content"].as_str().unwrap_or_default().to_string();
-                        let mut provider_metadata = serde_json::Map::new();
-                        if !reasoning_concat.is_empty() {
-                            provider_metadata.insert("deepseek_reasoning_content".into(), json!(reasoning_concat));
-                        }
-                        if let Some(details) = selected_message.get("reasoning_details") {
-                            provider_metadata.insert("reasoning_details".into(), details.clone());
-                        }
+                        // Provider adapters attach only the native data they can replay.
+                        // Generic Chat callers must not store unused reasoning metadata.
 
                         if let Some(error) = value.get("error") {
                             let code = error.get("code").and_then(|c| c.as_str());
@@ -1250,7 +1245,7 @@ pub async fn handle_non_streaming_response(
                                     })
                                 });
                                 FunctionCall {
-                                    provider_metadata: if provider_metadata.is_empty() { None } else { Some(JsonValue::Object(provider_metadata.clone())) },
+                                    provider_metadata: None,
                                     name: tool_call.function.name.clone(), arguments, tool_router_key,
                                     response: None, index: index as u64, id: Some(tool_call.id.clone()),
                                     call_type: Some(tool_call.call_type.clone()),
@@ -2380,6 +2375,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn generic_chat_does_not_store_unused_together_or_groq_reasoning() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server.mock("POST","/chat/completions").expect(2)
+            .with_header("content-type","application/json")
+            .with_body(json!({"id":"response","object":"chat.completion","created":1,
+                "usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2},
+                "choices":[{"index":0,"message":{"role":"assistant","content":null,
+                    "reasoning_content":"unused provider reasoning", "reasoning_details":[{"data":"unused encrypted data"}],
+                    "tool_calls":[{"id":"native","type":"function","function":{"name":"lookup","arguments":"{}"}}]
+                },"finish_reason":"tool_calls"}]
+            }).to_string()).create_async().await;
+        for model in ["moonshotai/Kimi-K3", "openai/gpt-oss-120b"] {
+            let response = handle_non_streaming_response(
+                &Client::new(),
+                format!("{}/chat/completions", server.url()),
+                json!({"model":model,"stream":false}),
+                "test-key".into(),
+                None,
+                Arc::new(LLMStopper::new()),
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+            assert_eq!(response.function_calls.len(), 1);
+            assert!(response.function_calls[0].provider_metadata.is_none());
+            assert_eq!(response.reasoning_content.as_deref(), Some("unused provider reasoning"));
+        }
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
     async fn test_non_streaming_keeps_parallel_calls_and_router_keys() {
         let mut server = mockito::Server::new_async().await;
         let call = |id: &str, name: &str| {
@@ -2437,11 +2465,7 @@ mod tests {
             assert_eq!(call.index, index as u64);
             assert_eq!(call.tool_router_key.as_deref(), Some(key));
             assert_eq!(call.arguments["value"], 1);
-            assert_eq!(call.provider_metadata.as_ref().unwrap()["reasoning_details"], details);
-            assert_eq!(
-                call.provider_metadata.as_ref().unwrap()["deepseek_reasoning_content"],
-                "reason"
-            );
+            assert!(call.provider_metadata.is_none());
         }
     }
 
