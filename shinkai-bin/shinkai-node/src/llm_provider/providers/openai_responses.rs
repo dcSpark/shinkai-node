@@ -989,6 +989,11 @@ fn add_options_to_payload_responses(
                 effort = "low".to_string();
             }
             payload["reasoning"] = json!({"effort": effort, "summary": "detailed"});
+        } else if config.and_then(|c| c.thinking) == Some(false)
+            && matches!(payload["model"].as_str(), Some("gpt-6-sol" | "gpt-6-luna"))
+        {
+            // An omitted effort uses the API default, so send none for an explicit disable.
+            payload["reasoning"] = json!({"effort": "none"});
         } else if let Some(obj) = payload.as_object_mut() {
             obj.remove("reasoning");
         }
@@ -1525,6 +1530,52 @@ mod tests {
             ] {
                 assert!(payload.get(key).is_none(), "unexpected Responses option: {key}");
             }
+        }
+    }
+
+    #[test]
+    fn test_responses_optional_reasoning_requires_explicit_disable() {
+        for model in ["gpt-6-sol", "gpt-6-luna"] {
+            let mut config = JobConfig::empty();
+            for thinking in [None, Some(false)] {
+                config.thinking = thinking;
+                let mut payload = json!({"model": model, "reasoning": {"effort": "high"}});
+                super::add_options_to_payload_responses(&mut payload, Some(&config), true);
+                if thinking == Some(false) {
+                    assert_eq!(payload["reasoning"], json!({"effort": "none"}));
+                } else {
+                    assert!(payload.get("reasoning").is_none());
+                }
+            }
+            let mut payload = json!({"model": model});
+            super::add_options_to_payload_responses(&mut payload, None, true);
+            assert!(payload.get("reasoning").is_none());
+        }
+    }
+
+    #[test]
+    fn test_responses_reasoning_disable_preserves_other_models() {
+        let mut config = JobConfig::empty();
+        config.thinking = Some(false);
+        for model in ["gpt-6-astra", "gpt-6.1-sol", "o3", "gpt-6-sol-unknown"] {
+            let mut payload = json!({"model": model, "reasoning": {"effort": "high"}});
+            super::add_options_to_payload_responses(&mut payload, Some(&config), true);
+            assert!(payload.get("reasoning").is_none(), "{model}");
+        }
+        let mut payload = json!({"model": "gpt-6-sol"});
+        super::add_options_to_payload_responses(&mut payload, Some(&config), false);
+        assert!(payload.get("reasoning").is_none());
+    }
+
+    #[test]
+    fn test_responses_current_models_preserve_xhigh_effort() {
+        let mut config = JobConfig::empty();
+        config.thinking = Some(true);
+        config.reasoning_effort = Some("xhigh".to_string());
+        for model in ["gpt-6-sol", "gpt-6-luna", "gpt-6-astra", "gpt-6.1-sol"] {
+            let mut payload = json!({"model": model});
+            super::add_options_to_payload_responses(&mut payload, Some(&config), true);
+            assert_eq!(payload["reasoning"]["effort"], "xhigh", "{model}");
         }
     }
 
