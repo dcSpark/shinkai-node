@@ -2,7 +2,7 @@ use crate::llm_provider::{
     error::LLMProviderError,
     providers::shared::{openai_api::openai_prepare_messages, shared_model_logic::llama_prepare_messages},
 };
-use ai_model_catalog::{get_openrouter_model, providers::openrouter};
+use ai_model_catalog::get_openrouter_model;
 use shinkai_message_primitives::{
     schemas::{
         llm_message::LlmMessage,
@@ -105,6 +105,112 @@ pub struct ModelCapabilitiesManager {
 }
 
 impl ModelCapabilitiesManager {
+    // Official model specifications, checked October 2026. Keep these IDs exact so
+    // an unknown future model does not inherit unsupported limits or features.
+    pub(crate) fn is_gpt6(model: &str) -> bool {
+        matches!(model, "gpt-6-astra" | "gpt-6.1-sol" | "gpt-6-sol" | "gpt-6-luna")
+    }
+
+    fn is_current_claude(model: &str) -> bool {
+        matches!(
+            model,
+            "claude-fable-5-1" | "claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-5-5"
+        )
+    }
+
+    fn is_current_gemini(model: &str) -> bool {
+        matches!(model, "gemini-4-argon" | "gemini-3.8-flash" | "gemini-3.5-flash-lite")
+    }
+
+    // DeepSeek serves these accepted legacy aliases with its current Flash model.
+    fn is_current_deepseek_flash(model: &str) -> bool {
+        matches!(
+            model,
+            "deepseek-flash" | "deepseek-v4-flash" | "deepseek-v4-flash-vision-exp"
+        )
+    }
+
+    pub(crate) fn is_current_deepseek(model: &str) -> bool {
+        Self::is_current_deepseek_flash(model) || model == "deepseek-v4-pro"
+    }
+
+    // Snapshot of current routes from https://openrouter.ai/api/v1/models (October 2026).
+    // Tuple: context, output, image, audio, video, tools, reasoning.
+    fn current_openrouter_metadata(model: &str) -> Option<(usize, usize, bool, bool, bool, bool, bool)> {
+        match model.strip_prefix("openrouter/").unwrap_or(model) {
+            "minimax/minimax-m3.1-flash:free" => Some((1000000, 524288, true, false, true, true, true)),
+            "deepseek/deepseek-v4.1-flash-1017" => Some((1048576, 393216, true, false, false, true, true)),
+            "meta/muse-spark-open" => Some((1048576, 943718, true, true, true, true, true)),
+            "google/gemini-4-argon" => Some((1048576, 943718, true, true, true, true, true)),
+            "google/gemini-4-argon:batch" => Some((1048576, 943718, true, true, true, true, true)),
+            "anthropic/claude-haiku-5.5" => Some((1000000, 128000, true, false, false, true, true)),
+            "anthropic/claude-haiku-5.5:batch" => Some((1000000, 128000, true, false, false, true, true)),
+            "openai/gpt-6.1-sol-pro" => Some((1050000, 128000, true, false, false, true, true)),
+            "openai/gpt-6.1-sol-pro:batch" => Some((1050000, 128000, true, false, false, true, true)),
+            "openai/gpt-6.1-sol" => Some((1050000, 128000, true, false, false, true, true)),
+            "openai/gpt-6.1-sol:batch" => Some((1050000, 128000, true, false, false, true, true)),
+            "anthropic/claude-sonnet-5.5" => Some((1000000, 128000, true, false, false, true, true)),
+            "anthropic/claude-sonnet-5.5:batch" => Some((1000000, 128000, true, false, false, true, true)),
+            "openai/gpt-6-luna-pro" => Some((1050000, 128000, true, false, false, true, true)),
+            "openai/gpt-6-luna-pro:batch" => Some((1050000, 128000, true, false, false, true, true)),
+            "openai/gpt-6-luna" => Some((1050000, 128000, true, false, false, true, true)),
+            "openai/gpt-6-luna:batch" => Some((1050000, 128000, true, false, false, true, true)),
+            "openai/gpt-6-sol-pro" => Some((1050000, 128000, true, false, false, true, true)),
+            "openai/gpt-6-sol-pro:batch" => Some((1050000, 128000, true, false, false, true, true)),
+            "openai/gpt-6-sol" => Some((1050000, 128000, true, false, false, true, true)),
+            "openai/gpt-6-sol:batch" => Some((1050000, 128000, true, false, false, true, true)),
+            "anthropic/claude-opus-5.5" => Some((1000000, 128000, true, false, false, true, true)),
+            "anthropic/claude-opus-5.5:batch" => Some((1000000, 128000, true, false, false, true, true)),
+            "openai/gpt-6-astra" => Some((1050000, 128000, true, false, false, true, true)),
+            "openai/gpt-6-astra:batch" => Some((1050000, 128000, true, false, false, true, true)),
+            "openai/gpt-6-astra-pro" => Some((1050000, 128000, true, false, false, true, true)),
+            "openai/gpt-6-astra-pro:batch" => Some((1050000, 128000, true, false, false, true, true)),
+            "google/gemini-3.8-flash" => Some((1048576, 65536, true, true, true, true, true)),
+            "google/gemini-3.8-flash:batch" => Some((1048576, 65536, true, true, true, true, true)),
+            "anthropic/claude-fable-5.1" => Some((1000000, 128000, true, false, false, true, true)),
+            "anthropic/claude-fable-5.1:batch" => Some((1000000, 128000, true, false, false, true, true)),
+            "anthropic/claude-opus-5" => Some((1000000, 128000, true, false, false, true, true)),
+            "anthropic/claude-opus-5:batch" => Some((1000000, 128000, true, false, false, true, true)),
+            "google/gemini-3.5-flash-lite" => Some((1048576, 65536, true, true, true, true, true)),
+            "google/gemini-3.5-flash-lite:batch" => Some((1048576, 65536, true, true, true, true, true)),
+            "anthropic/claude-sonnet-5" => Some((1000000, 128000, true, false, false, true, true)),
+            "anthropic/claude-sonnet-5:batch" => Some((1000000, 128000, true, false, false, true, true)),
+            "anthropic/claude-fable-5" => Some((1000000, 128000, true, false, false, true, true)),
+            "anthropic/claude-fable-5:batch" => Some((1000000, 128000, true, false, false, true, true)),
+            "google/gemini-3.5-flash" => Some((1048576, 65536, true, true, true, true, true)),
+            "google/gemini-3.5-flash:batch" => Some((1048576, 65536, true, true, true, true, true)),
+            _ => None,
+        }
+    }
+
+    fn openrouter_limits(model: &str) -> Option<(usize, usize)> {
+        Self::current_openrouter_metadata(model).map(|m| (m.0, m.1))
+    }
+
+    fn get_openrouter_capabilities(model: &str) -> Vec<ModelCapability> {
+        let mut capabilities = vec![ModelCapability::TextInference];
+        // The shared OpenAI request builder encodes image parts only. Provider
+        // audio/video metadata does not make those inputs usable by this adapter.
+        let supports_images = Self::current_openrouter_metadata(model)
+            .map(|m| m.2)
+            .or_else(|| {
+                get_openrouter_model(model)
+                    .and_then(|m| m.architecture.as_ref())
+                    .map(|a| a.input_modalities.iter().any(|m| m == "image"))
+            })
+            .unwrap_or(false);
+        if supports_images {
+            capabilities.push(ModelCapability::ImageAnalysis);
+        }
+        if get_openrouter_model(model)
+            .and_then(|m| m.architecture.as_ref())
+            .is_some_and(|a| a.output_modalities.iter().any(|m| m == "image"))
+        {
+            capabilities.push(ModelCapability::ImageGeneration);
+        }
+        capabilities
+    }
+
     // Constructor
     pub async fn new(db: Weak<SqliteManager>, profile: ShinkaiName) -> Self {
         let db_arc = db.upgrade().unwrap();
@@ -136,6 +242,15 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::OpenAI(openai) => Self::get_openai_capabilities(&openai.model_type),
             LLMProviderInterface::OpenAILegacy(openai) => Self::get_openai_capabilities(&openai.model_type),
             LLMProviderInterface::TogetherAI(togetherai) => match togetherai.model_type.as_str() {
+                "moonshotai/Kimi-K3"
+                | "MiniMaxAI/MiniMax-M3"
+                | "Qwen/Qwen3.5-9B"
+                | "deepseek-ai/DeepSeek-V4.1-Flash-1017" => {
+                    vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+                }
+                "deepseek-ai/DeepSeek-V4-Pro-0813" => {
+                    vec![ModelCapability::TextInference]
+                }
                 "togethercomputer/llama-2-70b-chat" => vec![ModelCapability::TextInference],
                 "yorickvp/llava-13b" => vec![ModelCapability::ImageAnalysis],
                 model_type if model_type.starts_with("togethercomputer/llama-2") => {
@@ -158,7 +273,7 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Exo(model) => Self::get_shared_capabilities(model.model_type().as_str()),
             LLMProviderInterface::Groq(model) => Self::get_shared_capabilities(model.model_type().as_str()),
             LLMProviderInterface::Gemini(gemini) => Self::get_gemini_capabilities(gemini.model_type.as_str()),
-            LLMProviderInterface::OpenRouter(model) => Self::get_shared_capabilities(model.model_type().as_str()),
+            LLMProviderInterface::OpenRouter(model) => Self::get_openrouter_capabilities(&model.model_type),
             LLMProviderInterface::Grok(grok) => {
                 if grok.model_type.starts_with("grok-2-vision") {
                     vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
@@ -169,6 +284,9 @@ impl ModelCapabilitiesManager {
                 }
             }
             LLMProviderInterface::Claude(_) => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
+            LLMProviderInterface::DeepSeek(model) if Self::is_current_deepseek_flash(&model.model_type) => {
+                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+            }
             LLMProviderInterface::DeepSeek(_) => vec![ModelCapability::TextInference],
             LLMProviderInterface::LocalRegex(_) => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
         }
@@ -176,7 +294,14 @@ impl ModelCapabilitiesManager {
 
     fn get_shared_capabilities(model_type: &str) -> Vec<ModelCapability> {
         match model_type {
-            model_type if model_type.starts_with("llama3") => vec![ModelCapability::TextInference],
+            model_type
+                if Self::is_verified_exo_qwen(model_type)
+                    || model_type.starts_with("qwen3.5")
+                    || model_type.starts_with("qwen/qwen3.8-27b")
+                    || model_type.starts_with("qwen/qwen3.6-27b") =>
+            {
+                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+            }
             model_type if model_type.starts_with("mistral-small3.2") || model_type.starts_with("mistral-small3.1") => {
                 vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
             }
@@ -203,6 +328,7 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("llama3.2-vision") => {
                 vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
             }
+            model_type if model_type.starts_with("llama3") => vec![ModelCapability::TextInference],
             model_type if model_type.starts_with("llava") => {
                 vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
             }
@@ -242,6 +368,9 @@ impl ModelCapabilitiesManager {
     }
 
     fn get_openai_capabilities(model_type: &str) -> Vec<ModelCapability> {
+        if Self::is_gpt6(model_type) {
+            return vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference];
+        }
         match model_type {
             "gpt-5" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
             "gpt-5.1" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
@@ -276,6 +405,14 @@ impl ModelCapabilitiesManager {
     }
 
     fn get_gemini_capabilities(model_type: &str) -> Vec<ModelCapability> {
+        if Self::is_current_gemini(model_type) {
+            return vec![
+                ModelCapability::TextInference,
+                ModelCapability::ImageAnalysis,
+                ModelCapability::VideoAnalysis,
+                ModelCapability::AudioAnalysis,
+            ];
+        }
         match model_type {
             // Gemini 3 models
             model_type if model_type.starts_with("gemini-3-flash") => {
@@ -402,6 +539,12 @@ impl ModelCapabilitiesManager {
 
     fn get_openai_cost(model_type: &str) -> ModelCost {
         match model_type {
+            "gpt-6-astra" => return ModelCost::Expensive,
+            "gpt-6.1-sol" | "gpt-6-sol" => return ModelCost::GoodValue,
+            "gpt-6-luna" => return ModelCost::VeryCheap,
+            _ => {}
+        }
+        match model_type {
             "gpt-5" => ModelCost::GoodValue,
             "gpt-5.1" => ModelCost::GoodValue,
             "gpt-5.2" => ModelCost::GoodValue,
@@ -450,6 +593,9 @@ impl ModelCapabilitiesManager {
     }
 
     fn get_gemini_max_tokens(model_type: &str) -> usize {
+        if Self::is_current_gemini(model_type) {
+            return 1_048_576;
+        }
         match model_type {
             // Gemini 3 models
             model_type if model_type.starts_with("gemini-3-flash") => 1_048_576,
@@ -462,6 +608,9 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("gemini-2.5-flash-image-preview") => 32_768,
             model_type if model_type.starts_with("gemini-2.5-pro-preview-06-05") => 1_048_576,
             model_type if model_type.starts_with("gemini-2.5-pro-preview-tts") => 8_000,
+            model_type if model_type.starts_with("gemini-2.5-flash") || model_type.starts_with("gemini-2.5-pro") => {
+                1_048_576
+            }
             // Gemini 2.0 models
             model_type if model_type.starts_with("gemini-2.0-flash-preview-image-generation") => 32_000,
             model_type if model_type.starts_with("gemini-2.0-flash-lite") => 1_048_576,
@@ -477,6 +626,9 @@ impl ModelCapabilitiesManager {
     }
 
     fn get_gemini_max_output_tokens(model_type: &str) -> usize {
+        if Self::is_current_gemini(model_type) {
+            return 65_536;
+        }
         match model_type {
             // Gemini 3 models
             model_type if model_type.starts_with("gemini-3-flash") => 65_536,
@@ -489,6 +641,9 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("gemini-2.5-flash-image-preview") => 32_768,
             model_type if model_type.starts_with("gemini-2.5-pro-preview-06-05") => 65_536,
             model_type if model_type.starts_with("gemini-2.5-pro-preview-tts") => 16_000,
+            model_type if model_type.starts_with("gemini-2.5-flash") || model_type.starts_with("gemini-2.5-pro") => {
+                65_536
+            }
             // Gemini 2.0 models
             model_type if model_type.starts_with("gemini-2.0-flash-preview-image-generation") => 8_192,
             model_type if model_type.starts_with("gemini-2.0-flash-lite") => 8_192,
@@ -570,6 +725,9 @@ impl ModelCapabilitiesManager {
                 }
             }
             LLMProviderInterface::Claude(claude) => match claude.model_type.as_str() {
+                "claude-fable-5-1" | "claude-opus-5-5" => ModelCost::Expensive,
+                "claude-sonnet-5-5" => ModelCost::Cheap,
+                "claude-haiku-5-5" => ModelCost::VeryCheap,
                 "claude-opus-4.5" | "claude-opus-4-5" => ModelCost::Expensive,
                 "claude-opus-4-1-20250805" | "claude-opus-4-1" => ModelCost::Expensive,
                 "claude-opus-4-20250514" | "claude-opus-4-0" => ModelCost::Expensive,
@@ -744,6 +902,9 @@ impl ModelCapabilitiesManager {
     }
 
     fn get_openai_max_tokens(model_type: &str) -> usize {
+        if Self::is_gpt6(model_type) {
+            return 1_050_000;
+        }
         if model_type.starts_with("gpt-4o")
             || model_type.starts_with("gpt-4-1106-preview")
             || model_type.starts_with("gpt-4o-mini")
@@ -772,7 +933,16 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::OpenAI(openai) => Self::get_openai_max_tokens(&openai.model_type),
             LLMProviderInterface::OpenAILegacy(openai) => Self::get_openai_max_tokens(&openai.model_type),
             LLMProviderInterface::TogetherAI(togetherai) => {
-                // Fill in the appropriate logic for GenericAPI
+                if let Some(context) = match togetherai.model_type.as_str() {
+                    "deepseek-ai/DeepSeek-V4-Pro-0813" | "moonshotai/Kimi-K3" => Some(1_048_576),
+                    "deepseek-ai/DeepSeek-V4.1-Flash-1017" => Some(1_000_000),
+                    "MiniMaxAI/MiniMax-M3" => Some(524_288),
+                    "Qwen/Qwen3.5-9B" => Some(262_144),
+                    _ => None,
+                } {
+                    return context;
+                }
+                // Legacy Together models.
                 if togetherai.model_type == "mistralai/Mixtral-8x7B-Instruct-v0.1" {
                     32_000
                 } else if togetherai.model_type.starts_with("mistralai/Mistral-7B-Instruct-v0.2") {
@@ -797,9 +967,14 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Gemini(gemini) => Self::get_gemini_max_tokens(gemini.model_type.as_str()),
             LLMProviderInterface::Ollama(ollama) => Self::get_max_tokens_for_model_type(&ollama.model_type),
             LLMProviderInterface::Exo(exo) => Self::get_max_tokens_for_model_type(&exo.model_type),
-            LLMProviderInterface::Groq(groq) => Self::get_max_tokens_for_model_type(&groq.model_type),
+            LLMProviderInterface::Groq(groq) => match groq.model_type.as_str() {
+                "llama-3.1-8b-instant" | "llama-3.3-70b-versatile" => 131_072,
+                _ => Self::get_max_tokens_for_model_type(&groq.model_type),
+            },
             LLMProviderInterface::Grok(grok) => {
-                if grok.model_type.starts_with("grok-4.1-fast") {
+                if grok.model_type == "grok-4.7" {
+                    500_000
+                } else if grok.model_type.starts_with("grok-4.1-fast") {
                     256_000
                 } else if grok.model_type.starts_with("grok-4") {
                     256_000
@@ -811,10 +986,17 @@ impl ModelCapabilitiesManager {
                     131_072 // Default to grok-3 context window for unknown models
                 }
             }
-            LLMProviderInterface::OpenRouter(openrouter) => get_openrouter_model(&openrouter.model_type)
-                .and_then(|m| m.context_length)
-                .unwrap_or(4096) as usize,
-            LLMProviderInterface::Claude(_) => 200_000, // All Claude models now have 200K context window
+            LLMProviderInterface::OpenRouter(openrouter) => Self::openrouter_limits(&openrouter.model_type)
+                .map(|limits| limits.0)
+                .or_else(|| {
+                    get_openrouter_model(&openrouter.model_type)
+                        .and_then(|m| m.context_length)
+                        .map(|n| n as usize)
+                })
+                .unwrap_or(4096),
+            LLMProviderInterface::Claude(model) if Self::is_current_claude(&model.model_type) => 1_000_000,
+            LLMProviderInterface::Claude(_) => 200_000,
+            LLMProviderInterface::DeepSeek(model) if Self::is_current_deepseek(&model.model_type) => 1_000_000,
             LLMProviderInterface::DeepSeek(_) => 64_000,
             LLMProviderInterface::LocalRegex(_) => 128_000,
         }
@@ -822,15 +1004,17 @@ impl ModelCapabilitiesManager {
 
     fn get_max_tokens_for_model_type(model_type: &str) -> usize {
         match model_type {
-            model_type if model_type.starts_with("gpt-oss") => 128_000,
+            model_type if Self::is_verified_exo_qwen(model_type) => 262_144,
+            "qwen/qwen3.8-27b" => 131_042,
+            "qwen/qwen3.6-27b" => 131_072,
+            model_type if model_type.starts_with("qwen3.5") => 256_000,
+            model_type if model_type.starts_with("gpt-oss") => 131_072,
             model_type if model_type.starts_with("mistral:7b-instruct-v0.2") => 32_000,
             model_type if model_type.starts_with("mistral-nemo") => 128_000,
             model_type if model_type.starts_with("mistral-small3.2") || model_type.starts_with("mistral-small3.1") => {
                 128_000
             }
-            model_type if model_type.starts_with("ministral-3") => {
-                256_000
-            }
+            model_type if model_type.starts_with("ministral-3") => 256_000,
             model_type if model_type.starts_with("mistral-small") => 128_000,
             model_type if model_type.starts_with("mistral-large") => 128_000,
             model_type if model_type.starts_with("mixtral:8x7b-instruct-v0.1") => 16_000,
@@ -877,7 +1061,7 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("llama-3.1-8b-instant") => 131_072,
             model_type if model_type.starts_with("llama-3.3-70b-versatile") => 131_072,
             model_type if model_type.starts_with("meta-llama/llama-guard-4-12b") => 131_072,
-            model_type if model_type.starts_with("openai/gpt-oss") => 128_000,
+            model_type if model_type.starts_with("openai/gpt-oss") => 131_072,
             // Groq Preview Models
             model_type if model_type.starts_with("meta-llama/llama-4-maverick-17b-128e-instruct") => 131_072,
             model_type if model_type.starts_with("meta-llama/llama-4-scout-17b-16e-instruct") => 131_072,
@@ -938,6 +1122,11 @@ impl ModelCapabilitiesManager {
     /// Returns the maximum number of input tokens allowed for the given model,
     /// leaving room for output tokens.
     pub fn get_max_input_tokens(model: &LLMProviderInterface) -> usize {
+        match model {
+            LLMProviderInterface::OpenAI(m) if Self::is_gpt6(&m.model_type) => return 922_000,
+            LLMProviderInterface::OpenAILegacy(m) if Self::is_gpt6(&m.model_type) => return 922_000,
+            _ => {}
+        }
         let max_tokens = Self::get_max_tokens(model);
         let max_output_tokens = Self::get_max_output_tokens(model) / 2;
         if max_tokens > max_output_tokens {
@@ -948,6 +1137,9 @@ impl ModelCapabilitiesManager {
     }
 
     fn get_openai_max_output_tokens(model_type: &str) -> usize {
+        if Self::is_gpt6(model_type) {
+            return 128_000;
+        }
         if model_type.contains("4o-mini") || model_type.starts_with("gpt-4o") {
             16_384
         } else if model_type.starts_with("o1-preview") || model_type.starts_with("gpt-4.1") {
@@ -975,6 +1167,26 @@ impl ModelCapabilitiesManager {
         match model {
             LLMProviderInterface::OpenAI(openai) => Self::get_openai_max_output_tokens(&openai.model_type),
             LLMProviderInterface::OpenAILegacy(openai) => Self::get_openai_max_output_tokens(&openai.model_type),
+            // Documented generation budgets, not copies of the context windows.
+            // https://docs.together.ai/docs/kimi-k3-quickstart
+            // https://docs.together.ai/docs/deepseek-v4-quickstart
+            LLMProviderInterface::TogetherAI(provider) if provider.model_type == "moonshotai/Kimi-K3" => 131_072,
+            LLMProviderInterface::TogetherAI(provider) if provider.model_type == "deepseek-ai/DeepSeek-V4-Pro-0813" => {
+                384_000
+            }
+            // Together's Flash model page recommends 256K or more output tokens.
+            // https://www.together.ai/models/deepseek-v4-1-flash-1017
+            LLMProviderInterface::TogetherAI(provider)
+                if provider.model_type == "deepseek-ai/DeepSeek-V4.1-Flash-1017" =>
+            {
+                262_144
+            }
+            // Upstream Qwen README recommends 81,920 for complex reasoning.
+            // https://huggingface.co/Qwen/Qwen3.5-9B/blob/main/README.md
+            LLMProviderInterface::TogetherAI(provider) if provider.model_type == "Qwen/Qwen3.5-9B" => 81_920,
+            // Upstream MiniMax API recommends 128K; Together does not publish an output maximum.
+            // https://platform.minimax.io/docs/api-reference/text-chat-openai
+            LLMProviderInterface::TogetherAI(provider) if provider.model_type == "MiniMaxAI/MiniMax-M3" => 131_072,
             LLMProviderInterface::TogetherAI(_) => {
                 if Self::get_max_tokens(model) <= 8000 {
                     2800
@@ -1002,6 +1214,7 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Groq(groq) => {
                 // Groq model-specific max output tokens based on official documentation
                 match groq.model_type.as_str() {
+                    "qwen/qwen3.8-27b" | "qwen/qwen3.6-27b" => 16_384,
                     model_type if model_type.starts_with("groq/compound") => 8_192,
                     model_type if model_type.starts_with("groq/compound-mini") => 8_192,
                     model_type if model_type.starts_with("llama-3.1-8b-instant") => 8_192,
@@ -1033,23 +1246,40 @@ impl ModelCapabilitiesManager {
                     4096
                 }
             }
+            // These MLX conversions link to Qwen's original model card, which
+            // recommends 81,920 output tokens for complex reasoning. Exo's API
+            // accepts max_tokens without a separate fixed generation ceiling.
+            // https://huggingface.co/Qwen/Qwen3.5-9B#best-practices
+            // https://github.com/exo-explore/exo/blob/main/docs/api.md
+            LLMProviderInterface::Exo(model) if Self::is_verified_exo_qwen(&model.model_type) => 81_920,
             LLMProviderInterface::Exo(_) => 4096,
             LLMProviderInterface::Gemini(gemini) => Self::get_gemini_max_output_tokens(gemini.model_type.as_str()),
             LLMProviderInterface::OpenRouter(openrouter) => {
+                if let Some((_, output)) = Self::openrouter_limits(&openrouter.model_type) {
+                    return output;
+                }
                 let model = get_openrouter_model(&openrouter.model_type);
                 let max_tokens = model.and_then(|m| m.top_provider.as_ref().and_then(|p| p.max_completion_tokens));
                 max_tokens.unwrap_or(model.and_then(|m| m.context_length).unwrap_or(4096)) as usize
             }
             LLMProviderInterface::Claude(claude) => {
-                if claude.model_type.starts_with("claude-opus-4.5") || claude.model_type.starts_with("claude-opus-4-5") {
+                if Self::is_current_claude(&claude.model_type) {
+                    128_000
+                } else if claude.model_type.starts_with("claude-opus-4.5")
+                    || claude.model_type.starts_with("claude-opus-4-5")
+                {
                     32_000
                 } else if claude.model_type.starts_with("claude-opus-4") {
                     32_000
-                } else if claude.model_type.starts_with("claude-sonnet-4.5") || claude.model_type.starts_with("claude-sonnet-4-5") {
+                } else if claude.model_type.starts_with("claude-sonnet-4.5")
+                    || claude.model_type.starts_with("claude-sonnet-4-5")
+                {
                     64_000
                 } else if claude.model_type.starts_with("claude-sonnet-4") {
                     64_000
-                } else if claude.model_type.starts_with("claude-haiku-4.5") || claude.model_type.starts_with("claude-haiku-4-5") {
+                } else if claude.model_type.starts_with("claude-haiku-4.5")
+                    || claude.model_type.starts_with("claude-haiku-4-5")
+                {
                     8192
                 } else if claude.model_type.starts_with("claude-3-7-sonnet") {
                     64_000
@@ -1065,6 +1295,7 @@ impl ModelCapabilitiesManager {
                     8192 // Default for other Claude models
                 }
             }
+            LLMProviderInterface::DeepSeek(model) if Self::is_current_deepseek(&model.model_type) => 393_216,
             LLMProviderInterface::DeepSeek(_) => 8192,
             LLMProviderInterface::LocalRegex(_) => 128_000,
         }
@@ -1105,7 +1336,8 @@ impl ModelCapabilitiesManager {
         // Apply the buffer to estimate the total token count
         let buffered_token_count = ((estimated_tokens as f64) * (1.0 - buffer_percentage)).floor() as usize;
 
-        (buffered_token_count as f64 * 2.6).floor() as usize
+        let generic_tokens = (buffered_token_count as f64 * 2.6).floor() as usize;
+        generic_tokens.saturating_add(Prompt::count_native_replay_tokens(messages))
     }
 
     /// Counts the number of tokens from the list of messages for llama3 model,
@@ -1160,6 +1392,17 @@ impl ModelCapabilitiesManager {
         }
     }
 
+    fn is_verified_exo_qwen(model_type: &str) -> bool {
+        // Exo accepts arbitrary Hugging Face IDs. Only advertise tools for verified
+        // model builds; a compatible API alone does not establish model support.
+        // https://github.com/exo-explore/exo/tree/main/resources/inference_model_cards
+        // https://huggingface.co/Qwen/Qwen3.5-9B#tool-calling
+        matches!(
+            model_type,
+            "Qwen/Qwen3.5-9B" | "mlx-community/Qwen3.5-9B-4bit" | "mlx-community/Qwen3.5-9B-8bit"
+        )
+    }
+
     fn openai_has_tool_capabilities(model_type: &str) -> bool {
         // o1-mini and gpt-5-chat specifically does not support function calling
         if model_type.starts_with("o1-mini") {
@@ -1177,6 +1420,7 @@ impl ModelCapabilitiesManager {
         eprintln!("has tool capabilities model: {:?}", model);
         match model {
             LLMProviderInterface::OpenAI(openai) => Self::openai_has_tool_capabilities(&openai.model_type),
+            // GPT-6 uses Responses even when configured through the legacy provider.
             LLMProviderInterface::OpenAILegacy(openai) => Self::openai_has_tool_capabilities(&openai.model_type),
             LLMProviderInterface::Ollama(model) => {
                 // For Ollama, check model type and respect the passed stream parameter
@@ -1234,6 +1478,8 @@ impl ModelCapabilitiesManager {
                     // List from https://console.groq.com/docs/tool-use (sept 11, 2025)
                     || model.model_type.starts_with("openai/gpt-oss")
                     || model.model_type.starts_with("qwen/qwen3-32b")
+                    || model.model_type == "qwen/qwen3.8-27b"
+                    || model.model_type == "qwen/qwen3.6-27b"
                     || model.model_type.starts_with("moonshotai/kimi-k2-instruct")
                     || model.model_type.starts_with("meta-llama/llama-4-scout-17b-16e-instruct")
                     || model.model_type.starts_with("meta-llama/llama-4-maverick-17b-128e-instruct")
@@ -1241,7 +1487,11 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("llama-3.1-8b-instant")
             }
             LLMProviderInterface::OpenRouter(model) => {
-                model.model_type.starts_with("llama-3.2")
+                Self::current_openrouter_metadata(&model.model_type).is_some_and(|m| m.5)
+                    || get_openrouter_model(&model.model_type)
+                        .is_some_and(|m| m.supported_parameters.iter().any(|p| p == "tools"))
+                    // Preserve the legacy model aliases supported by earlier releases.
+                    || model.model_type.starts_with("llama-3.2")
                     || model.model_type.starts_with("llama3.2")
                     || model.model_type.starts_with("llama-3.1")
                     || model.model_type.starts_with("llama3.1")
@@ -1260,6 +1510,15 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("magistral")
                     || model.model_type.starts_with("gpt-oss")
             }
+            LLMProviderInterface::TogetherAI(model) => matches!(
+                model.model_type.as_str(),
+                "deepseek-ai/DeepSeek-V4-Pro-0813"
+                    | "deepseek-ai/DeepSeek-V4.1-Flash-1017"
+                    | "moonshotai/Kimi-K3"
+                    | "MiniMaxAI/MiniMax-M3"
+                    | "Qwen/Qwen3.5-9B"
+            ),
+            LLMProviderInterface::Exo(model) => Self::is_verified_exo_qwen(&model.model_type),
             LLMProviderInterface::Claude(_) => true, // All Claude models support tool calling
             LLMProviderInterface::ShinkaiBackend(_) => true,
             LLMProviderInterface::Gemini(model) => Self::gemini_has_tool_capabilities(model.model_type.as_str()),
@@ -1270,10 +1529,16 @@ impl ModelCapabilitiesManager {
     }
 
     fn openai_has_reasoning_capabilities(model_type: &str) -> bool {
-        model_type.starts_with("o1")
+        Self::is_gpt6(model_type)
+            || model_type.starts_with("o1")
             || model_type.starts_with("o3")
             || model_type.starts_with("o4")
             || (model_type.starts_with("gpt-5") && model_type != "gpt-5-chat-latest")
+    }
+
+    pub(crate) fn grok_has_reasoning_capabilities(model_type: &str) -> bool {
+        (model_type.starts_with("grok-4") && !model_type.contains("non-reasoning"))
+            || model_type.starts_with("grok-3-mini")
     }
 
     /// Returns whether the given model has reasoning capabilities
@@ -1281,6 +1546,14 @@ impl ModelCapabilitiesManager {
         match model {
             LLMProviderInterface::OpenAI(openai) => Self::openai_has_reasoning_capabilities(&openai.model_type),
             LLMProviderInterface::OpenAILegacy(openai) => Self::openai_has_reasoning_capabilities(&openai.model_type),
+            LLMProviderInterface::TogetherAI(model) => matches!(
+                model.model_type.as_str(),
+                "moonshotai/Kimi-K3"
+                    | "MiniMaxAI/MiniMax-M3"
+                    | "Qwen/Qwen3.5-9B"
+                    | "deepseek-ai/DeepSeek-V4-Pro-0813"
+                    | "deepseek-ai/DeepSeek-V4.1-Flash-1017"
+            ),
             LLMProviderInterface::Ollama(ollama) => {
                 ollama.model_type.starts_with("deepseek-r1")
                     || ollama.model_type.starts_with("magistral")
@@ -1290,11 +1563,25 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Groq(groq) => {
                 groq.model_type.starts_with("deepseek-r1-distill-llama-70b")
                     || groq.model_type.starts_with("qwen/qwen3-32b")
+                    || groq.model_type == "qwen/qwen3.8-27b"
+                    || groq.model_type == "qwen/qwen3.6-27b"
                     || groq.model_type.starts_with("openai/gpt-oss")
             }
-            LLMProviderInterface::DeepSeek(deepseek) => deepseek.model_type.starts_with("deepseek-reasoner"),
+            LLMProviderInterface::DeepSeek(deepseek) => {
+                Self::is_current_deepseek(&deepseek.model_type) || deepseek.model_type.starts_with("deepseek-reasoner")
+            }
+            LLMProviderInterface::Grok(grok) => Self::grok_has_reasoning_capabilities(&grok.model_type),
+            LLMProviderInterface::OpenRouter(model) => {
+                Self::current_openrouter_metadata(&model.model_type).is_some_and(|m| m.6)
+                    || get_openrouter_model(&model.model_type).is_some_and(|m| {
+                        m.supported_parameters
+                            .iter()
+                            .any(|p| p == "reasoning" || p == "reasoning_effort")
+                    })
+            }
             LLMProviderInterface::Claude(claude) => {
-                claude.model_type.starts_with("claude-opus-4.5")
+                Self::is_current_claude(&claude.model_type)
+                    || claude.model_type.starts_with("claude-opus-4.5")
                     || claude.model_type.starts_with("claude-opus-4-5")
                     || claude.model_type.starts_with("claude-opus-4-1")
                     || claude.model_type.starts_with("claude-opus-4")
@@ -1304,7 +1591,8 @@ impl ModelCapabilitiesManager {
                     || claude.model_type.starts_with("claude-3-7-sonnet")
             }
             LLMProviderInterface::Gemini(gemini) => {
-                gemini.model_type == "gemini-2.5-flash-preview-05-20"
+                Self::is_current_gemini(&gemini.model_type)
+                    || gemini.model_type == "gemini-2.5-flash-preview-05-20"
                     || gemini.model_type == "gemini-2.5-flash-lite-preview-06-17"
                     || gemini.model_type == "gemini-2.5-flash-lite"
                     || gemini.model_type == "gemini-2.5-flash"
@@ -1319,6 +1607,239 @@ impl ModelCapabilitiesManager {
                     || shinkai_backend.model_type().starts_with("PREMIUM_TEXT_INFERENCE")
             }
             _ => false,
+        }
+    }
+}
+
+#[cfg(test)]
+mod current_model_tests {
+    use super::*;
+    use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{Exo, Grok};
+
+    #[test]
+    fn native_history_reduces_output_budget_without_parallel_double_charge() {
+        use serde_json::json;
+        use shinkai_message_primitives::schemas::{
+            llm_providers::serialized_llm_provider::OpenAI,
+            subprompts::{SubPrompt, SubPromptType},
+        };
+        let model = LLMProviderInterface::OpenAI(OpenAI {
+            model_type: "gpt-5-mini".into(),
+        });
+        let length = ModelCapabilitiesManager::get_max_input_tokens(&model) - 4096;
+        let payload = json!([
+            {"type":"reasoning", "encrypted_content":"x".repeat(length)},
+            {"type":"function_call", "call_id":"a", "name":"tool", "arguments":"{}"},
+            {"type":"function_call", "call_id":"b", "name":"tool", "arguments":"{}"}
+        ]);
+        let mut prompt = Prompt::new();
+        prompt.add_content("Keep this request".into(), SubPromptType::UserLastMessage, 100);
+        for id in ["a", "b"] {
+            prompt.add_function_call(
+                json!({
+                    "name":"tool", "call_id":id, "arguments":{},
+                    "provider_metadata":{"inference_turn_id":"one", "openai_responses":{"output":payload}}
+                }),
+                100,
+            );
+        }
+        for id in ["a", "b"] {
+            prompt.add_function_call_response(json!({"function_call":{"name":"tool","id":id}, "response":"done"}), 100);
+        }
+        let mut generic = prompt.clone();
+        for item in &mut generic.sub_prompts {
+            if let SubPrompt::FunctionCall(_, call, _) = item {
+                call.as_object_mut().unwrap().remove("provider_metadata");
+            }
+        }
+        let baseline = openai_prepare_messages(&model, generic.clone()).unwrap();
+        let result = openai_prepare_messages(&model, prompt.clone()).unwrap();
+        assert_eq!(result.tokens_used - baseline.tokens_used, payload.to_string().len());
+        assert!(result.remaining_output_tokens < baseline.remaining_output_tokens);
+        assert!(
+            result.tokens_used + result.remaining_output_tokens <= ModelCapabilitiesManager::get_max_tokens(&model)
+        );
+
+        // A metadata-aware counter must not charge native payloads both on each
+        // individual call and again on the grouped assistant turn.
+        let (_, count) =
+            prompt.generate_chat_completion_messages(None, &ModelCapabilitiesManager::num_tokens_from_messages);
+        let (_, baseline_count) =
+            generic.generate_chat_completion_messages(None, &ModelCapabilitiesManager::num_tokens_from_messages);
+        assert_eq!(count - baseline_count, payload.to_string().len());
+    }
+
+    #[test]
+    fn verified_together_flash_and_pro_capabilities() {
+        use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::TogetherAI;
+        for (id, context, images) in [
+            ("deepseek-ai/DeepSeek-V4.1-Flash-1017", 1_000_000, true),
+            ("deepseek-ai/DeepSeek-V4-Pro-0813", 1_048_576, false),
+        ] {
+            let model = LLMProviderInterface::TogetherAI(TogetherAI { model_type: id.into() });
+            assert!(ModelCapabilitiesManager::has_reasoning_capabilities(&model), "{id}");
+            assert_eq!(ModelCapabilitiesManager::get_max_tokens(&model), context);
+            assert_eq!(
+                ModelCapabilitiesManager::get_llm_provider_capabilities(&model)
+                    .contains(&ModelCapability::ImageAnalysis),
+                images,
+                "{id}"
+            );
+        }
+        let unknown = LLMProviderInterface::TogetherAI(TogetherAI {
+            model_type: "deepseek-ai/DeepSeek-V4.1-Flash-1017-custom".into(),
+        });
+        assert!(!ModelCapabilitiesManager::has_reasoning_capabilities(&unknown));
+        assert!(!ModelCapabilitiesManager::get_llm_provider_capabilities(&unknown)
+            .contains(&ModelCapability::ImageAnalysis));
+    }
+
+    #[test]
+    fn current_together_output_budgets_preserve_legacy_fallback() {
+        use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::TogetherAI;
+        for (id, expected) in [
+            ("moonshotai/Kimi-K3", 131_072),
+            ("MiniMaxAI/MiniMax-M3", 131_072),
+            ("Qwen/Qwen3.5-9B", 81_920),
+            ("deepseek-ai/DeepSeek-V4-Pro-0813", 384_000),
+            ("deepseek-ai/DeepSeek-V4.1-Flash-1017", 262_144),
+            ("unknown/model", 2800),
+            ("moonshotai/Kimi-K3-unverified", 2800),
+            ("togethercomputer/llama-2-70b-chat", 2800),
+        ] {
+            let model = LLMProviderInterface::TogetherAI(TogetherAI { model_type: id.into() });
+            assert_eq!(
+                ModelCapabilitiesManager::get_max_output_tokens(&model),
+                expected,
+                "{id}"
+            );
+        }
+    }
+
+    #[test]
+    fn current_deepseek_aliases_share_limits_and_capabilities() {
+        use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::DeepSeek;
+
+        for id in [
+            "deepseek-flash",
+            "deepseek-v4-flash",
+            "deepseek-v4-flash-vision-exp",
+            "deepseek-v4-pro",
+        ] {
+            let model = LLMProviderInterface::DeepSeek(DeepSeek { model_type: id.into() });
+            assert_eq!(ModelCapabilitiesManager::get_max_tokens(&model), 1_000_000, "{id}");
+            assert_eq!(ModelCapabilitiesManager::get_max_output_tokens(&model), 393_216, "{id}");
+            assert!(ModelCapabilitiesManager::has_reasoning_capabilities(&model), "{id}");
+            assert!(ModelCapabilitiesManager::has_tool_capabilities(&model, None), "{id}");
+            assert_eq!(
+                ModelCapabilitiesManager::get_llm_provider_capabilities(&model)
+                    .contains(&ModelCapability::ImageAnalysis),
+                id != "deepseek-v4-pro",
+                "{id}"
+            );
+        }
+        let unknown = LLMProviderInterface::DeepSeek(DeepSeek {
+            model_type: "deepseek-v4-flash-unverified".into(),
+        });
+        assert_eq!(ModelCapabilitiesManager::get_max_tokens(&unknown), 64_000);
+        assert_eq!(ModelCapabilitiesManager::get_max_output_tokens(&unknown), 8192);
+        assert!(!ModelCapabilitiesManager::has_reasoning_capabilities(&unknown));
+        assert!(!ModelCapabilitiesManager::get_llm_provider_capabilities(&unknown)
+            .contains(&ModelCapability::ImageAnalysis));
+    }
+
+    #[test]
+    fn grok_reasoning_capabilities_match_request_support() {
+        for model_type in [
+            "grok-3-mini",
+            "grok-3-mini-fast",
+            "grok-4",
+            "grok-4.1-fast-reasoning",
+            "grok-4.5",
+            "grok-4.6",
+            "grok-4.7",
+        ] {
+            let model = LLMProviderInterface::Grok(Grok {
+                model_type: model_type.into(),
+            });
+            assert!(
+                ModelCapabilitiesManager::has_reasoning_capabilities(&model),
+                "{model_type}"
+            );
+        }
+        for model_type in ["grok-2", "grok-3", "grok-4.1-fast-non-reasoning", "custom-model"] {
+            let model = LLMProviderInterface::Grok(Grok {
+                model_type: model_type.into(),
+            });
+            assert!(
+                !ModelCapabilitiesManager::has_reasoning_capabilities(&model),
+                "{model_type}"
+            );
+        }
+    }
+
+    #[test]
+    fn openrouter_only_advertises_media_encoded_by_its_adapter() {
+        use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::OpenRouter;
+        for id in [
+            "meta/muse-spark-open",
+            "minimax/minimax-m3.1-flash:free",
+            "google/gemini-4-argon",
+        ] {
+            let model = LLMProviderInterface::OpenRouter(OpenRouter { model_type: id.into() });
+            let capabilities = ModelCapabilitiesManager::get_llm_provider_capabilities(&model);
+            assert!(capabilities.contains(&ModelCapability::TextInference));
+            assert!(capabilities.contains(&ModelCapability::ImageAnalysis));
+            assert!(!capabilities.contains(&ModelCapability::AudioAnalysis));
+            assert!(!capabilities.contains(&ModelCapability::VideoAnalysis));
+            assert!(ModelCapabilitiesManager::has_tool_capabilities(&model, None));
+            assert!(ModelCapabilitiesManager::has_reasoning_capabilities(&model));
+        }
+    }
+
+    #[test]
+    fn verified_exo_ids_have_context_images_and_tools() {
+        for model_type in [
+            "Qwen/Qwen3.5-9B",
+            "mlx-community/Qwen3.5-9B-4bit",
+            "mlx-community/Qwen3.5-9B-8bit",
+        ] {
+            let model = LLMProviderInterface::Exo(Exo {
+                model_type: model_type.into(),
+            });
+            assert_eq!(
+                ModelCapabilitiesManager::get_max_tokens(&model),
+                262_144,
+                "{model_type}"
+            );
+            assert_eq!(
+                ModelCapabilitiesManager::get_max_output_tokens(&model),
+                81_920,
+                "{model_type}"
+            );
+            assert_eq!(
+                ModelCapabilitiesManager::get_remaining_output_tokens(&model, 262_144 - 512),
+                512
+            );
+            assert!(
+                ModelCapabilitiesManager::get_llm_provider_capabilities(&model)
+                    .contains(&ModelCapability::ImageAnalysis),
+                "{model_type}"
+            );
+            assert!(
+                ModelCapabilitiesManager::has_tool_capabilities(&model, Some(true)),
+                "{model_type}"
+            );
+        }
+        for model_type in ["custom/model", "Qwen/Qwen3.5-9B-unverified"] {
+            let model = LLMProviderInterface::Exo(Exo {
+                model_type: model_type.into(),
+            });
+            assert_eq!(ModelCapabilitiesManager::get_max_tokens(&model), 4096);
+            assert_eq!(ModelCapabilitiesManager::get_max_output_tokens(&model), 4096);
+            assert!(!ModelCapabilitiesManager::get_llm_provider_capabilities(&model)
+                .contains(&ModelCapability::ImageAnalysis));
+            assert!(!ModelCapabilitiesManager::has_tool_capabilities(&model, Some(true)));
         }
     }
 }

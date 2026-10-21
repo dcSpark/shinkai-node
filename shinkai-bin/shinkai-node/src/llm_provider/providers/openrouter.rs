@@ -2,7 +2,7 @@ use std::error::Error;
 use std::sync::Arc;
 
 use super::super::error::LLMProviderError;
-use super::shared::openai_api::{openai_prepare_messages, MessageContent, OpenAIResponse};
+use super::shared::openai_api::openai_prepare_messages;
 use super::shared::shared_model_logic::{send_tool_ws_update, send_ws_update};
 use super::LLMService;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
@@ -221,6 +221,7 @@ async fn handle_streaming_response(
     let mut response_text = String::new();
     let mut previous_json_chunk: String = String::new();
     let mut function_calls: Vec<FunctionCall> = Vec::new();
+    let mut state = OpenRouterResponseState::default();
     let mut is_done_sent = false; // Track if any WS message with is_done: true has been sent
 
     while let Some(item) = stream.next().await {
@@ -266,30 +267,24 @@ async fn handle_streaming_response(
                         if line.starts_with("data: ") {
                             let json_str = &line[6..]; // Remove "data: " prefix
                             if json_str == "[DONE]" {
-                                // End of stream
+                                // A terminal marker confirms completion unless the choice was truncated.
+                                state.arguments_complete.get_or_insert(true);
                                 continue;
                             }
 
                             let data_resp: Result<JsonValue, _> = serde_json::from_str(json_str);
                             match data_resp {
                                 Ok(data) => {
-                                    let new_content =
-                                        process_streaming_chunk(&data, &mut response_text, &mut function_calls, &tools);
+                                    let new_content = process_streaming_chunk(
+                                        &data,
+                                        &mut response_text,
+                                        &mut function_calls,
+                                        &tools,
+                                        &mut state,
+                                    );
 
                                     // Check for finish_reason to determine if stream is done
-                                    let is_finished = data
-                                        .get("choices")
-                                        .and_then(|choices| choices.as_array())
-                                        .map(|choices_array| {
-                                            choices_array.iter().any(|choice| {
-                                                choice
-                                                    .get("finish_reason")
-                                                    .and_then(|fr| fr.as_str())
-                                                    .map(|fr| !fr.is_empty())
-                                                    .unwrap_or(false)
-                                            })
-                                        })
-                                        .unwrap_or(false);
+                                    let is_finished = selected_choice_finished(&data);
 
                                     // Send WebSocket update with incremental content (like OpenAI)
                                     let _ = send_ws_update(
@@ -332,23 +327,16 @@ async fn handle_streaming_response(
                     match data_resp {
                         Ok(data) => {
                             previous_json_chunk = "".to_string();
-                            let new_content =
-                                process_streaming_chunk(&data, &mut response_text, &mut function_calls, &tools);
+                            let new_content = process_streaming_chunk(
+                                &data,
+                                &mut response_text,
+                                &mut function_calls,
+                                &tools,
+                                &mut state,
+                            );
 
                             // Check for finish_reason to determine if stream is done
-                            let is_finished = data
-                                .get("choices")
-                                .and_then(|choices| choices.as_array())
-                                .map(|choices_array| {
-                                    choices_array.iter().any(|choice| {
-                                        choice
-                                            .get("finish_reason")
-                                            .and_then(|fr| fr.as_str())
-                                            .map(|fr| !fr.is_empty())
-                                            .unwrap_or(false)
-                                    })
-                                })
-                                .unwrap_or(false);
+                            let is_finished = selected_choice_finished(&data);
 
                             // Send WebSocket update with incremental content
                             let _ = send_ws_update(
@@ -388,6 +376,31 @@ async fn handle_streaming_response(
         }
     }
 
+    // EOF can arrive without another chunk on which to observe a stop request.
+    if let Some(ref inbox) = inbox_name {
+        if llm_stopper.should_stop(&inbox.to_string()) {
+            llm_stopper.reset(&inbox.to_string());
+            let _ = send_ws_update(
+                &ws_manager_trait,
+                Some(inbox.clone()),
+                &session_id,
+                response_text.clone(),
+                false,
+                true,
+                Some("Stopped by user request".into()),
+            )
+            .await;
+            return Ok(LLMInferenceResponse::new(
+                response_text,
+                None,
+                json!({}),
+                Vec::new(),
+                Vec::new(),
+                None,
+            ));
+        }
+    }
+
     // If no WS message with is_done: true was sent, send a final message
     if !is_done_sent {
         let _ = send_ws_update(
@@ -401,6 +414,8 @@ async fn handle_streaming_response(
         )
         .await;
     }
+
+    state.attach_reasoning(&mut function_calls);
 
     Ok(LLMInferenceResponse::new(
         response_text,
@@ -472,70 +487,16 @@ async fn handle_non_streaming_response(
                             });
                         }
 
-                        let data: OpenAIResponse = serde_json::from_value(value).map_err(LLMProviderError::SerdeError)?;
-
-                        let response_string: String = data
-                            .choices
-                            .iter()
-                            .filter_map(|choice| match &choice.message.content {
-                                Some(MessageContent::Text(text)) => {
-                                    // Unescape the JSON string
-                                    let cleaned_json_str = text.replace("\\\"", "\"").replace("\\n", "\n");
-                                    Some(cleaned_json_str)
-                                }
-                                Some(MessageContent::ImageUrl { .. }) => None,
-                                Some(MessageContent::FunctionCall(_)) => None,
-                                None => None,
-                            })
-                            .collect::<Vec<String>>()
-                            .join(" ");
-
-                        let function_call: Option<FunctionCall> = data.choices.iter().find_map(|choice| {
-                            choice.message.tool_calls.as_ref().and_then(|tool_calls| {
-                                tool_calls.first().map(|tool_call| {
-                                    let arguments = serde_json::from_str::<serde_json::Value>(&tool_call.function.arguments)
-                                        .ok()
-                                        .and_then(|args_value: serde_json::Value| args_value.as_object().cloned())
-                                        .unwrap_or_else(|| serde_json::Map::new());
-
-                                    // Extract tool_router_key from tools array
-                                    let tool_router_key = tools.as_ref().and_then(|tools_array| {
-                                        tools_array.iter().find_map(|tool| {
-                                            if tool.get("name")?.as_str()? == tool_call.function.name {
-                                                tool.get("tool_router_key").and_then(|key| key.as_str().map(|s| s.to_string()))
-                                            } else {
-                                                None
-                                            }
-                                        })
-                                    });
-
-                                    FunctionCall {
-                                        name: tool_call.function.name.clone(),
-                                        arguments,
-                                        tool_router_key,
-                                        response: None,
-                                        index: 0,
-                                        id: Some(tool_call.id.clone()),
-                                        call_type: Some(tool_call.call_type.clone()),
-                                    }
-                                })
-                            })
-                        });
-
-                        // Send WebSocket update for tool call
-                        if let Some(ref function_call) = function_call {
+                        let mut response_string = String::new();
+                        let mut function_calls = Vec::new();
+                        let mut state = OpenRouterResponseState::default();
+                        process_streaming_chunk(&value, &mut response_string, &mut function_calls, &tools, &mut state);
+                        state.attach_reasoning(&mut function_calls);
+                        for function_call in &function_calls {
                             let _ = send_tool_ws_update(&ws_manager_trait, inbox_name.clone(), function_call).await;
                         }
-
-                        eprintln!("Function Call: {:?}", function_call);
-                        eprintln!("Response String: {:?}", response_string);
                         return Ok(LLMInferenceResponse::new(
-                            response_string,
-                            None,
-                            json!({}),
-                            function_call.map_or_else(Vec::new, |fc| vec![fc]),
-                            Vec::new(),
-                            None,
+                            response_string, None, json!({}), function_calls, Vec::new(), None,
                         ));
                     }
                     Err(e) => {
@@ -552,116 +513,242 @@ async fn handle_non_streaming_response(
     }
 }
 
+fn selected_choice(data: &JsonValue) -> Option<&JsonValue> {
+    let choices = data.get("choices")?.as_array()?;
+    choices
+        .iter()
+        .find(|choice| choice["index"].as_u64() == Some(0))
+        .or_else(|| choices.iter().find(|choice| choice.get("index").is_none()))
+}
+
+fn selected_choice_finished(data: &JsonValue) -> bool {
+    selected_choice(data)
+        .and_then(|choice| choice.get("finish_reason"))
+        .and_then(|reason| reason.as_str())
+        .is_some_and(|reason| !reason.is_empty())
+}
+
+#[derive(Default)]
+struct OpenRouterResponseState {
+    reasoning_details: Vec<JsonValue>,
+    content: String,
+    arguments: std::collections::HashMap<u64, JsonValue>,
+    arguments_complete: Option<bool>,
+    identity_errors: std::collections::HashMap<u64, String>,
+}
+
+impl OpenRouterResponseState {
+    fn update_call_identity(&mut self, call: &mut FunctionCall, delta: &JsonValue, tools: &Option<Vec<JsonValue>>) {
+        // The OpenRouter SDK sets identity once and merges only argument strings.
+        // https://github.com/OpenRouterTeam/ai-sdk-provider/blob/main/src/chat/index.ts
+        let mut error = None;
+        if let Some(id) = delta.get("id").filter(|id| !id.is_null()) {
+            match id.as_str() {
+                Some("") => {}
+                Some(id) if call.id.as_deref().is_none_or(|previous| previous == id) => {
+                    call.id = Some(id.to_owned());
+                }
+                Some(_) => error = Some("Tool call ID changed within one stream index"),
+                None => error = Some("Tool call ID must be a string"),
+            }
+        }
+        if let Some(kind) = delta.get("type") {
+            if kind.as_str() != Some("function") {
+                error = Some("Tool call type must remain function");
+            }
+        }
+        if let Some(name) = delta
+            .get("function")
+            .and_then(|function| function.get("name"))
+            .filter(|name| !name.is_null())
+        {
+            match name.as_str() {
+                Some("") => {}
+                Some(name) if call.name.is_empty() || call.name == name => {
+                    call.name = name.to_owned();
+                    call.tool_router_key = tools.as_ref().and_then(|tools| {
+                        tools.iter().find_map(|tool| {
+                            let definition = tool.get("function").unwrap_or(tool);
+                            if definition.get("name").and_then(|name| name.as_str()) == Some(call.name.as_str()) {
+                                definition
+                                    .get("tool_router_key")
+                                    .or_else(|| tool.get("tool_router_key"))
+                                    .and_then(|key| key.as_str())
+                                    .map(str::to_owned)
+                            } else {
+                                None
+                            }
+                        })
+                    });
+                }
+                Some(_) => error = Some("Tool function name changed within one stream index"),
+                None => error = Some("Tool function name must be a string"),
+            }
+        }
+        if let Some(error) = error {
+            // A later valid delta must not make an ambiguous call executable.
+            self.identity_errors
+                .entry(call.index)
+                .or_insert_with(|| error.to_owned());
+        }
+    }
+
+    fn parsed_arguments(&self, index: u64) -> Result<serde_json::Map<String, JsonValue>, String> {
+        match self.arguments.get(&index) {
+            Some(JsonValue::String(arguments))
+                if self.arguments_complete == Some(true) && arguments.trim().is_empty() =>
+            {
+                Ok(json!({}))
+            }
+            None if self.arguments_complete == Some(true) => Ok(json!({})),
+            Some(JsonValue::String(arguments)) => serde_json::from_str::<JsonValue>(arguments)
+                .map_err(|error| format!("Tool arguments are not valid JSON: {error}")),
+            Some(_) => Err("Tool arguments must be a JSON-encoded object string".to_string()),
+            None => Err("Tool arguments are missing".to_string()),
+        }
+        .and_then(|arguments| {
+            arguments
+                .as_object()
+                .cloned()
+                .ok_or_else(|| "Tool arguments must be a JSON object".to_string())
+        })
+    }
+
+    fn update_call_arguments(&self, call: &mut FunctionCall) {
+        let arguments = self.parsed_arguments(call.index).and_then(|arguments| {
+            if let Some(error) = self.identity_errors.get(&call.index) {
+                Err(error.clone())
+            } else if call.name.is_empty() {
+                Err("Tool function name is missing".to_owned())
+            } else {
+                Ok(arguments)
+            }
+        });
+        let mut metadata = call
+            .provider_metadata
+            .take()
+            .and_then(|value| value.as_object().cloned())
+            .unwrap_or_default();
+        match arguments {
+            Ok(arguments) => {
+                call.arguments = arguments;
+                metadata.remove("function_argument_error");
+            }
+            Err(error) => {
+                // A valid prefix must not remain executable after a corrupt suffix.
+                call.arguments.clear();
+                metadata.insert("function_argument_error".into(), json!(error));
+            }
+        }
+        call.provider_metadata = if metadata.is_empty() {
+            None
+        } else {
+            Some(JsonValue::Object(metadata))
+        };
+    }
+
+    fn attach_reasoning(&self, calls: &mut [FunctionCall]) {
+        if calls.is_empty() {
+            return;
+        }
+        for call in calls.iter_mut() {
+            self.update_call_arguments(call);
+        }
+        let native_calls: Vec<_> = calls
+            .iter()
+            .map(|call| {
+                let mut function = json!({"name": call.name});
+                let raw_arguments = self.arguments.get(&call.index);
+                let argument_error = self.parsed_arguments(call.index).is_err();
+                if argument_error
+                    || self.arguments_complete == Some(true)
+                        && raw_arguments.map_or(true, |arguments| {
+                            arguments.as_str().is_some_and(|arguments| arguments.trim().is_empty())
+                        })
+                {
+                    // Keep retry requests valid without removing the local execution guard.
+                    // Only guarded arguments and completed empty arguments need normalization.
+                    function["arguments"] = json!("{}");
+                } else if let Some(arguments) = raw_arguments {
+                    function["arguments"] = arguments.clone();
+                }
+                json!({"id": call.id, "type": call.call_type.as_deref().unwrap_or("function"), "function": function})
+            })
+            .collect();
+        let mut assistant = json!({"role":"assistant", "content": if self.content.is_empty() { JsonValue::Null } else { json!(self.content) }, "tool_calls": native_calls});
+        if !self.reasoning_details.is_empty() {
+            assistant["reasoning_details"] = json!(self.reasoning_details);
+        }
+        for call in calls {
+            let metadata = call.provider_metadata.get_or_insert_with(|| json!({}));
+            metadata["reasoning_details"] = json!(self.reasoning_details);
+            metadata["openrouter_assistant"] = assistant.clone();
+        }
+    }
+}
+
 fn process_streaming_chunk(
     data: &JsonValue,
     response_text: &mut String,
     function_calls: &mut Vec<FunctionCall>,
     tools: &Option<Vec<JsonValue>>,
+    state: &mut OpenRouterResponseState,
 ) -> String {
     let mut new_content = String::new();
-    if let Some(choices) = data.get("choices") {
-        for choice in choices.as_array().unwrap_or(&vec![]) {
-            // Handle streaming delta content
-            if let Some(delta) = choice.get("delta") {
-                if let Some(content) = delta.get("content") {
-                    let content_str = content.as_str().unwrap_or("");
-                    response_text.push_str(content_str);
-                    new_content.push_str(content_str); // Track new content for WS update
-                }
-
-                // Handle streaming tool calls
-                if let Some(tool_calls) = delta.get("tool_calls") {
-                    if let Some(tool_calls_array) = tool_calls.as_array() {
-                        for tool_call in tool_calls_array {
-                            if let Some(function) = tool_call.get("function") {
-                                if let Some(name) = function.get("name") {
-                                    let fc_arguments = function
-                                        .get("arguments")
-                                        .and_then(|args| args.as_str())
-                                        .and_then(|args_str| serde_json::from_str(args_str).ok())
-                                        .and_then(|args_value: serde_json::Value| args_value.as_object().cloned())
-                                        .unwrap_or_else(|| serde_json::Map::new());
-
-                                    // Extract tool_router_key
-                                    let tool_router_key = tools.as_ref().and_then(|tools_array| {
-                                        tools_array.iter().find_map(|tool| {
-                                            if tool.get("name")?.as_str()? == name.as_str().unwrap_or("") {
-                                                tool.get("tool_router_key")
-                                                    .and_then(|key| key.as_str().map(|s| s.to_string()))
-                                            } else {
-                                                None
-                                            }
-                                        })
-                                    });
-
-                                    function_calls.push(FunctionCall {
-                                        name: name.as_str().unwrap_or("").to_string(),
-                                        arguments: fc_arguments.clone(),
-                                        tool_router_key,
-                                        response: None,
-                                        index: function_calls.len() as u64,
-                                        id: tool_call.get("id").and_then(|id| id.as_str()).map(|s| s.to_string()),
-                                        call_type: tool_call
-                                            .get("type")
-                                            .and_then(|t| t.as_str())
-                                            .map(|s| s.to_string())
-                                            .or(Some("function".to_string())),
-                                    });
-                                }
-                            }
-                        }
-                    }
-                }
+    // A request selects one completion. Do not mix reasoning from other choices.
+    if let Some(choice) = selected_choice(data) {
+        if let Some(reason) = choice
+            .get("finish_reason")
+            .and_then(|reason| reason.as_str())
+            .filter(|reason| !reason.is_empty())
+        {
+            state.arguments_complete = Some(matches!(reason, "tool_calls" | "function_call" | "stop"));
+        }
+        if let Some(message) = choice.get("delta").or_else(|| choice.get("message")) {
+            if let Some(content) = message.get("content").and_then(|c| c.as_str()) {
+                state.content.push_str(content);
+                response_text.push_str(content);
+                new_content.push_str(content);
             }
-
-            // Handle non-streaming message format (fallback)
-            if let Some(message) = choice.get("message") {
-                if let Some(content) = message.get("content") {
-                    let content_str = content.as_str().unwrap_or("");
-                    response_text.push_str(content_str);
-                    new_content.push_str(content_str); // Track new content for WS update
-                }
-                if let Some(tool_calls) = message.get("tool_calls") {
-                    if let Some(tool_calls_array) = tool_calls.as_array() {
-                        for tool_call in tool_calls_array {
-                            if let Some(function) = tool_call.get("function") {
-                                if let Some(name) = function.get("name") {
-                                    let fc_arguments = function
-                                        .get("arguments")
-                                        .and_then(|args| args.as_str())
-                                        .and_then(|args_str| serde_json::from_str(args_str).ok())
-                                        .and_then(|args_value: serde_json::Value| args_value.as_object().cloned())
-                                        .unwrap_or_else(|| serde_json::Map::new());
-
-                                    // Extract tool_router_key
-                                    let tool_router_key = tools.as_ref().and_then(|tools_array| {
-                                        tools_array.iter().find_map(|tool| {
-                                            if tool.get("name")?.as_str()? == name.as_str().unwrap_or("") {
-                                                tool.get("tool_router_key")
-                                                    .and_then(|key| key.as_str().map(|s| s.to_string()))
-                                            } else {
-                                                None
-                                            }
-                                        })
-                                    });
-
-                                    function_calls.push(FunctionCall {
-                                        name: name.as_str().unwrap_or("").to_string(),
-                                        arguments: fc_arguments.clone(),
-                                        tool_router_key,
-                                        response: None,
-                                        index: function_calls.len() as u64,
-                                        id: tool_call.get("id").and_then(|id| id.as_str()).map(|s| s.to_string()),
-                                        call_type: tool_call
-                                            .get("type")
-                                            .and_then(|t| t.as_str())
-                                            .map(|s| s.to_string())
-                                            .or(Some("function".to_string())),
-                                    });
-                                }
+            // OpenRouter requires the complete sequence, unchanged and in arrival order.
+            // https://openrouter.ai/docs/guides/best-practices/reasoning-tokens
+            if let Some(details) = message.get("reasoning_details").and_then(|r| r.as_array()) {
+                state.reasoning_details.extend(details.iter().cloned());
+            }
+            if let Some(tool_calls) = message.get("tool_calls").and_then(|t| t.as_array()) {
+                for (position, tool_call) in tool_calls.iter().enumerate() {
+                    let index = tool_call
+                        .get("index")
+                        .and_then(|i| i.as_u64())
+                        .unwrap_or(position as u64);
+                    let function = tool_call.get("function");
+                    let call_position = function_calls.iter().position(|c| c.index == index).unwrap_or_else(|| {
+                        function_calls.push(FunctionCall {
+                            name: String::new(),
+                            arguments: serde_json::Map::new(),
+                            tool_router_key: None,
+                            response: None,
+                            index,
+                            id: None,
+                            call_type: Some("function".into()),
+                            provider_metadata: None,
+                        });
+                        function_calls.len() - 1
+                    });
+                    let call = &mut function_calls[call_position];
+                    state.update_call_identity(call, tool_call, tools);
+                    if let Some(arguments) = function.and_then(|f| f.get("arguments")) {
+                        if let Some(fragment) = arguments.as_str() {
+                            let buffer = state.arguments.entry(index).or_insert_with(|| json!(""));
+                            // A non-string chunk is invalid, even if a later string is valid JSON.
+                            if let JsonValue::String(buffer) = buffer {
+                                buffer.push_str(fragment);
                             }
+                        } else {
+                            state.arguments.insert(index, arguments.clone());
                         }
                     }
+                    state.update_call_arguments(call);
                 }
             }
         }
@@ -669,51 +756,1675 @@ fn process_streaming_chunk(
     new_content
 }
 
+// Exact catalog entries keep new preset rules from changing custom or legacy models.
+// Source: https://openrouter.ai/api/v1/models (2026-10-21).
+fn preset_options(model: &str) -> Option<(bool, &'static [&'static str], &'static [&'static str])> {
+    let is_batch = model.ends_with(":batch");
+    let model = model.strip_suffix(":batch").unwrap_or(model);
+    const EFFORTS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
+    const OPTIONAL_EFFORTS: &[&str] = &["none", "low", "medium", "high", "xhigh", "max"];
+    const OPENAI: &[&str] = &["seed", "max_completion_tokens", "response_format", "verbosity"];
+    const CLAUDE: &[&str] = &["max_completion_tokens", "response_format", "stop", "verbosity"];
+    const GEMINI: &[&str] = &["seed", "temperature", "top_p", "response_format", "stop"];
+    const GEMINI_FIXED: &[&str] = &["seed", "response_format", "stop"];
+    match model {
+        "openai/gpt-6-astra" | "openai/gpt-6-astra-pro" | "openai/gpt-6.1-sol" | "openai/gpt-6.1-sol-pro" => {
+            Some((true, EFFORTS, OPENAI))
+        }
+        "openai/gpt-6-luna" | "openai/gpt-6-luna-pro" | "openai/gpt-6-sol" | "openai/gpt-6-sol-pro" => {
+            Some((false, OPTIONAL_EFFORTS, OPENAI))
+        }
+        "anthropic/claude-sonnet-5.5"
+        | "anthropic/claude-opus-5.5"
+        | "anthropic/claude-fable-5"
+        | "anthropic/claude-fable-5.1" => Some((true, EFFORTS, CLAUDE)),
+        "anthropic/claude-haiku-5.5" | "anthropic/claude-opus-5" | "anthropic/claude-sonnet-5" => {
+            Some((false, OPTIONAL_EFFORTS, CLAUDE))
+        }
+        "google/gemini-4-argon" => Some((true, &["low", "medium", "high"], GEMINI)),
+        "google/gemini-3.8-flash" => Some((
+            true,
+            &["low", "medium", "high"],
+            if is_batch { GEMINI_FIXED } else { GEMINI },
+        )),
+        "google/gemini-3.5-flash-lite" => Some((
+            true,
+            &["minimal", "low", "medium", "high"],
+            if is_batch { GEMINI_FIXED } else { GEMINI },
+        )),
+        "google/gemini-3.5-flash" => Some((true, &["minimal", "low", "medium", "high"], GEMINI)),
+        "minimax/minimax-m3.1-flash:free" if !is_batch => {
+            Some((true, EFFORTS, &["temperature", "top_p", "response_format"]))
+        }
+        "meta/muse-spark-open" if !is_batch => Some((
+            true,
+            &["low", "medium", "high", "xhigh"],
+            &[
+                "seed",
+                "temperature",
+                "top_p",
+                "frequency_penalty",
+                "logit_bias",
+                "logprobs",
+                "top_logprobs",
+                "presence_penalty",
+                "response_format",
+                "stop",
+            ],
+        )),
+        "deepseek/deepseek-v4.1-flash-1017" if !is_batch => Some((
+            false,
+            &["none", "low", "high", "max"],
+            &[
+                "seed",
+                "temperature",
+                "top_p",
+                "max_completion_tokens",
+                "frequency_penalty",
+                "logit_bias",
+                "logprobs",
+                "top_logprobs",
+                "presence_penalty",
+                "response_format",
+                "stop",
+                "parallel_tool_calls",
+            ],
+        )),
+        _ => None,
+    }
+}
+
 fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobConfig>) {
-    // Helper function to read and parse environment variables
     fn read_env_var<T: std::str::FromStr>(key: &str) -> Option<T> {
         std::env::var(key).ok().and_then(|val| val.parse::<T>().ok())
     }
 
-    // Helper function to get value from env or config
     fn get_value<T: Clone + std::str::FromStr>(env_key: &str, config_value: Option<&T>) -> Option<T> {
         config_value.cloned().or_else(|| read_env_var::<T>(env_key))
     }
 
-    // Read options from environment variables or config and add them directly to the payload
-    if let Some(seed) = get_value("LLM_SEED", config.and_then(|c| c.seed.as_ref())) {
-        payload["seed"] = serde_json::json!(seed);
+    // Options must not increase the budget computed from the model and prepared prompt.
+    let prepared_output_budget = payload.get("max_tokens").and_then(JsonValue::as_u64);
+    let options = payload
+        .get("model")
+        .and_then(|model| model.as_str())
+        .and_then(preset_options);
+    let is_batch = payload["model"].as_str().is_some_and(|model| model.ends_with(":batch"));
+    let supports = |key: &str| {
+        options.map_or(true, |(_, _, parameters)| {
+            parameters.contains(&key) && !(is_batch && key == "max_completion_tokens")
+        })
+    };
+    if supports("seed") {
+        if let Some(seed) = get_value("LLM_SEED", config.and_then(|c| c.seed.as_ref())) {
+            payload["seed"] = json!(seed);
+        }
     }
-    if let Some(temp) = get_value("LLM_TEMPERATURE", config.and_then(|c| c.temperature.as_ref())) {
-        payload["temperature"] = serde_json::json!(temp);
+    if supports("temperature") {
+        if let Some(temp) = get_value("LLM_TEMPERATURE", config.and_then(|c| c.temperature.as_ref())) {
+            payload["temperature"] = json!(temp);
+        }
     }
-    if let Some(top_p) = get_value("LLM_TOP_P", config.and_then(|c| c.top_p.as_ref())) {
-        payload["top_p"] = serde_json::json!(top_p);
+    if supports("top_p") {
+        if let Some(top_p) = get_value("LLM_TOP_P", config.and_then(|c| c.top_p.as_ref())) {
+            payload["top_p"] = json!(top_p);
+        }
     }
     if let Some(max_tokens) = get_value("LLM_MAX_TOKENS", config.and_then(|c| c.max_tokens.as_ref())) {
-        payload["max_completion_tokens"] = serde_json::json!(max_tokens);
+        let key = if supports("max_completion_tokens") {
+            "max_completion_tokens"
+        } else {
+            "max_tokens"
+        };
+        payload[key] = json!(max_tokens);
     }
 
-    // Handle other model params
-    if let Some(other_params) = config.and_then(|c| c.other_model_params.as_ref()) {
-        if let Some(obj) = other_params.as_object() {
-            for (key, value) in obj {
-                match key.as_str() {
-                    "frequency_penalty" => payload["frequency_penalty"] = value.clone(),
-                    "logit_bias" => payload["logit_bias"] = value.clone(),
-                    "logprobs" => payload["logprobs"] = value.clone(),
-                    "top_logprobs" => payload["top_logprobs"] = value.clone(),
-                    "max_completion_tokens" => payload["max_completion_tokens"] = value.clone(),
-                    "n" => payload["n"] = value.clone(),
-                    "presence_penalty" => payload["presence_penalty"] = value.clone(),
-                    "response_format" => payload["response_format"] = value.clone(),
-                    "service_tier" => payload["service_tier"] = value.clone(),
-                    "stop" => payload["stop"] = value.clone(),
-                    "stream_options" => payload["stream_options"] = value.clone(),
-                    "parallel_tool_calls" => payload["parallel_tool_calls"] = value.clone(),
-                    _ => (),
-                };
+    if let Some(obj) = config
+        .and_then(|c| c.other_model_params.as_ref())
+        .and_then(|params| params.as_object())
+    {
+        for (key, value) in obj {
+            match key.as_str() {
+                "frequency_penalty"
+                | "logit_bias"
+                | "logprobs"
+                | "top_logprobs"
+                | "max_completion_tokens"
+                | "n"
+                | "presence_penalty"
+                | "response_format"
+                | "service_tier"
+                | "stop"
+                | "stream_options"
+                | "parallel_tool_calls"
+                    if supports(key) =>
+                {
+                    payload[key] = value.clone()
+                }
+                // Keep the complete custom object, including provider-specific reasoning fields.
+                "reasoning" if value.is_object() => payload[key] = value.clone(),
+                _ => (),
             }
         }
+    }
+
+    if let Some(budget) = prepared_output_budget {
+        for key in ["max_tokens", "max_completion_tokens"] {
+            if let Some(value) = payload.get_mut(key) {
+                let limit = value.as_u64().filter(|limit| *limit > 0).unwrap_or(budget);
+                *value = json!(limit.min(budget));
+            }
+        }
+    }
+
+    let thinking = config.and_then(|c| c.thinking);
+    let effort = config.and_then(|c| c.reasoning_effort.as_deref());
+    if thinking.is_none() && effort.is_none() && payload.get("reasoning").is_none() {
+        return;
+    }
+    if !payload.get("reasoning").is_some_and(JsonValue::is_object) {
+        payload["reasoning"] = json!({});
+    }
+    let reasoning = payload["reasoning"].as_object_mut().unwrap();
+    if let Some(enabled) = thinking {
+        reasoning.insert("enabled".into(), json!(enabled));
+    }
+    if let Some(effort) = effort {
+        // An explicit effort replaces a custom token budget. The API accepts one of these.
+        reasoning.remove("max_tokens");
+        reasoning.insert("effort".into(), json!(effort));
+    }
+    if let Some((mandatory, efforts, _)) = options {
+        if mandatory && reasoning.get("enabled") == Some(&json!(false)) {
+            reasoning.insert("enabled".into(), json!(true));
+        }
+        if reasoning
+            .get("effort")
+            .is_some_and(|effort| !effort.as_str().is_some_and(|effort| efforts.contains(&effort)))
+        {
+            reasoning.remove("effort");
+        }
+    }
+    if reasoning.get("enabled") == Some(&json!(false)) {
+        reasoning.remove("effort");
+        reasoning.remove("max_tokens");
+    } else if thinking == Some(true) && reasoning.get("effort") == Some(&json!("none")) {
+        reasoning.remove("effort");
+    }
+}
+
+#[cfg(test)]
+mod option_tests {
+    use super::*;
+
+    fn prepared_budget_request(model: &str) -> JsonValue {
+        use shinkai_message_primitives::schemas::subprompts::SubPromptType;
+        let provider = LLMProviderInterface::OpenRouter(OpenRouter {
+            model_type: model.into(),
+        });
+        let mut prompt = Prompt::new();
+        prompt.add_content("Check the output budget".into(), SubPromptType::UserLastMessage, 100);
+        let prepared = openai_prepare_messages(&provider, prompt).unwrap();
+        let PromptResultEnum::Value(messages) = prepared.messages else {
+            panic!("Expected messages");
+        };
+        json!({"model": model, "messages": messages, "max_tokens": prepared.remaining_output_tokens, "stream": false})
+    }
+
+    #[test]
+    fn final_token_options_keep_the_prepared_budget_after_custom_merges() {
+        for (model, token_key) in [
+            ("anthropic/claude-haiku-5.5", "max_completion_tokens"),
+            ("anthropic/claude-haiku-5.5:batch", "max_tokens"),
+            ("anthropic/claude-opus-5", "max_completion_tokens"),
+            ("anthropic/claude-opus-5:batch", "max_tokens"),
+            ("anthropic/claude-sonnet-5", "max_completion_tokens"),
+            ("anthropic/claude-sonnet-5:batch", "max_tokens"),
+            ("google/gemini-3.8-flash", "max_tokens"),
+            ("google/gemini-3.8-flash:batch", "max_tokens"),
+            ("google/gemini-3.5-flash-lite", "max_tokens"),
+            ("google/gemini-3.5-flash-lite:batch", "max_tokens"),
+            ("google/gemini-3.5-flash", "max_tokens"),
+            ("google/gemini-3.5-flash:batch", "max_tokens"),
+            ("minimax/minimax-m3.1-flash:free", "max_tokens"),
+            ("meta/muse-spark-open", "max_tokens"),
+            ("openai/gpt-6.1-sol", "max_completion_tokens"),
+            ("openai/gpt-6.1-sol:batch", "max_tokens"),
+            ("deepseek/deepseek-v4.1-flash-1017", "max_completion_tokens"),
+            ("custom/reasoner", "max_completion_tokens"),
+            ("custom/reasoner:batch", "max_completion_tokens"),
+            ("openai/gpt-6.1-sol:free", "max_completion_tokens"),
+            ("minimax/minimax-m3.1-flash:free:batch", "max_completion_tokens"),
+            ("meta/muse-spark-open:batch", "max_completion_tokens"),
+            ("deepseek/deepseek-v4.1-flash-1017:batch", "max_completion_tokens"),
+        ] {
+            let prepared = prepared_budget_request(model);
+            let budget = prepared["max_tokens"].as_u64().unwrap();
+            assert!(budget > 1);
+            for requested in [u64::MAX, budget + 1, budget, budget / 2, 1, 0] {
+                for custom in [
+                    None,
+                    Some(json!(u64::MAX)),
+                    Some(json!(budget + 1)),
+                    Some(json!(1)),
+                    Some(json!(0)),
+                    Some(json!(-1)),
+                    Some(json!(1.5)),
+                    Some(json!("999999999999999")),
+                    Some(json!(null)),
+                    Some(json!(true)),
+                    Some(json!({})),
+                ] {
+                    let mut payload = prepared.clone();
+                    let mut config = JobConfig::empty();
+                    config.max_tokens = Some(requested);
+                    let mut other = json!({"reasoning": {"max_tokens": 2000, "exclude": true}});
+                    if let Some(custom) = &custom {
+                        other["max_completion_tokens"] = custom.clone();
+                    }
+                    config.other_model_params = Some(other);
+                    add_options_to_payload(&mut payload, Some(&config));
+                    assert_eq!(payload["messages"], prepared["messages"]);
+                    assert_eq!(payload["model"], model);
+                    let final_limit = if token_key == "max_completion_tokens" {
+                        custom.as_ref()
+                    } else {
+                        None
+                    };
+                    let expected = final_limit.map_or(requested, |value| {
+                        value.as_u64().filter(|value| *value > 0).unwrap_or(budget)
+                    });
+                    let expected = if expected == 0 { budget } else { expected.min(budget) };
+                    assert_eq!(payload[token_key], expected, "{model}: {requested}, {custom:?}");
+                    for key in ["max_tokens", "max_completion_tokens"] {
+                        if let Some(limit) = payload.get(key) {
+                            let limit = limit.as_u64().unwrap();
+                            assert!(limit > 0 && limit <= budget, "{model}: {key}");
+                        }
+                    }
+                    if token_key == "max_tokens" {
+                        assert!(payload.get("max_completion_tokens").is_none());
+                    }
+                    assert_eq!(payload["reasoning"], json!({"max_tokens": 2000, "exclude": true}));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn environment_token_limits_keep_the_prepared_budget() {
+        // Isolate environment changes from the rest of the parallel test suite.
+        const CHILD: &str = "SHINKAI_OPENROUTER_BUDGET_TEST_CHILD";
+        if let Ok(case) = std::env::var(CHILD) {
+            for (model, token_key) in [
+                ("anthropic/claude-haiku-5.5", "max_completion_tokens"),
+                ("anthropic/claude-haiku-5.5:batch", "max_tokens"),
+                ("google/gemini-3.8-flash", "max_tokens"),
+                ("google/gemini-3.5-flash-lite:batch", "max_tokens"),
+                ("minimax/minimax-m3.1-flash:free", "max_tokens"),
+                ("meta/muse-spark-open", "max_tokens"),
+                ("custom/reasoner:batch", "max_completion_tokens"),
+            ] {
+                let mut payload = prepared_budget_request(model);
+                let budget = payload["max_tokens"].as_u64().unwrap();
+                add_options_to_payload(&mut payload, None);
+                let expected = if case == "lower" { 17 } else { budget };
+                if case == "invalid" && token_key == "max_completion_tokens" {
+                    assert!(payload.get(token_key).is_none());
+                } else {
+                    assert_eq!(payload[token_key], expected, "{model}: {case}");
+                }
+                for key in ["max_tokens", "max_completion_tokens"] {
+                    if let Some(limit) = payload.get(key) {
+                        assert!(limit.as_u64().unwrap() <= budget);
+                    }
+                }
+                if token_key == "max_tokens" {
+                    assert!(payload.get("max_completion_tokens").is_none());
+                }
+            }
+            return;
+        }
+        for (case, value) in [
+            ("oversized", "18446744073709551615"),
+            ("lower", "17"),
+            ("zero", "0"),
+            ("invalid", "invalid"),
+        ] {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .arg("environment_token_limits_keep_the_prepared_budget")
+                .arg("--nocapture")
+                .env(CHILD, case)
+                .env("LLM_MAX_TOKENS", value)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{case}: {} {}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+    }
+
+    #[test]
+    fn every_advertised_route_prepares_options_from_its_catalog_contract() {
+        use shinkai_message_primitives::schemas::subprompts::SubPromptType;
+        // Independent snapshot from GET /api/v1/models on 2026-10-21, grouped only
+        // when the routes have identical reasoning and forwarded-parameter contracts.
+        // The matrix includes every exact route advertised by the capabilities manager.
+        let catalog: &[(&[&str], bool, &str, &str)] = &[
+            (&["minimax/minimax-m3.1-flash:free"], true, "max xhigh high medium low", "temperature top_p response_format"),
+            (&["deepseek/deepseek-v4.1-flash-1017"], false, "max high low none", "seed temperature top_p max_completion_tokens frequency_penalty logit_bias logprobs top_logprobs presence_penalty response_format stop parallel_tool_calls"),
+            (&["meta/muse-spark-open"], true, "xhigh high medium low", "seed temperature top_p frequency_penalty logit_bias logprobs top_logprobs presence_penalty response_format stop"),
+            (&["google/gemini-4-argon", "google/gemini-4-argon:batch", "google/gemini-3.8-flash"], true, "high medium low", "seed temperature top_p response_format stop"),
+            (&["anthropic/claude-haiku-5.5", "anthropic/claude-opus-5", "anthropic/claude-sonnet-5"], false, "max xhigh high medium low none", "max_completion_tokens response_format stop"),
+            (&["anthropic/claude-haiku-5.5:batch", "anthropic/claude-opus-5:batch", "anthropic/claude-sonnet-5:batch"], false, "max xhigh high medium low none", "response_format stop"),
+            (&["openai/gpt-6.1-sol-pro", "openai/gpt-6.1-sol", "openai/gpt-6-astra", "openai/gpt-6-astra-pro"], true, "max xhigh high medium low", "seed max_completion_tokens response_format"),
+            (&["openai/gpt-6.1-sol-pro:batch", "openai/gpt-6.1-sol:batch", "openai/gpt-6-astra:batch", "openai/gpt-6-astra-pro:batch"], true, "max xhigh high medium low", "seed response_format"),
+            (&["anthropic/claude-sonnet-5.5", "anthropic/claude-opus-5.5", "anthropic/claude-fable-5.1", "anthropic/claude-fable-5"], true, "max xhigh high medium low", "max_completion_tokens response_format stop"),
+            (&["anthropic/claude-sonnet-5.5:batch", "anthropic/claude-opus-5.5:batch", "anthropic/claude-fable-5.1:batch", "anthropic/claude-fable-5:batch"], true, "max xhigh high medium low", "response_format stop"),
+            (&["openai/gpt-6-luna-pro", "openai/gpt-6-luna", "openai/gpt-6-sol-pro", "openai/gpt-6-sol"], false, "max xhigh high medium low none", "seed max_completion_tokens response_format"),
+            (&["openai/gpt-6-luna-pro:batch", "openai/gpt-6-luna:batch", "openai/gpt-6-sol-pro:batch", "openai/gpt-6-sol:batch"], false, "max xhigh high medium low none", "seed response_format"),
+            (&["google/gemini-3.8-flash:batch"], true, "high medium low", "seed response_format stop"),
+            (&["google/gemini-3.5-flash-lite", "google/gemini-3.5-flash", "google/gemini-3.5-flash:batch"], true, "high medium low minimal", "seed temperature top_p response_format stop"),
+            (&["google/gemini-3.5-flash-lite:batch"], true, "high medium low minimal", "seed response_format stop"),
+        ];
+        let other_params = json!({
+            "max_completion_tokens": 2048, "frequency_penalty": 0.2, "logit_bias": {"42": 1},
+            "logprobs": true, "top_logprobs": 2, "n": 2, "presence_penalty": 0.1,
+            "response_format": {"type": "json_object"}, "service_tier": "auto", "stop": ["END"],
+            "stream_options": {"include_usage": true}, "parallel_tool_calls": true
+        });
+        let mut covered = std::collections::HashSet::new();
+        for (models, mandatory, efforts, parameters) in catalog {
+            let parameters: Vec<_> = parameters.split_whitespace().collect();
+            let efforts: Vec<_> = efforts.split_whitespace().collect();
+            for model in *models {
+                assert!(covered.insert(*model));
+                let provider = LLMProviderInterface::OpenRouter(OpenRouter {
+                    model_type: (*model).into(),
+                });
+                let mut prompt = Prompt::new();
+                prompt.add_content("Check options".into(), SubPromptType::UserLastMessage, 100);
+                let prepared = openai_prepare_messages(&provider, prompt).unwrap();
+                let PromptResultEnum::Value(messages) = prepared.messages else {
+                    panic!("Expected messages");
+                };
+                let base = json!({"model": model, "messages": messages, "max_tokens": prepared.remaining_output_tokens, "stream": false});
+                let mut config = JobConfig::empty();
+                config.seed = Some(42);
+                config.temperature = Some(0.4);
+                config.top_p = Some(0.8);
+                config.max_tokens = Some(1024);
+                config.other_model_params = Some(other_params.clone());
+                let mut payload = base.clone();
+                add_options_to_payload(&mut payload, Some(&config));
+                assert_eq!(payload["model"], *model);
+                assert_eq!(payload["messages"], messages);
+                assert_eq!(payload["stream"], false);
+                for (key, expected) in [("seed", json!(42)), ("temperature", json!(0.4)), ("top_p", json!(0.8))] {
+                    assert_eq!(
+                        payload.get(key),
+                        parameters.contains(&key).then_some(&expected),
+                        "{model}: {key}"
+                    );
+                }
+                for (key, expected) in other_params.as_object().unwrap() {
+                    assert_eq!(
+                        payload.get(key),
+                        parameters.contains(&key.as_str()).then_some(expected),
+                        "{model}: {key}"
+                    );
+                }
+                if !parameters.contains(&"max_completion_tokens") {
+                    assert_eq!(payload["max_tokens"], 1024, "{model}");
+                }
+                assert!(payload.get("reasoning").is_none());
+                for thinking in [None, Some(true), Some(false)] {
+                    for effort in ["none", "minimal", "low", "medium", "high", "xhigh", "max", "invalid"] {
+                        config.thinking = thinking;
+                        config.reasoning_effort = Some(effort.into());
+                        config.other_model_params = Some(json!({"reasoning": {"exclude": true, "max_tokens": 2000}}));
+                        let mut payload = base.clone();
+                        add_options_to_payload(&mut payload, Some(&config));
+                        let accepted = efforts.contains(&effort)
+                            && (thinking != Some(false) || *mandatory)
+                            && !(thinking == Some(true) && effort == "none");
+                        assert_eq!(
+                            payload["reasoning"].get("effort"),
+                            accepted.then_some(&json!(effort)),
+                            "{model}: {thinking:?}, {effort}"
+                        );
+                        if let Some(enabled) = thinking {
+                            assert_eq!(payload["reasoning"]["enabled"], enabled || *mandatory, "{model}");
+                        }
+                        assert_eq!(payload["reasoning"]["exclude"], true);
+                        assert!(payload["reasoning"].get("max_tokens").is_none());
+                    }
+                }
+            }
+        }
+        assert_eq!(covered.len(), 41);
+    }
+
+    #[test]
+    fn typed_reasoning_options_use_openrouter_shape() {
+        for model in [
+            "openai/gpt-6-astra",
+            "openai/gpt-6.1-sol",
+            "openai/gpt-6-luna",
+            "anthropic/claude-opus-5.5",
+            "anthropic/claude-fable-5",
+            "anthropic/claude-fable-5.1",
+        ] {
+            for effort in ["low", "medium", "high", "xhigh", "max"] {
+                let mut payload = json!({"model": model});
+                let mut config = JobConfig::empty();
+                config.thinking = Some(true);
+                config.reasoning_effort = Some(effort.into());
+                add_options_to_payload(&mut payload, Some(&config));
+                assert_eq!(payload["reasoning"], json!({"enabled": true, "effort": effort}));
+                assert!(payload.get("thinking").is_none());
+                assert!(payload.get("reasoning_effort").is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn mandatory_presets_cannot_disable_reasoning() {
+        for model in [
+            "openai/gpt-6-astra",
+            "openai/gpt-6.1-sol",
+            "anthropic/claude-sonnet-5.5",
+            "anthropic/claude-opus-5.5",
+            "anthropic/claude-fable-5",
+            "anthropic/claude-fable-5.1",
+            "google/gemini-4-argon",
+        ] {
+            let mut payload = json!({"model": model});
+            let mut config = JobConfig::empty();
+            config.thinking = Some(false);
+            config.reasoning_effort = Some("none".into());
+            add_options_to_payload(&mut payload, Some(&config));
+            assert_eq!(payload["reasoning"], json!({"enabled": true}));
+        }
+    }
+
+    #[test]
+    fn exact_fable_requests_keep_mandatory_reasoning_and_supported_options() {
+        for base in ["anthropic/claude-fable-5", "anthropic/claude-fable-5.1"] {
+            for suffix in ["", ":batch"] {
+                let model = format!("{base}{suffix}");
+                for typed in [false, true] {
+                    let mut payload = json!({"model": model, "max_tokens": 4096, "stream": true});
+                    let mut config = JobConfig::empty();
+                    if typed {
+                        config.thinking = Some(false);
+                        config.reasoning_effort = Some("none".into());
+                    }
+                    config.temperature = Some(0.8);
+                    config.top_p = Some(0.9);
+                    config.seed = Some(42);
+                    config.max_tokens = Some(1024);
+                    config.other_model_params = Some(json!({
+                        "reasoning": {"enabled": false, "effort": "none", "exclude": true},
+                        "frequency_penalty": 0.2, "logprobs": true,
+                        "response_format": {"type": "json_object"}, "stop": ["END"]
+                    }));
+                    add_options_to_payload(&mut payload, Some(&config));
+                    assert_eq!(payload["model"], model);
+                    assert_eq!(payload["reasoning"], json!({"enabled": true, "exclude": true}));
+                    for key in ["temperature", "top_p", "seed", "frequency_penalty", "logprobs"] {
+                        assert!(payload.get(key).is_none(), "{model}: {key}");
+                    }
+                    assert_eq!(payload["response_format"], json!({"type": "json_object"}));
+                    assert_eq!(payload["stop"], json!(["END"]));
+                    if suffix.is_empty() {
+                        assert_eq!(payload["max_completion_tokens"], 1024);
+                    } else {
+                        assert_eq!(payload["max_tokens"], 1024);
+                        assert!(payload.get("max_completion_tokens").is_none());
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn optional_reasoning_can_be_disabled_without_a_conflicting_effort() {
+        for model in [
+            "openai/gpt-6-luna",
+            "openai/gpt-6-sol",
+            "deepseek/deepseek-v4.1-flash-1017",
+        ] {
+            let mut payload = json!({"model": model});
+            let mut config = JobConfig::empty();
+            config.thinking = Some(false);
+            config.reasoning_effort = Some("high".into());
+            config.other_model_params = Some(json!({"reasoning": {"max_tokens": 2048, "exclude": true}}));
+            add_options_to_payload(&mut payload, Some(&config));
+            assert_eq!(payload["reasoning"], json!({"enabled": false, "exclude": true}));
+        }
+    }
+
+    #[test]
+    fn effort_validation_uses_each_preset_supported_values() {
+        for (model, effort, supported) in [
+            ("google/gemini-4-argon", "max", false),
+            ("google/gemini-4-argon", "high", true),
+            ("deepseek/deepseek-v4.1-flash-1017", "medium", false),
+            ("deepseek/deepseek-v4.1-flash-1017", "max", true),
+            ("openai/gpt-6-luna", "minimal", false),
+            ("openai/gpt-6-luna", "none", true),
+            ("openai/gpt-6-astra", "none", false),
+        ] {
+            let mut payload = json!({"model": model});
+            let mut config = JobConfig::empty();
+            config.reasoning_effort = Some(effort.into());
+            add_options_to_payload(&mut payload, Some(&config));
+            assert_eq!(
+                payload["reasoning"].get("effort").is_some(),
+                supported,
+                "{model}: {effort}"
+            );
+        }
+    }
+
+    #[test]
+    fn typed_reasoning_overrides_custom_fields_and_preserves_other_fields() {
+        let mut payload = json!({"model": "custom/reasoner"});
+        let mut config = JobConfig::empty();
+        config.thinking = Some(true);
+        config.reasoning_effort = Some("high".into());
+        config.other_model_params = Some(json!({"reasoning": {
+            "enabled": false, "effort": "low", "max_tokens": 2048, "exclude": true, "context": "all_turns"
+        }}));
+        add_options_to_payload(&mut payload, Some(&config));
+        assert_eq!(
+            payload["reasoning"],
+            json!({
+                "enabled": true, "effort": "high", "exclude": true, "context": "all_turns"
+            })
+        );
+    }
+
+    #[test]
+    fn batch_presets_use_supported_reasoning_sampling_and_token_options() {
+        for model in [
+            "openai/gpt-6.1-sol:batch",
+            "anthropic/claude-sonnet-5.5:batch",
+            "anthropic/claude-opus-5.5:batch",
+            "anthropic/claude-fable-5:batch",
+            "anthropic/claude-fable-5.1:batch",
+            "google/gemini-4-argon:batch",
+        ] {
+            for thinking in [false, true] {
+                let mut payload = json!({"model": model, "max_tokens": 4096});
+                let mut config = JobConfig::empty();
+                config.thinking = Some(thinking);
+                config.reasoning_effort = Some(if thinking { "max" } else { "none" }.into());
+                config.temperature = Some(0.4);
+                config.top_p = Some(0.8);
+                config.max_tokens = Some(1024);
+                config.other_model_params = Some(json!({
+                    "frequency_penalty": 0.2, "logprobs": true, "max_completion_tokens": 2048
+                }));
+                add_options_to_payload(&mut payload, Some(&config));
+                assert_eq!(payload["model"], model);
+                assert_eq!(payload["reasoning"]["enabled"], true);
+                let gemini = model.starts_with("google/");
+                if thinking && !gemini {
+                    assert_eq!(payload["reasoning"]["effort"], "max");
+                } else {
+                    assert!(payload["reasoning"].get("effort").is_none());
+                }
+                assert_eq!(payload.get("temperature").is_some(), gemini);
+                assert_eq!(payload.get("top_p").is_some(), gemini);
+                assert!(payload.get("frequency_penalty").is_none());
+                assert!(payload.get("logprobs").is_none());
+                assert!(payload.get("max_completion_tokens").is_none());
+                assert_eq!(payload["max_tokens"], 1024);
+            }
+        }
+    }
+
+    #[test]
+    fn pro_routes_use_exact_catalog_reasoning_sampling_and_token_options() {
+        for (base, mandatory) in [
+            ("openai/gpt-6.1-sol-pro", true),
+            ("openai/gpt-6-astra-pro", true),
+            ("openai/gpt-6-luna-pro", false),
+            ("openai/gpt-6-sol-pro", false),
+        ] {
+            for suffix in ["", ":batch"] {
+                let model = format!("{base}{suffix}");
+                for effort in ["none", "low", "medium", "high", "xhigh", "max", "minimal", "invalid"] {
+                    let mut payload = json!({"model": model});
+                    let mut config = JobConfig::empty();
+                    config.reasoning_effort = Some(effort.into());
+                    config.temperature = Some(0.4);
+                    config.top_p = Some(0.8);
+                    config.seed = Some(42);
+                    config.max_tokens = Some(1024);
+                    config.other_model_params = Some(json!({
+                        "frequency_penalty": 0.2, "logprobs": true, "response_format": {"type": "json_object"}
+                    }));
+                    add_options_to_payload(&mut payload, Some(&config));
+                    assert_eq!(payload["model"], model);
+                    let supported = matches!(effort, "low" | "medium" | "high" | "xhigh" | "max")
+                        || (!mandatory && effort == "none");
+                    assert_eq!(
+                        payload["reasoning"].get("effort").is_some(),
+                        supported,
+                        "{model}: {effort}"
+                    );
+                    if supported {
+                        assert_eq!(payload["reasoning"]["effort"], effort);
+                    }
+                    for key in ["temperature", "top_p", "frequency_penalty", "logprobs"] {
+                        assert!(payload.get(key).is_none(), "{model}: {key}");
+                    }
+                    assert_eq!(payload["seed"], 42);
+                    assert_eq!(payload["response_format"], json!({"type": "json_object"}));
+                    if suffix.is_empty() {
+                        assert_eq!(payload["max_completion_tokens"], 1024);
+                    } else {
+                        assert_eq!(payload["max_tokens"], 1024);
+                        assert!(payload.get("max_completion_tokens").is_none());
+                    }
+                }
+                for custom in [false, true] {
+                    let mut payload = json!({"model": model});
+                    let mut config = JobConfig::empty();
+                    if custom {
+                        config.other_model_params =
+                            Some(json!({"reasoning": {"enabled": false, "effort": "none", "exclude": true}}));
+                    } else {
+                        config.thinking = Some(false);
+                        config.reasoning_effort = Some("none".into());
+                    }
+                    add_options_to_payload(&mut payload, Some(&config));
+                    assert_eq!(payload["reasoning"]["enabled"], mandatory, "{model}");
+                    assert!(payload["reasoning"].get("effort").is_none());
+                    if custom {
+                        assert_eq!(payload["reasoning"]["exclude"], true);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn other_variants_and_custom_batch_models_keep_custom_options() {
+        for model in [
+            "openai/gpt-6.1-sol:free",
+            "anthropic/claude-sonnet-5.5:nitro",
+            "anthropic/claude-opus-5.5-custom",
+            "custom/claude-fable-5.1:batch",
+            "anthropic/claude-fable-5-custom",
+            "anthropic/claude-fable-5:free",
+            "google/gemini-4-argon:custom",
+            "custom/reasoner:batch",
+            "minimax/minimax-m3.1-flash:free:batch",
+            "meta/muse-spark-open:batch",
+            "deepseek/deepseek-v4.1-flash-1017:batch",
+            "anthropic/claude-haiku-5.5-custom",
+            "google/gemini-3.5-flash-preview:batch",
+            "openai/gpt-6.1-sol:free:batch",
+            "openai/gpt-6.1-sol-pro-custom",
+            "custom/gpt-6-astra-pro",
+            "openai/gpt-6-astra-pro:free",
+            "openai/gpt-6-sol-pro-preview:batch",
+        ] {
+            let mut payload = json!({"model": model});
+            let mut config = JobConfig::empty();
+            config.thinking = Some(false);
+            config.temperature = Some(0.4);
+            config.top_p = Some(0.8);
+            config.max_tokens = Some(1024);
+            add_options_to_payload(&mut payload, Some(&config));
+            assert_eq!(payload["model"], model);
+            assert_eq!(payload["reasoning"], json!({"enabled": false}));
+            assert_eq!(payload["temperature"], 0.4);
+            assert_eq!(payload["top_p"], 0.8);
+            assert_eq!(payload["max_completion_tokens"], 1024);
+        }
+    }
+
+    #[test]
+    fn custom_reasoning_and_legacy_options_remain_available() {
+        for model in ["custom/reasoner", "openai/gpt-4o", "openai/gpt-6-custom"] {
+            let mut payload = json!({"model": model});
+            let mut config = JobConfig::empty();
+            config.temperature = Some(0.4);
+            config.top_p = Some(0.8);
+            config.other_model_params = Some(json!({
+                "reasoning": {"max_tokens": 2048, "exclude": true}, "frequency_penalty": 0.2,
+                "model": "wrong/model", "messages": []
+            }));
+            add_options_to_payload(&mut payload, Some(&config));
+            assert_eq!(payload["reasoning"], json!({"max_tokens": 2048, "exclude": true}));
+            assert_eq!(payload["temperature"], 0.4);
+            assert_eq!(payload["top_p"], 0.8);
+            assert_eq!(payload["frequency_penalty"], 0.2);
+            assert_eq!(payload["model"], model);
+            assert!(payload.get("messages").is_none());
+        }
+    }
+
+    #[test]
+    fn presets_only_send_supported_sampling_and_token_options() {
+        for (model, sampling) in [
+            ("openai/gpt-6-astra", false),
+            ("openai/gpt-6.1-sol", false),
+            ("openai/gpt-6-luna", false),
+            ("anthropic/claude-sonnet-5.5", false),
+            ("anthropic/claude-opus-5.5", false),
+            ("anthropic/claude-fable-5", false),
+            ("anthropic/claude-fable-5.1", false),
+            ("google/gemini-4-argon", true),
+            ("deepseek/deepseek-v4.1-flash-1017", true),
+        ] {
+            let mut payload = json!({"model": model, "max_tokens": 4096});
+            let mut config = JobConfig::empty();
+            config.temperature = Some(0.4);
+            config.top_p = Some(0.8);
+            config.max_tokens = Some(1024);
+            config.other_model_params = Some(json!({"frequency_penalty": 0.2, "logprobs": true}));
+            add_options_to_payload(&mut payload, Some(&config));
+            assert_eq!(payload.get("temperature").is_some(), sampling, "{model}");
+            assert_eq!(payload.get("top_p").is_some(), sampling, "{model}");
+            assert_eq!(payload.get("logprobs").is_some(), model.starts_with("deepseek/"));
+            assert_eq!(
+                payload.get("frequency_penalty").is_some(),
+                model.starts_with("deepseek/")
+            );
+            if model == "google/gemini-4-argon" {
+                assert_eq!(payload["max_tokens"], 1024);
+                assert!(payload.get("max_completion_tokens").is_none());
+            } else {
+                assert_eq!(payload["max_completion_tokens"], 1024);
+            }
+            assert!(payload.get("reasoning").is_none());
+        }
+    }
+}
+
+#[cfg(test)]
+mod cancellation_tests {
+    use super::*;
+    use shinkai_message_primitives::schemas::ws_types::{WSMessageType, WSMetadata};
+    use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
+
+    struct StreamUpdates {
+        events: Arc<std::sync::Mutex<Vec<(String, WSMetadata)>>>,
+        parsed: std::sync::mpsc::Sender<()>,
+    }
+
+    #[async_trait]
+    impl WSUpdateHandler for StreamUpdates {
+        async fn queue_message(
+            &self,
+            _topic: WSTopic,
+            _subtopic: String,
+            update: String,
+            metadata: WSMessageType,
+            _is_stream: bool,
+        ) {
+            if let WSMessageType::Metadata(metadata) = metadata {
+                let completed = metadata.is_done && metadata.done_reason.is_none();
+                self.events.lock().unwrap().push((update, metadata));
+                if completed {
+                    // Release the HTTP writer only after the production parser saw the call.
+                    let _ = self.parsed.send(());
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn stop_while_waiting_for_eof_discards_completed_calls_and_reports_stop() {
+        for stop_at_eof in [false, true] {
+            let mut server = mockito::Server::new_async().await;
+            let inbox = InboxName::get_job_inbox_name_from_params("openrouter-eof-stop".into()).unwrap();
+            let stopper = Arc::new(LLMStopper::new());
+            let writer_stopper = stopper.clone();
+            let writer_inbox = inbox.clone();
+            let (parsed, received) = std::sync::mpsc::channel();
+            let received = std::sync::Mutex::new(received);
+            let events = Arc::new(std::sync::Mutex::new(Vec::new()));
+            let manager: Arc<Mutex<dyn WSUpdateHandler + Send>> = Arc::new(Mutex::new(StreamUpdates {
+                events: events.clone(),
+                parsed,
+            }));
+            let details = json!([{"type": "reasoning.encrypted", "data": "signed-opaque", "index": 0}]);
+            let body = format!(
+                "data: {}\n\n",
+                json!({"choices": [{"index": 0, "delta": {
+                "content": "Text", "reasoning_details": details, "tool_calls": [{
+                    "index": 0, "id": "completed-call", "type": "function",
+                    "function": {"name": "weather", "arguments": "{}"}
+                }]
+            }, "finish_reason": "tool_calls"}]})
+            );
+            let mock = server
+                .mock("POST", "/chat/completions")
+                .with_header("content-type", "text/event-stream")
+                .with_chunked_body(move |writer| {
+                    writer.write_all(body.as_bytes())?;
+                    writer.flush()?;
+                    received
+                        .lock()
+                        .unwrap()
+                        .recv_timeout(std::time::Duration::from_secs(5))
+                        .map_err(|error| std::io::Error::new(std::io::ErrorKind::TimedOut, error))?;
+                    if stop_at_eof {
+                        writer_stopper.stop(&writer_inbox.to_string());
+                    }
+                    // Close the HTTP stream. There is no later chunk or [DONE] event.
+                    Ok(())
+                })
+                .create_async()
+                .await;
+            let response = tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                handle_streaming_response(
+                    &Client::new(),
+                    format!("{}/chat/completions", server.url()),
+                    json!({}),
+                    "test".into(),
+                    Some(inbox.clone()),
+                    Some(manager),
+                    stopper.clone(),
+                    "test-session".into(),
+                    Some(vec![json!({"name": "weather", "tool_router_key": "weather-route"})]),
+                ),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            mock.assert_async().await;
+            assert_eq!(response.response_string, "Text");
+            assert!(!stopper.should_stop(&inbox.to_string()));
+            let events = events.lock().unwrap();
+            if stop_at_eof {
+                assert!(response.function_calls.is_empty());
+                assert_eq!(events.len(), 2);
+                assert_eq!(events[1].0, "Text");
+                assert!(events[1].1.is_done);
+                assert_eq!(events[1].1.done_reason.as_deref(), Some("Stopped by user request"));
+            } else {
+                assert_eq!(events.len(), 1);
+                assert_eq!(response.function_calls.len(), 1);
+                let call = &response.function_calls[0];
+                assert_eq!(call.id.as_deref(), Some("completed-call"));
+                assert_eq!(call.name, "weather");
+                assert_eq!(call.tool_router_key.as_deref(), Some("weather-route"));
+                assert_eq!(json!(call.arguments), json!({}));
+                let metadata = call.provider_metadata.as_ref().unwrap();
+                assert!(metadata.get("function_argument_error").is_none());
+                assert_eq!(metadata["openrouter_assistant"]["reasoning_details"], details);
+                assert_eq!(
+                    metadata["openrouter_assistant"]["tool_calls"][0]["id"],
+                    "completed-call"
+                );
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod argument_tests {
+    use super::*;
+    use crate::llm_provider::execution::chains::generic_chain::generic_inference_chain::execute_valid_function_call;
+    use crate::managers::tool_router::ToolCallFunctionResponse;
+
+    async fn assert_execution_allowed(call: &FunctionCall, allowed: bool) {
+        let mut executed = false;
+        let result = execute_valid_function_call(call, async {
+            executed = true;
+            Ok(ToolCallFunctionResponse {
+                function_call: call.clone(),
+                response: "executed".into(),
+            })
+        })
+        .await;
+        assert_eq!(executed, allowed);
+        assert_eq!(result.is_ok(), allowed);
+        if !allowed {
+            assert!(result.unwrap_err().to_string().contains("Invalid function arguments"));
+        }
+    }
+
+    #[tokio::test]
+    async fn repeated_complete_names_keep_parallel_routes_and_argument_fragments() {
+        let tools = Some(vec![
+            json!({"function": {"name": "weather", "tool_router_key": "weather-route"}}),
+            json!({"name": "weatherweather", "tool_router_key": "wrong-route"}),
+            json!({"name": "clock", "tool_router_key": "clock-route"}),
+        ]);
+        let details = json!([{"type": "reasoning.encrypted", "data": "signed-opaque", "index": 0}]);
+        let mut state = OpenRouterResponseState::default();
+        let mut calls = Vec::new();
+        for delta in [
+            json!({"reasoning_details": details, "tool_calls": [
+                {"index": 4, "id": "weather-a", "type": "function", "function": {"name": "weather", "arguments": "{\"city\":"}},
+                {"index": 9, "id": "weather-b", "type": "function", "function": {"name": "weather", "arguments": "{\"city\":"}},
+                {"index": 2, "id": "clock-c", "type": "function", "function": {"name": "clock", "arguments": "{"}}
+            ]}),
+            json!({"tool_calls": [
+                {"index": 9, "id": "weather-b", "type": "function", "function": {"name": "weather", "arguments": "\"Rome\"}"}},
+                {"index": 4, "id": "weather-a", "type": "function", "function": {"name": "weather", "arguments": "\"Paris\"}"}},
+                {"index": 2, "id": "clock-c", "type": "function", "function": {"name": "clock", "arguments": "}"}}
+            ]}),
+            json!({"tool_calls": [{"index": 4, "function": {"name": "weather"}}]}),
+        ] {
+            process_streaming_chunk(
+                &json!({"choices": [{"index": 0, "delta": delta}]}),
+                &mut String::new(),
+                &mut calls,
+                &tools,
+                &mut state,
+            );
+        }
+        state.attach_reasoning(&mut calls);
+        assert_eq!(calls.len(), 3);
+        for (index, id, name, route, arguments) in [
+            (4, "weather-a", "weather", "weather-route", json!({"city": "Paris"})),
+            (9, "weather-b", "weather", "weather-route", json!({"city": "Rome"})),
+            (2, "clock-c", "clock", "clock-route", json!({})),
+        ] {
+            let call = calls.iter().find(|call| call.index == index).unwrap();
+            assert_eq!(call.id.as_deref(), Some(id));
+            assert_eq!(call.name, name);
+            assert_eq!(call.tool_router_key.as_deref(), Some(route));
+            assert_eq!(json!(call.arguments), arguments);
+            assert_execution_allowed(call, true).await;
+            let assistant = &call.provider_metadata.as_ref().unwrap()["openrouter_assistant"];
+            assert_eq!(assistant["reasoning_details"], details);
+            assert_eq!(assistant["tool_calls"].as_array().unwrap().len(), 3);
+            assert_eq!(assistant["tool_calls"][0]["function"]["name"], "weather");
+            assert_eq!(
+                assistant["tool_calls"][0]["function"]["arguments"],
+                "{\"city\":\"Paris\"}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn conflicting_stream_identity_stays_guarded_without_reassigning_the_route() {
+        let tools = Some(vec![
+            json!({"function": {"name": "weather", "tool_router_key": "weather-route"}}),
+            json!({"name": "clock", "tool_router_key": "clock-route"}),
+        ]);
+        for conflict in [
+            json!({"function": {"name": "clock"}}),
+            json!({"function": {"name": "ther"}}),
+            json!({"function": {"name": 42}}),
+            json!({"id": "different-call"}),
+            json!({"id": 42}),
+            json!({"type": "custom"}),
+            json!({"type": null}),
+        ] {
+            let mut state = OpenRouterResponseState::default();
+            let mut calls = Vec::new();
+            let details = json!([{"type": "reasoning.encrypted", "data": "signed-opaque", "index": 0}]);
+            process_streaming_chunk(
+                &json!({"choices": [{"delta": {
+                    "reasoning_details": details, "tool_calls": [
+                        {"index": 0, "id": "original-call", "type": "function", "function": {"name": "weather", "arguments": "{\"city\":"}},
+                        {"index": 1, "id": "parallel-call", "function": {"name": "clock", "arguments": "{}"}}
+                    ]
+                }}]}),
+                &mut String::new(),
+                &mut calls,
+                &tools,
+                &mut state,
+            );
+            let mut conflict = conflict;
+            conflict["index"] = json!(0);
+            process_streaming_chunk(
+                &json!({"choices": [{"delta": {"tool_calls": [conflict]}}]}),
+                &mut String::new(),
+                &mut calls,
+                &tools,
+                &mut state,
+            );
+            // Valid later arguments and repeated original identity cannot clear the conflict.
+            process_streaming_chunk(
+                &json!({"choices": [{"delta": {"tool_calls": [{
+                "index": 0, "id": "original-call", "type": "function",
+                "function": {"name": "weather", "arguments": "\"Paris\"}"}
+            }]}, "finish_reason": "tool_calls"}]}),
+                &mut String::new(),
+                &mut calls,
+                &tools,
+                &mut state,
+            );
+            state.attach_reasoning(&mut calls);
+            assert_eq!(calls[0].id.as_deref(), Some("original-call"));
+            assert_eq!(calls[0].name, "weather");
+            assert_eq!(calls[0].call_type.as_deref(), Some("function"));
+            assert_eq!(calls[0].tool_router_key.as_deref(), Some("weather-route"));
+            assert!(calls[0].arguments.is_empty());
+            assert_execution_allowed(&calls[0], false).await;
+            assert_execution_allowed(&calls[1], true).await;
+            let assistant = &calls[0].provider_metadata.as_ref().unwrap()["openrouter_assistant"];
+            assert_eq!(assistant["reasoning_details"], details);
+            assert_eq!(assistant["tool_calls"][0]["id"], "original-call");
+            assert_eq!(assistant["tool_calls"][0]["function"]["name"], "weather");
+            // An identity error must not rewrite a valid native argument string.
+            assert_eq!(
+                assistant["tool_calls"][0]["function"]["arguments"],
+                "{\"city\":\"Paris\"}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn name_fragments_are_not_guessed_but_deferred_names_can_complete() {
+        let tools = Some(vec![json!({"name": "weather", "tool_router_key": "weather-route"})]);
+        for (first, second, expected_name, allowed) in [
+            (json!("wea"), json!("ther"), "wea", false),
+            (json!(null), json!("weather"), "weather", true),
+            (json!(""), json!("weather"), "weather", true),
+            (json!(null), json!(null), "", false),
+            (json!(42), json!("weather"), "weather", false),
+        ] {
+            let mut state = OpenRouterResponseState::default();
+            let mut calls = Vec::new();
+            for name in [first, second] {
+                process_streaming_chunk(
+                    &json!({"choices": [{"delta": {"tool_calls": [{
+                        "index": 0, "id": "original-call", "function": {"name": name}
+                    }]}}]}),
+                    &mut String::new(),
+                    &mut calls,
+                    &tools,
+                    &mut state,
+                );
+                assert_execution_allowed(&calls[0], false).await;
+            }
+            process_streaming_chunk(
+                &json!({"choices": [{"delta": {"tool_calls": [{
+                "index": 0, "function": {"arguments": "{}"}
+            }]}, "finish_reason": "tool_calls"}]}),
+                &mut String::new(),
+                &mut calls,
+                &tools,
+                &mut state,
+            );
+            state.attach_reasoning(&mut calls);
+            assert_eq!(calls[0].name, expected_name);
+            assert_eq!(calls[0].id.as_deref(), Some("original-call"));
+            assert_eq!(
+                calls[0].tool_router_key.as_deref(),
+                if expected_name == "weather" {
+                    Some("weather-route")
+                } else {
+                    None
+                }
+            );
+            assert_execution_allowed(&calls[0], allowed).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn empty_arguments_only_execute_after_confirmed_completion() {
+        let tools = Some(vec![json!({"type": "function", "function": {
+            "name": "zero_arg_tool", "tool_router_key": "zero_arg_tool",
+            "parameters": {"type": "object", "properties": {}, "required": []}
+        }})]);
+        for arguments in [
+            None,
+            Some(json!("")),
+            Some(json!(" \n\t")),
+            Some(json!("{bad")),
+            Some(json!("[]")),
+            Some(json!(null)),
+        ] {
+            for finish in [None, Some("tool_calls"), Some("length")] {
+                let blank = arguments.as_ref().map_or(true, |value| {
+                    value.as_str().is_some_and(|value| value.trim().is_empty())
+                });
+                let mut function = json!({"name": "zero_arg_tool"});
+                if let Some(arguments) = &arguments {
+                    function["arguments"] = arguments.clone();
+                }
+                let mut calls = Vec::new();
+                let mut state = OpenRouterResponseState::default();
+                process_streaming_chunk(
+                    &json!({"choices": [{"index": 0, "delta": {
+                        "tool_calls": [{"index": 0, "id": "native-call", "type": "function", "function": function}]
+                    }}]}),
+                    &mut String::new(),
+                    &mut calls,
+                    &tools,
+                    &mut state,
+                );
+                // An identity-only or blank argument delta is still an incomplete call.
+                assert!(calls[0].provider_metadata.as_ref().unwrap()["function_argument_error"].is_string());
+                assert_execution_allowed(&calls[0], false).await;
+                if let Some(finish) = finish {
+                    process_streaming_chunk(
+                        &json!({"choices": [{"index": 0, "delta": {}, "finish_reason": finish}]}),
+                        &mut String::new(),
+                        &mut calls,
+                        &tools,
+                        &mut state,
+                    );
+                }
+                // No finish marker represents the raw EOF path. attach_reasoning must keep its guard.
+                state.attach_reasoning(&mut calls);
+                let call = &calls[0];
+                assert_eq!(call.id.as_deref(), Some("native-call"));
+                assert_eq!(call.tool_router_key.as_deref(), Some("zero_arg_tool"));
+                assert!(call.arguments.is_empty());
+                assert_execution_allowed(call, blank && finish == Some("tool_calls")).await;
+                let native_function =
+                    &call.provider_metadata.as_ref().unwrap()["openrouter_assistant"]["tool_calls"][0]["function"];
+                let mut expected_function = function.clone();
+                // Guarded calls and completed empty calls both need valid replay arguments.
+                expected_function["arguments"] = json!("{}");
+                assert_eq!(native_function, &expected_function);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn completed_zero_parameter_calls_replay_canonical_arguments_and_signed_reasoning() {
+        for arguments in [None, Some(""), Some(" \n\t")] {
+            let mut function = json!({"name": "zero_arg_tool"});
+            if let Some(arguments) = arguments {
+                function["arguments"] = json!(arguments);
+            }
+            let mut assistant = json!({
+                "role": "assistant", "content": null,
+                "reasoning_details": [{"type": "reasoning.encrypted", "data": "signed-opaque", "index": 0}],
+                "tool_calls": [{"id": "native-call", "type": "function", "function": function}]
+            });
+            let mut calls = Vec::new();
+            let mut state = OpenRouterResponseState::default();
+            process_streaming_chunk(
+                &json!({"choices": [{"index": 0, "message": assistant, "finish_reason": "tool_calls"}]}),
+                &mut String::new(),
+                &mut calls,
+                &None,
+                &mut state,
+            );
+            state.attach_reasoning(&mut calls);
+            let call = &calls[0];
+            assert_execution_allowed(call, true).await;
+            assistant["tool_calls"][0]["function"]["arguments"] = json!("{}");
+            assert_eq!(
+                call.provider_metadata.as_ref().unwrap()["openrouter_assistant"],
+                assistant
+            );
+            let mut prompt = Prompt::new();
+            prompt.add_function_call(json!({
+                "name": call.name, "call_id": call.id, "arguments": call.arguments, "provider_metadata": call.provider_metadata
+            }), 100);
+            prompt.add_function_call_response(
+                json!({
+                    "function_call": {"name": call.name, "id": call.id}, "response": "actual zero-parameter result"
+                }),
+                100,
+            );
+            let prompt = serde_json::from_str(&serde_json::to_string(&prompt).unwrap()).unwrap();
+            let provider = LLMProviderInterface::OpenRouter(OpenRouter {
+                model_type: "anthropic/claude-opus-5.5".into(),
+            });
+            let prepared = openai_prepare_messages(&provider, prompt).unwrap();
+            let PromptResultEnum::Value(messages) = prepared.messages else {
+                panic!("Expected messages");
+            };
+            assert_eq!(messages.as_array().unwrap().len(), 2);
+            assert_eq!(messages[0], assistant);
+            assert_eq!(messages[0]["tool_calls"][0]["function"]["arguments"], "{}");
+            assert_eq!(
+                messages[1],
+                json!({"role": "tool", "tool_call_id": "native-call", "content": "actual zero-parameter result"})
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn guarded_malformed_calls_prepare_valid_retry_arguments_and_actual_error_feedback() {
+        use crate::llm_provider::execution::chains::generic_chain::generic_inference_chain::execute_valid_function_call;
+        use crate::managers::tool_router::ToolCallFunctionResponse;
+        for (arguments, finish, valid) in [
+            (None, None, false),
+            (Some(json!("")), None, false),
+            (Some(json!("{bad")), Some("tool_calls"), false),
+            (Some(json!("{\"city\":")), None, false),
+            (Some(json!("{} trailing")), None, false),
+            (Some(json!("[]")), Some("tool_calls"), false),
+            (Some(json!("null")), Some("tool_calls"), false),
+            (Some(json!({})), Some("tool_calls"), false),
+            (Some(json!(null)), Some("tool_calls"), false),
+            (Some(json!("{  \"city\" : \"Paris\" }")), Some("tool_calls"), true),
+            (Some(json!("{}")), Some("tool_calls"), true),
+        ] {
+            let mut function = json!({"name": "lookup"});
+            if let Some(arguments) = arguments {
+                function["arguments"] = arguments;
+            }
+            let mut assistant = json!({
+                "role": "assistant", "content": "I will check.",
+                "reasoning_details": [{"type": "reasoning.encrypted", "data": "signed-opaque", "index": 0}],
+                "tool_calls": [{"id": "native-call", "type": "function", "function": function}]
+            });
+            let mut calls = Vec::new();
+            let mut state = OpenRouterResponseState::default();
+            process_streaming_chunk(
+                &json!({"choices": [{"index": 0, "message": assistant, "finish_reason": finish}]}),
+                &mut String::new(),
+                &mut calls,
+                &None,
+                &mut state,
+            );
+            state.attach_reasoning(&mut calls);
+            let call = &calls[0];
+            let mut executed = false;
+            let outcome = execute_valid_function_call(call, async {
+                executed = true;
+                Ok(ToolCallFunctionResponse {
+                    function_call: call.clone(),
+                    response: "actual result".into(),
+                })
+            })
+            .await;
+            assert_eq!(executed, valid);
+            let feedback = match outcome {
+                Ok(result) => result.response,
+                Err(error) => {
+                    let guard = call.provider_metadata.as_ref().unwrap()["function_argument_error"]
+                        .as_str()
+                        .unwrap();
+                    let feedback = error.to_string();
+                    assert!(feedback.contains("Invalid function arguments"));
+                    assert!(feedback.contains(guard));
+                    assert!(call.arguments.is_empty());
+                    assistant["tool_calls"][0]["function"]["arguments"] = json!("{}");
+                    feedback
+                }
+            };
+            let mut prompt = Prompt::new();
+            prompt.add_function_call(json!({
+                "name": call.name, "call_id": call.id, "arguments": call.arguments, "provider_metadata": call.provider_metadata
+            }), 100);
+            prompt.add_function_call_response(
+                json!({
+                    "function_call": {"name": call.name, "id": call.id}, "response": feedback
+                }),
+                100,
+            );
+            let prompt = serde_json::from_str(&serde_json::to_string(&prompt).unwrap()).unwrap();
+            let provider = LLMProviderInterface::OpenRouter(OpenRouter {
+                model_type: "anthropic/claude-opus-5.5".into(),
+            });
+            let prepared = openai_prepare_messages(&provider, prompt).unwrap();
+            let PromptResultEnum::Value(messages) = prepared.messages else {
+                panic!("Expected messages");
+            };
+            let request = json!({"model": "anthropic/claude-opus-5.5", "messages": messages});
+            assert_eq!(request["messages"][0], assistant);
+            let replay_arguments = request["messages"][0]["tool_calls"][0]["function"]["arguments"]
+                .as_str()
+                .unwrap();
+            assert!(serde_json::from_str::<JsonValue>(replay_arguments).unwrap().is_object());
+            assert_eq!(
+                request["messages"][1],
+                json!({"role": "tool", "tool_call_id": "native-call", "content": feedback})
+            );
+            if !valid {
+                assert!(request["messages"][1]["content"]
+                    .as_str()
+                    .unwrap()
+                    .contains("Invalid function arguments"));
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn invalid_nonstreaming_arguments_are_guarded_and_keep_signed_reasoning() {
+        for (arguments, valid) in [
+            (None, false),
+            (Some(json!(null)), false),
+            (Some(json!({})), false),
+            (Some(json!([])), false),
+            (Some(json!(42)), false),
+            (Some(json!("")), false),
+            (Some(json!("{not-json")), false),
+            (Some(json!("[]")), false),
+            (Some(json!("null")), false),
+            (Some(json!("{}")), true),
+            (Some(json!("{\"city\":\"Paris\"}")), true),
+        ] {
+            let mut function = json!({"name": "zero_arg_tool"});
+            if let Some(arguments) = arguments {
+                function["arguments"] = arguments;
+            }
+            let assistant = json!({
+                "role": "assistant", "content": null,
+                "reasoning_details": [{"type": "reasoning.encrypted", "data": "signed-opaque", "index": 0}],
+                "tool_calls": [{"id": "native-call", "type": "function", "function": function}]
+            });
+            let mut calls = Vec::new();
+            let mut state = OpenRouterResponseState::default();
+            process_streaming_chunk(
+                &json!({"choices": [{"message": assistant}]}),
+                &mut String::new(),
+                &mut calls,
+                &None,
+                &mut state,
+            );
+            assert_eq!(calls.len(), 1);
+            calls[0].provider_metadata.get_or_insert_with(|| json!({}))["other_data"] = json!("keep");
+            state.attach_reasoning(&mut calls);
+            let call = &calls[0];
+            assert_eq!(call.id.as_deref(), Some("native-call"));
+            assert_eq!(call.name, "zero_arg_tool");
+            let metadata = call.provider_metadata.as_ref().unwrap();
+            let mut expected_assistant = assistant.clone();
+            if !valid {
+                expected_assistant["tool_calls"][0]["function"]["arguments"] = json!("{}");
+            }
+            assert_eq!(metadata["openrouter_assistant"], expected_assistant);
+            assert_eq!(metadata["reasoning_details"], assistant["reasoning_details"]);
+            assert_eq!(metadata["other_data"], "keep");
+            assert_eq!(metadata.get("function_argument_error").is_none(), valid);
+            if !valid {
+                assert!(call.arguments.is_empty());
+            }
+            assert_execution_allowed(call, valid).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn streamed_arguments_clear_partial_errors_and_reject_a_corrupt_suffix() {
+        for suffix in ["", " trailing", "{}"] {
+            let details = json!([{ "type": "reasoning.encrypted", "data": "signed-opaque", "index": 0 }]);
+            let mut calls = Vec::new();
+            let mut state = OpenRouterResponseState::default();
+            process_streaming_chunk(
+                &json!({"choices": [{"delta": {
+                    "reasoning_details": details,
+                    "tool_calls": [{"index": 0, "id": "native-call", "type": "function", "function": {
+                        "name": "lookup", "arguments": "{\"city\":"
+                    }}]
+                }}]}),
+                &mut String::new(),
+                &mut calls,
+                &None,
+                &mut state,
+            );
+            assert!(calls[0].provider_metadata.as_ref().unwrap()["function_argument_error"].is_string());
+            process_streaming_chunk(
+                &json!({"choices": [{"delta": {"tool_calls": [{
+                    "index": 0, "function": {"arguments": "\"Paris\"}"}
+                }]}}]}),
+                &mut String::new(),
+                &mut calls,
+                &None,
+                &mut state,
+            );
+            assert_eq!(calls[0].arguments["city"], "Paris");
+            assert!(calls[0]
+                .provider_metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("function_argument_error"))
+                .is_none());
+            if !suffix.is_empty() {
+                process_streaming_chunk(
+                    &json!({"choices": [{"delta": {"tool_calls": [{
+                        "index": 0, "function": {"arguments": suffix}
+                    }]}}]}),
+                    &mut String::new(),
+                    &mut calls,
+                    &None,
+                    &mut state,
+                );
+                assert!(calls[0].arguments.is_empty());
+            }
+            state.attach_reasoning(&mut calls);
+            let call = &calls[0];
+            assert_eq!(call.id.as_deref(), Some("native-call"));
+            assert_eq!(call.name, "lookup");
+            let metadata = call.provider_metadata.as_ref().unwrap();
+            assert_eq!(
+                metadata["openrouter_assistant"]["tool_calls"][0]["function"]["arguments"],
+                if suffix.is_empty() {
+                    "{\"city\":\"Paris\"}"
+                } else {
+                    "{}"
+                }
+            );
+            assert_eq!(metadata["reasoning_details"], details);
+            assert_eq!(metadata.get("function_argument_error").is_none(), suffix.is_empty());
+            assert_execution_allowed(call, suffix.is_empty()).await;
+        }
+    }
+}
+
+#[cfg(test)]
+mod reasoning_details_tests {
+    use super::*;
+
+    #[test]
+    fn websocket_completion_only_uses_the_selected_choice() {
+        for (choices, finished) in [
+            (json!([{ "index": 1, "finish_reason": "stop" }]), false),
+            (
+                json!([{ "index": 1, "finish_reason": "stop" }, { "index": 0, "finish_reason": null }]),
+                false,
+            ),
+            (
+                json!([{ "index": 0, "finish_reason": "" }, { "index": 1, "finish_reason": "tool_calls" }]),
+                false,
+            ),
+            (
+                json!([{ "index": 1, "finish_reason": null }, { "index": 0, "finish_reason": "tool_calls" }]),
+                true,
+            ),
+            (
+                json!([{ "index": 0, "finish_reason": "length" }, { "index": 1, "finish_reason": null }]),
+                true,
+            ),
+            (json!([{ "finish_reason": "stop" }]), true),
+            (
+                json!([{ "finish_reason": "stop" }, { "index": 0, "finish_reason": null }]),
+                false,
+            ),
+            (json!([]), false),
+        ] {
+            assert_eq!(selected_choice_finished(&json!({"choices": choices})), finished);
+        }
+    }
+
+    #[test]
+    fn separate_and_mixed_choices_never_share_tool_arguments_or_reasoning() {
+        let selected_details = json!([{ "type": "reasoning.encrypted", "data": "selected-signed", "index": 0 }]);
+        let other = json!({"index": 1, "delta": {
+            "content": "discard", "reasoning_details": [{"data": "other-signed"}],
+            "tool_calls": [{"index": 0, "id": "other-call", "function": {"name": "other", "arguments": "corruption"}}]
+        }, "finish_reason": "length"});
+        for selected_first in [false, true] {
+            let mut state = OpenRouterResponseState::default();
+            let mut text = String::new();
+            let mut calls = Vec::new();
+            process_streaming_chunk(&json!({"choices": [other]}), &mut text, &mut calls, &None, &mut state);
+            assert!(calls.is_empty());
+            assert!(text.is_empty());
+            assert!(state.arguments_complete.is_none());
+            process_streaming_chunk(
+                &json!({"choices": [{"index": 0, "delta": {
+                    "content": "selected", "reasoning_details": selected_details,
+                    "tool_calls": [{"index": 0, "id": "selected-call", "type": "function", "function": {"name": "lookup", "arguments": "{\"city\":"}}]
+                }}]}),
+                &mut text,
+                &mut calls,
+                &None,
+                &mut state,
+            );
+            process_streaming_chunk(&json!({"choices": [other]}), &mut text, &mut calls, &None, &mut state);
+            let selected = json!({"index": 0, "delta": {"content": " result", "tool_calls": [{"index": 0, "function": {"arguments": "\"Paris\"}"}}]}, "finish_reason": "tool_calls"});
+            let choices = if selected_first {
+                json!([selected, other])
+            } else {
+                json!([other, selected])
+            };
+            process_streaming_chunk(&json!({"choices": choices}), &mut text, &mut calls, &None, &mut state);
+            state.attach_reasoning(&mut calls);
+            assert_eq!(text, "selected result");
+            assert_eq!(calls.len(), 1);
+            assert_eq!(calls[0].id.as_deref(), Some("selected-call"));
+            assert_eq!(calls[0].name, "lookup");
+            assert_eq!(calls[0].arguments["city"], "Paris");
+            let metadata = calls[0].provider_metadata.as_ref().unwrap();
+            assert!(metadata.get("function_argument_error").is_none());
+            assert_eq!(metadata["reasoning_details"], selected_details);
+            assert_eq!(
+                metadata["openrouter_assistant"]["tool_calls"][0]["function"]["arguments"],
+                "{\"city\":\"Paris\"}"
+            );
+        }
+        // Compatible responses can omit choice.index; an explicit zero still takes priority.
+        let mut state = OpenRouterResponseState::default();
+        let mut text = String::new();
+        let mut calls = Vec::new();
+        process_streaming_chunk(
+            &json!({"choices": [{"delta": {"content": "legacy"}}]}),
+            &mut text,
+            &mut calls,
+            &None,
+            &mut state,
+        );
+        process_streaming_chunk(
+            &json!({"choices": [{"delta": {"content": "discard"}}, {"index": 0, "delta": {"content": " zero"}}]}),
+            &mut text,
+            &mut calls,
+            &None,
+            &mut state,
+        );
+        assert_eq!(text, "legacy zero");
+    }
+
+    #[test]
+    fn streaming_reasoning_survives_fragmented_parallel_tool_calls() {
+        let mut state = OpenRouterResponseState::default();
+        let mut text = String::new();
+        let mut calls = Vec::new();
+        let first = json!({"type":"reasoning.text", "text":"Plan", "index":0, "signature":null});
+        let second =
+            json!({"type":"reasoning.encrypted", "data":"opaque-signature", "format":"google-gemini-v1", "index":1});
+        for delta in [
+            json!({"reasoning_details":[first.clone()]}),
+            json!({"tool_calls":[{"index":0,"id":"call_0","type":"function","function":{"name":"lookup","arguments":"{\"city\":"}}]}),
+            json!({"reasoning_details":[second.clone()],"tool_calls":[{"index":0,"function":{"arguments":"\"Paris\"}"}},{"index":1,"id":"call_1","function":{"name":"clock","arguments":"{}"}}]}),
+        ] {
+            process_streaming_chunk(
+                &json!({"choices":[{"delta":delta}]}),
+                &mut text,
+                &mut calls,
+                &None,
+                &mut state,
+            );
+        }
+        state.attach_reasoning(&mut calls);
+        assert!(text.is_empty());
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].arguments.get("city"), Some(&json!("Paris")));
+        assert_eq!(calls[0].id.as_deref(), Some("call_0"));
+        for call in calls {
+            assert_eq!(
+                call.provider_metadata.as_ref().unwrap()["reasoning_details"],
+                json!([first.clone(), second.clone()])
+            );
+            assert_eq!(
+                call.provider_metadata.as_ref().unwrap()["openrouter_assistant"]["tool_calls"]
+                    .as_array()
+                    .unwrap()
+                    .len(),
+                2
+            );
+        }
+    }
+
+    #[test]
+    fn parallel_tool_turn_roundtrips_through_production_prompt_once() {
+        let details = json!([{"type":"reasoning.encrypted","data":"signed","index":0}]);
+        let mut prompt = Prompt::new();
+        // Two distinct turns intentionally have identical reasoning. Their call IDs
+        // establish turn identity; equal reasoning must not combine them.
+        for prefix in ["first", "second"] {
+            let response = json!({"choices":[{"message":{
+                "role":"assistant", "content":"I will check both.", "reasoning_details":details,
+                "tool_calls":[
+                    {"id":format!("{prefix}_a"),"type":"function","function":{"name":"lookup","arguments":"{\"city\":\"Paris\"}"}},
+                    {"id":format!("{prefix}_b"),"type":"function","function":{"name":"clock","arguments":"{}"}}
+                ]
+            }}]});
+            let mut state = OpenRouterResponseState::default();
+            let mut calls = Vec::new();
+            process_streaming_chunk(&response, &mut String::new(), &mut calls, &None, &mut state);
+            state.attach_reasoning(&mut calls);
+            for call in calls {
+                prompt.add_function_call(json!({"call_id":call.id,"name":call.name,"arguments":call.arguments,"provider_metadata":call.provider_metadata}),100);
+                prompt.add_function_call_response(
+                    json!({"function_call":{"id":call.id,"name":call.name},"response":"ok"}),
+                    100,
+                );
+            }
+        }
+        let provider = LLMProviderInterface::OpenRouter(OpenRouter {
+            model_type: "anthropic/claude-opus-5.5".into(),
+        });
+        let prepared = openai_prepare_messages(&provider, prompt).unwrap();
+        let PromptResultEnum::Value(messages) = prepared.messages else {
+            panic!("Expected messages")
+        };
+        let messages = messages.as_array().unwrap();
+        assert_eq!(messages.len(), 6);
+        for (offset, prefix) in [(0, "first"), (3, "second")] {
+            assert_eq!(messages[offset]["role"], "assistant");
+            assert_eq!(messages[offset]["content"], "I will check both.");
+            assert_eq!(messages[offset]["reasoning_details"], details);
+            assert_eq!(messages[offset]["tool_calls"].as_array().unwrap().len(), 2);
+            assert_eq!(messages[offset]["tool_calls"][0]["id"], format!("{prefix}_a"));
+            assert_eq!(messages[offset]["tool_calls"][1]["id"], format!("{prefix}_b"));
+            for (result_index, suffix) in [(offset + 1, "a"), (offset + 2, "b")] {
+                assert_eq!(messages[result_index]["role"], "tool");
+                assert_eq!(messages[result_index]["tool_call_id"], format!("{prefix}_{suffix}"));
+                assert!(messages[result_index].get("reasoning_details").is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn nonstreaming_keeps_all_tool_calls_and_complete_reasoning() {
+        let details = json!([
+            {"type":"reasoning.text","text":"Plan","signature":"signed","index":0},
+            {"type":"reasoning.encrypted","data":"opaque","index":1}
+        ]);
+        let response = json!({"choices":[{"message":{
+            "content":null,"reasoning_details":details,
+            "tool_calls":[
+                {"id":"a","type":"function","function":{"name":"one","arguments":"{}"}},
+                {"id":"b","type":"function","function":{"name":"two","arguments":"{\"x\":2}"}}
+            ]
+        }}]});
+        let mut state = OpenRouterResponseState::default();
+        let mut calls = Vec::new();
+        process_streaming_chunk(&response, &mut String::new(), &mut calls, &None, &mut state);
+        state.attach_reasoning(&mut calls);
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[1].arguments.get("x"), Some(&json!(2)));
+        assert_eq!(
+            calls[0].provider_metadata.as_ref().unwrap()["reasoning_details"],
+            details
+        );
+        assert_eq!(calls[0].provider_metadata, calls[1].provider_metadata);
     }
 }

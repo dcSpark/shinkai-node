@@ -260,6 +260,27 @@ pub fn ollama_conversation_prepare_messages_with_tooling(
         _ => vec![],
     };
 
+    // Adjacent call fragments belong to one turn. Never merge across results.
+    let mut grouped_messages: Vec<serde_json::Value> = Vec::new();
+    for message in messages_vec {
+        let is_tool_turn = |message: &serde_json::Value| {
+            message["role"] == "assistant"
+                && message["tool_calls"].is_array()
+                && message["content"].as_str().unwrap_or_default().is_empty()
+        };
+        if is_tool_turn(&message) {
+            if let Some(previous) = grouped_messages.last_mut().filter(|previous| is_tool_turn(previous)) {
+                previous["tool_calls"]
+                    .as_array_mut()
+                    .unwrap()
+                    .extend(message["tool_calls"].as_array().unwrap().iter().cloned());
+                continue;
+            }
+        }
+        grouped_messages.push(message);
+    }
+    let messages_vec = grouped_messages;
+
     // Flatten the tools array to extract functions directly
     let tools_vec = match tools_json {
         serde_json::Value::Array(arr) => arr
@@ -311,6 +332,54 @@ mod tests {
     };
 
     use super::*;
+
+    #[test]
+    fn parallel_calls_merge_before_results_without_merging_later_turns() {
+        let mut prompt = Prompt::new();
+        for names in [vec!["A", "B"], vec!["C"]] {
+            for name in &names {
+                prompt.add_function_call(
+                    serde_json::json!({
+                        "name": name, "call_id": name, "arguments": {"value": name}
+                    }),
+                    100,
+                );
+            }
+            for name in &names {
+                prompt.add_function_call_response(
+                    serde_json::json!({
+                        "function_call": {"name": name, "id": name}, "response": "done"
+                    }),
+                    100,
+                );
+            }
+        }
+        let model = LLMProviderInterface::Ollama(
+            shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::Ollama {
+                model_type: "qwen3.5:9b".into(),
+            },
+        );
+        let result = ollama_conversation_prepare_messages_with_tooling(&model, prompt).unwrap();
+        let PromptResultEnum::Value(messages) = result.messages else {
+            panic!("expected messages")
+        };
+        let messages = messages.as_array().unwrap();
+        assert_eq!(messages.len(), 5);
+        assert_eq!(messages[0]["tool_calls"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            messages[0]["tool_calls"][0]["function"]["arguments"],
+            serde_json::json!({"value": "A"})
+        );
+        assert_eq!(
+            messages[0]["tool_calls"][1]["function"]["arguments"],
+            serde_json::json!({"value": "B"})
+        );
+        assert_eq!(messages[1]["role"], "tool");
+        assert_eq!(messages[2]["role"], "tool");
+        assert_eq!(messages[3]["tool_calls"].as_array().unwrap().len(), 1);
+        assert_eq!(messages[3]["tool_calls"][0]["function"]["name"], "C");
+        assert_eq!(messages[4]["role"], "tool");
+    }
 
     #[test]
     fn test_ollama_from_llm_messages() {
@@ -405,6 +474,7 @@ mod tests {
                 content: None,
                 name: None,
                 function_call: Some(DetailedFunctionCall {
+                    provider_metadata: None,
                     name: "shinkai__echo".to_string(),
                     arguments: "{\"message\":\"hello\"}".to_string(),
                     id: None,
@@ -467,6 +537,7 @@ mod tests {
                 content: None,
                 name: None,
                 function_call: Some(DetailedFunctionCall {
+                    provider_metadata: None,
                     name: "get_weather".to_string(),
                     arguments: "{\"location\":\"Tokyo\"}".to_string(),
                     id: Some("call_123".to_string()),

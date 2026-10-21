@@ -56,7 +56,9 @@ impl SqliteManager {
         embedding: Vec<f32>,
     ) -> Result<ShinkaiTool, SqliteManagerError> {
         let mut conn = self.get_connection()?;
-        let tx = conn.transaction()?;
+        // Reserve the write lock before reading, so a concurrent startup writer
+        // cannot invalidate this transaction's read snapshot before insertion.
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
 
         // Check if the tool already exists with the same key and version
         let tool_key = tool.tool_router_key().to_string_without_version().to_lowercase();
@@ -1284,6 +1286,44 @@ mod tests {
         let model_type = EmbeddingModelType::default();
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
+    }
+
+    #[test]
+    fn test_add_tool_waits_for_concurrent_startup_writer() {
+        use std::sync::{mpsc, Arc};
+        use std::time::Duration;
+
+        let file = NamedTempFile::new().unwrap();
+        let manager = Arc::new(
+            SqliteManager::new(file.path().to_path_buf(), String::new(), EmbeddingModelType::default()).unwrap(),
+        );
+        let mut connection = manager.get_connection().unwrap();
+        let writer = connection
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .unwrap();
+        let tool = create_deno_shinkai_tool("Startup Tool", "Test Author", "1.0.0");
+        let key = tool.tool_router_key().to_string_without_version();
+        let (started_sender, started_receiver) = mpsc::channel();
+        let (result_sender, result_receiver) = mpsc::channel();
+        let worker_manager = manager.clone();
+        let worker = std::thread::spawn(move || {
+            started_sender.send(()).unwrap();
+            let result = worker_manager.add_tool_with_vector(tool, SqliteManager::generate_vector_for_testing(0.0));
+            result_sender.send(result).unwrap();
+        });
+        started_receiver.recv().unwrap();
+        // Insertion must wait for the writer, rather than fail while upgrading
+        // a deferred read transaction to a write transaction.
+        let waiting = result_receiver.recv_timeout(Duration::from_millis(200));
+        writer.commit().unwrap();
+        let result = match waiting {
+            Err(mpsc::RecvTimeoutError::Timeout) => result_receiver.recv_timeout(Duration::from_secs(10)).unwrap(),
+            Ok(result) => result,
+            Err(error) => panic!("Tool insertion worker disconnected: {error}"),
+        };
+        worker.join().unwrap();
+        result.expect("Tool insertion must succeed after the startup writer commits");
+        assert!(manager.get_tool_by_key(&key).is_ok());
     }
 
     #[tokio::test]

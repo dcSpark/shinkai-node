@@ -6,7 +6,7 @@ use super::LLMService;
 use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::llm_provider::providers::openai::{
-    add_options_to_payload, handle_non_streaming_response, handle_streaming_response, truncate_image_url_in_payload,
+    handle_non_streaming_response, handle_streaming_response, truncate_image_url_in_payload,
 };
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
 use async_trait::async_trait;
@@ -43,7 +43,7 @@ impl LLMService for DeepSeek {
         if let Some(base_url) = url {
             if let Some(key) = api_key {
                 // DeepSeek API is compatible with OpenAI API format
-                let url = format!("{}{}", base_url, "/chat/completions");
+                let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
 
                 let is_stream = config.as_ref().and_then(|c| c.stream).unwrap_or(true);
 
@@ -61,22 +61,13 @@ impl LLMService for DeepSeek {
                 // Extract tools_json from the result
                 let tools_json = result.functions.unwrap_or_else(Vec::new);
 
-                // Set up initial payload with appropriate token limit field based on model capabilities
-                let mut payload = if ModelCapabilitiesManager::has_reasoning_capabilities(&model) {
-                    json!({
-                        "model": self.model_type,
-                        "messages": messages_json,
-                        "max_completion_tokens": result.remaining_output_tokens,
-                        "stream": is_stream,
-                    })
-                } else {
-                    json!({
-                        "model": self.model_type,
-                        "messages": messages_json,
-                        "max_tokens": result.remaining_output_tokens,
-                        "stream": is_stream,
-                    })
-                };
+                // DeepSeek uses max_tokens for both thinking and non-thinking models.
+                let mut payload = json!({
+                    "model": self.model_type,
+                    "messages": messages_json,
+                    "max_tokens": result.remaining_output_tokens,
+                    "stream": is_stream,
+                });
 
                 // Conditionally add tools to the payload if present. The tools list
                 // provided by message preparation is already in the correct format
@@ -87,11 +78,7 @@ impl LLMService for DeepSeek {
                     payload["tools"] = serde_json::Value::Array(tools_json.clone());
                 }
 
-                // Only add options to payload for non-reasoning models
-                if !ModelCapabilitiesManager::has_reasoning_capabilities(&model) {
-                    add_options_to_payload(&mut payload, config.as_ref());
-                }
-
+                add_deepseek_options(&mut payload, config.as_ref(), &self.model_type);
                 // Print payload as a pretty JSON string
                 match serde_json::to_string_pretty(&payload) {
                     Ok(pretty_json) => eprintln!("cURL Payload: {}", pretty_json),
@@ -117,7 +104,7 @@ impl LLMService for DeepSeek {
                     }
                 }
 
-                if is_stream {
+                let mut response = if is_stream {
                     handle_streaming_response(
                         client,
                         url,
@@ -144,7 +131,9 @@ impl LLMService for DeepSeek {
                         None,
                     )
                     .await
-                }
+                }?;
+                capture_reasoning_for_replay(&mut response);
+                Ok(response)
             } else {
                 Err(LLMProviderError::ApiKeyNotSet)
             }
@@ -154,11 +143,217 @@ impl LLMService for DeepSeek {
     }
 }
 
+fn capture_reasoning_for_replay(response: &mut LLMInferenceResponse) {
+    if let Some(reasoning) = response.reasoning_content.as_ref() {
+        for call in &mut response.function_calls {
+            let metadata = call.provider_metadata.get_or_insert_with(|| json!({}));
+            metadata["deepseek_reasoning_content"] = json!(reasoning);
+        }
+    }
+}
+
+// Keep this list separate from OpenAI: DeepSeek does not accept OpenAI-only
+// request fields such as max_completion_tokens, seed, or service_tier.
+fn add_deepseek_options(payload: &mut serde_json::Value, config: Option<&JobConfig>, model: &str) {
+    // Message preparation has already bounded this by model output and remaining context.
+    let prepared_output_budget = payload["max_tokens"].as_u64();
+    // Current documented IDs and the accepted V4 Flash compatibility aliases.
+    let supports_thinking_options = ModelCapabilitiesManager::is_current_deepseek(model);
+    if let Some(value) = config
+        .and_then(|c| c.temperature)
+        .or_else(|| std::env::var("LLM_TEMPERATURE").ok()?.parse::<f64>().ok())
+    {
+        payload["temperature"] = json!(value);
+    }
+    if let Some(value) = config
+        .and_then(|c| c.top_p)
+        .or_else(|| std::env::var("LLM_TOP_P").ok()?.parse::<f64>().ok())
+    {
+        payload["top_p"] = json!(value);
+    }
+    if let Some(value) = config
+        .and_then(|c| c.max_tokens)
+        .or_else(|| std::env::var("LLM_MAX_TOKENS").ok()?.parse::<u64>().ok())
+    {
+        payload["max_tokens"] = json!(value);
+    }
+    if let Some(thinking) = config.and_then(|c| c.thinking) {
+        payload["thinking"] = json!({"type": if thinking { "enabled" } else { "disabled" }});
+    }
+    if let Some(effort) = config.and_then(|c| c.reasoning_effort.as_ref()) {
+        payload["reasoning_effort"] = json!(effort);
+    }
+    if let Some(params) = config
+        .and_then(|c| c.other_model_params.as_ref())
+        .and_then(|p| p.as_object())
+    {
+        for (key, value) in params {
+            match key.as_str() {
+                // Accept the old configuration name, but use DeepSeek's wire field.
+                "max_completion_tokens" if !params.contains_key("max_tokens") => payload["max_tokens"] = value.clone(),
+                "max_tokens" | "thinking" | "reasoning_effort" | "response_format" | "stop" | "stream_options"
+                | "tool_choice" | "logprobs" | "top_logprobs" => {
+                    payload[key] = value.clone();
+                }
+                _ => (),
+            }
+        }
+    }
+    // Apply the cap after config, environment, and custom aliases have all been merged.
+    if let Some(budget) = prepared_output_budget {
+        payload["max_tokens"] = json!(payload["max_tokens"].as_u64().unwrap_or(budget).min(budget));
+    }
+    // Check after other_model_params too, so shared settings cannot bypass the model gate.
+    if !supports_thinking_options {
+        payload.as_object_mut().unwrap().remove("thinking");
+        payload.as_object_mut().unwrap().remove("reasoning_effort");
+    }
+    if payload["stream"] != true {
+        payload.as_object_mut().unwrap().remove("stream_options");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
     use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+
+    #[test]
+    fn deepseek_reasoning_capture_keeps_argument_error_guard() {
+        let call = serde_json::from_value(json!({"name":"lookup", "arguments":{}, "index":0,
+            "provider_metadata":{"function_argument_error":"invalid JSON"}}))
+        .unwrap();
+        let mut response = LLMInferenceResponse::new(
+            String::new(),
+            Some("native reasoning".into()),
+            json!({}),
+            vec![call],
+            vec![],
+            None,
+        );
+        capture_reasoning_for_replay(&mut response);
+        let metadata = response.function_calls[0].provider_metadata.as_ref().unwrap();
+        assert_eq!(metadata["function_argument_error"], "invalid JSON");
+        assert_eq!(metadata["deepseek_reasoning_content"], "native reasoning");
+    }
+
+    #[test]
+    fn deepseek_tool_history_keeps_replayable_reasoning() {
+        let call = serde_json::from_value(json!({
+            "name":"lookup", "arguments":{}, "index":0, "id":"call-1", "type":"function"
+        }))
+        .unwrap();
+        let mut response = LLMInferenceResponse::new(
+            String::new(),
+            Some("native reasoning".into()),
+            json!({}),
+            vec![call],
+            vec![],
+            None,
+        );
+        capture_reasoning_for_replay(&mut response);
+        assert_eq!(
+            response.function_calls[0].provider_metadata.as_ref().unwrap(),
+            &json!({"deepseek_reasoning_content":"native reasoning"})
+        );
+    }
+
+    #[test]
+    fn deepseek_request_output_overrides_cannot_exceed_prepared_budget() {
+        use shinkai_message_primitives::schemas::subprompts::{SubPrompt, SubPromptType};
+        for id in ["deepseek-flash", "deepseek-v4-pro", "deepseek-chat"] {
+            let model = LLMProviderInterface::DeepSeek(DeepSeek { model_type: id.into() });
+            let mut prompt = Prompt::new();
+            prompt.add_sub_prompts(vec![SubPrompt::Content(SubPromptType::User, "Hello".into(), 100)]);
+            let prepared = deepseek_prepare_messages(&model, prompt, "budget-test".into()).unwrap();
+            let budget = prepared.remaining_output_tokens as u64;
+            assert!(budget > 1024);
+            let mut config = JobConfig::empty();
+            config.max_tokens = Some(budget + 1);
+            let mut payload = json!({"model": id, "stream": true, "max_tokens": budget});
+            add_deepseek_options(&mut payload, Some(&config), id);
+            assert_eq!(payload["max_tokens"], budget);
+            config.max_tokens = Some(1024);
+            let mut payload = json!({"model": id, "stream": true, "max_tokens": budget});
+            add_deepseek_options(&mut payload, Some(&config), id);
+            assert_eq!(payload["max_tokens"], 1024);
+            for params in [
+                json!({"max_tokens": budget + 1}),
+                json!({"max_completion_tokens": budget + 1}),
+                json!({"max_tokens": "invalid"}),
+            ] {
+                config.other_model_params = Some(params);
+                let mut payload = json!({"model": id, "stream": true, "max_tokens": 512});
+                add_deepseek_options(&mut payload, Some(&config), id);
+                assert_eq!(payload["max_tokens"], 512);
+                assert!(payload.get("max_completion_tokens").is_none());
+            }
+            config.other_model_params = Some(json!({"max_tokens": 256, "max_completion_tokens": budget + 1}));
+            let mut payload = json!({"model": id, "stream": true, "max_tokens": 512});
+            add_deepseek_options(&mut payload, Some(&config), id);
+            assert_eq!(payload["max_tokens"], 256);
+        }
+    }
+
+    #[test]
+    fn legacy_deepseek_models_omit_new_thinking_options() {
+        let mut config = JobConfig::empty();
+        config.thinking = Some(true);
+        config.reasoning_effort = Some("high".into());
+        config.max_tokens = Some(4096);
+        config.other_model_params = Some(json!({"thinking": {"type": "enabled"}, "reasoning_effort": "max"}));
+        for model in ["deepseek-chat", "deepseek-reasoner", "deepseek-custom"] {
+            let mut payload = json!({"stream": true});
+            add_deepseek_options(&mut payload, Some(&config), model);
+            assert!(payload.get("thinking").is_none(), "{}", model);
+            assert!(payload.get("reasoning_effort").is_none(), "{}", model);
+            assert_eq!(payload["max_tokens"], 4096);
+        }
+        for model in [
+            "deepseek-flash",
+            "deepseek-v4-pro",
+            "deepseek-v4-flash",
+            "deepseek-v4-flash-vision-exp",
+        ] {
+            let mut payload = json!({"stream": true});
+            add_deepseek_options(&mut payload, Some(&config), model);
+            assert_eq!(payload["thinking"]["type"], "enabled");
+            assert_eq!(payload["reasoning_effort"], "max");
+        }
+    }
+
+    #[test]
+    fn deepseek_tool_calls_keep_requested_thinking() {
+        let mut config = JobConfig::empty();
+        config.thinking = Some(true);
+        config.reasoning_effort = Some("high".to_string());
+        let mut payload = json!({"tools": [{"type": "function"}], "stream": true});
+        add_deepseek_options(&mut payload, Some(&config), "deepseek-flash");
+        assert_eq!(payload["thinking"]["type"], "enabled");
+        assert_eq!(payload["reasoning_effort"], "high");
+    }
+
+    #[test]
+    fn deepseek_options_use_provider_fields() {
+        let mut config = JobConfig::empty();
+        config.max_tokens = Some(4096);
+        config.thinking = Some(false);
+        config.reasoning_effort = Some("none".to_string());
+        config.other_model_params = Some(json!({
+            "max_completion_tokens": 8192,
+            "stream_options": {"include_usage": true},
+            "service_tier": "auto"
+        }));
+        let mut payload = json!({"stream": false});
+        add_deepseek_options(&mut payload, Some(&config), "deepseek-flash");
+        assert_eq!(payload["max_tokens"], 8192);
+        assert_eq!(payload["thinking"]["type"], "disabled");
+        assert_eq!(payload["reasoning_effort"], "none");
+        assert!(payload.get("max_completion_tokens").is_none());
+        assert!(payload.get("stream_options").is_none());
+        assert!(payload.get("service_tier").is_none());
+    }
 
     #[test]
     fn test_deepseek_provider_creation() {

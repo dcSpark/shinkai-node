@@ -17,7 +17,8 @@ pub struct Output {
 pub async fn parse_docx(file_path: PathBuf) -> Result<Output, RunError> {
     println!("parsing docx file: {:?}", file_path);
     let code = r#"
-            import mammoth from 'npm:mammoth';
+            // Mammoth 1.13.0 fails in Deno when it wraps the conversion promise.
+            import mammoth from 'npm:mammoth@1.12.0';
             import TurndownService from 'npm:turndown';
             import turndownPluginGfm from 'npm:turndown-plugin-gfm';
             const gfm = turndownPluginGfm.gfm;

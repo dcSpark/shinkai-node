@@ -118,6 +118,7 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
         _ => vec![],
     };
 
+    let messages_vec = complete_native_tool_history(messages_vec);
     // Now build the final structure from messages_vec
     let messages_vec = messages_vec
         .into_iter()
@@ -134,6 +135,9 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
                 .cloned()
                 .unwrap_or(serde_json::Value::String("".to_string()));
 
+            if let Some(parts) = msg.get("gemini_native_parts") {
+                return serde_json::json!({"role": role, "parts": parts});
+            }
             // Check if this is a "function_response" field (the older logic)
             if let Some(function_response) = msg.get("function_response") {
                 let response = function_response
@@ -243,6 +247,26 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
         })
         .filter(|msg| !msg.as_object().map_or(true, |obj| obj.is_empty()))
         .collect::<Vec<_>>();
+
+    // Parallel results must follow the complete model turn together.
+    let mut grouped_messages: Vec<serde_json::Value> = Vec::new();
+    for message in messages_vec {
+        let is_response = |value: &serde_json::Value| {
+            value["role"] == "user"
+                && value["parts"]
+                    .as_array()
+                    .is_some_and(|parts| !parts.is_empty() && parts.iter().all(|p| p.get("functionResponse").is_some()))
+        };
+        if is_response(&message) && grouped_messages.last().is_some_and(&is_response) {
+            grouped_messages.last_mut().unwrap()["parts"]
+                .as_array_mut()
+                .unwrap()
+                .extend(message["parts"].as_array().unwrap().iter().cloned());
+        } else {
+            grouped_messages.push(message);
+        }
+    }
+    let messages_vec = grouped_messages;
 
     // Convert tools to function declarations
     let function_declarations: Vec<serde_json::Value> = tools
@@ -464,12 +488,341 @@ fn fix_object_in_place(obj: &mut serde_json::Map<String, serde_json::Value>) {
     }
 }
 
+// Keep matching local to one native turn. The chain can stop after an early tool
+// error, although each saved wrapper contains all calls from the model response.
+struct NativeToolTurn {
+    parts: Vec<serde_json::Value>,
+    turn_id: Option<String>,
+    calls: Vec<serde_json::Value>,
+    recorded: Vec<usize>,
+    outcomes: Vec<Option<serde_json::Value>>,
+}
+
+impl NativeToolTurn {
+    fn new(parts: &[serde_json::Value], turn_id: Option<&str>) -> Self {
+        let calls: Vec<_> = parts
+            .iter()
+            .filter_map(|part| part.get("functionCall").cloned())
+            .collect();
+        Self {
+            parts: parts.to_vec(),
+            turn_id: turn_id.map(str::to_owned),
+            recorded: Vec::new(),
+            outcomes: vec![None; calls.len()],
+            calls,
+        }
+    }
+
+    fn recorded_call_index(&self, wrapper: &serde_json::Value) -> Option<usize> {
+        let id = wrapper["id"].as_str();
+        let args = wrapper["arguments"]
+            .as_str()
+            .and_then(|args| serde_json::from_str::<serde_json::Value>(args).ok());
+        let empty_args = serde_json::json!({});
+        self.calls.iter().enumerate().position(|(index, call)| {
+            !self.recorded.contains(&index)
+                && if let Some(id) = id {
+                    call["id"].as_str() == Some(id)
+                } else {
+                    call["name"] == wrapper["name"]
+                        && args.as_ref().unwrap_or(&empty_args) == call.get("args").unwrap_or(&empty_args)
+                }
+        })
+    }
+
+    fn add_outcome(&mut self, message: &serde_json::Value) -> bool {
+        let Some(key) = message["name"].as_str() else {
+            return false;
+        };
+        // A name can occur more than once. Without IDs, the saved wrappers and
+        // their results use execution order, which can differ from native order.
+        let Some(index) = self.recorded.iter().copied().find(|index| {
+            let call = &self.calls[*index];
+            self.outcomes[*index].is_none()
+                && call
+                    .get("id")
+                    .and_then(|id| id.as_str())
+                    .or_else(|| call["name"].as_str())
+                    == Some(key)
+        }) else {
+            return false;
+        };
+        let text = message["content"]
+            .as_str()
+            .or_else(|| message.pointer("/content/0/text").and_then(|text| text.as_str()))
+            .unwrap_or_default();
+        let response =
+            serde_json::from_str::<serde_json::Value>(text).unwrap_or_else(|_| serde_json::json!({"result": text}));
+        self.outcomes[index] = Some(if response.is_object() {
+            response
+        } else {
+            serde_json::json!({"result": response})
+        });
+        true
+    }
+
+    fn finish(self, messages: &mut Vec<serde_json::Value>) {
+        messages.push(serde_json::json!({"role": "model", "gemini_native_parts": self.parts}));
+        let responses: Vec<_> = self
+            .calls
+            .into_iter()
+            .zip(self.outcomes)
+            .map(|(call, outcome)| {
+                let mut response = serde_json::json!({
+                    "name": call["name"],
+                    "response": outcome.unwrap_or_else(|| serde_json::json!({
+                        "error": "No execution result is recorded for this tool call."
+                    }))
+                });
+                if let Some(id) = call.get("id") {
+                    response["id"] = id.clone();
+                }
+                serde_json::json!({"functionResponse": response})
+            })
+            .collect();
+        if !responses.is_empty() {
+            messages.push(serde_json::json!({"role": "user", "gemini_native_parts": responses}));
+        }
+    }
+}
+
+fn complete_native_tool_history(messages: Vec<serde_json::Value>) -> Vec<serde_json::Value> {
+    let mut completed = Vec::new();
+    let mut active: Option<NativeToolTurn> = None;
+    for message in messages {
+        if let Some(parts) = message
+            .pointer("/function_call/provider_metadata/gemini_parts")
+            .and_then(|parts| parts.as_array())
+        {
+            let turn_id = message
+                .pointer("/function_call/provider_metadata/inference_turn_id")
+                .and_then(|id| id.as_str());
+            let same_turn = active.as_ref().is_some_and(|turn| {
+                turn.parts == *parts
+                    && match (turn.turn_id.as_deref(), turn_id) {
+                        (Some(previous), Some(current)) => previous == current,
+                        (None, None) => turn.recorded_call_index(&message["function_call"]).is_some(),
+                        _ => false,
+                    }
+            });
+            if !same_turn {
+                if let Some(turn) = active.take() {
+                    turn.finish(&mut completed);
+                }
+                active = Some(NativeToolTurn::new(parts, turn_id));
+            }
+            let turn = active.as_mut().unwrap();
+            if let Some(index) = turn.recorded_call_index(&message["function_call"]) {
+                turn.recorded.push(index);
+            }
+            continue;
+        }
+        if message["role"] == "function" && active.as_mut().is_some_and(|turn| turn.add_outcome(&message)) {
+            continue;
+        }
+        if let Some(turn) = active.take() {
+            turn.finish(&mut completed);
+        }
+        completed.push(message);
+    }
+    if let Some(turn) = active {
+        turn.finish(&mut completed);
+    }
+    completed
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
     use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
     use shinkai_message_primitives::schemas::subprompts::{SubPrompt, SubPromptAssetType, SubPromptType};
+
+    fn append_native_turn(
+        prompt: &mut Prompt,
+        parts: &serde_json::Value,
+        turn_id: Option<&str>,
+        records: &[(usize, Option<&str>)],
+        interleaved: bool,
+    ) {
+        let calls: Vec<_> = parts
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|part| part.get("functionCall"))
+            .collect();
+        let mut responses = Vec::new();
+        for (index, outcome) in records {
+            let call = calls[*index];
+            let mut metadata = json!({"gemini_parts": parts});
+            if let Some(turn_id) = turn_id {
+                metadata["inference_turn_id"] = json!(turn_id);
+            }
+            prompt.add_function_call(json!({
+                "name": call["name"], "call_id": call.get("id"), "arguments": call["args"], "provider_metadata": metadata
+            }), 100);
+            if let Some(outcome) = outcome {
+                let response =
+                    json!({"function_call": {"name": call["name"], "id": call.get("id")}, "response": outcome});
+                if interleaved {
+                    prompt.add_function_call_response(response, 100);
+                } else {
+                    responses.push(response);
+                }
+            }
+        }
+        for response in responses {
+            prompt.add_function_call_response(response, 100);
+        }
+    }
+
+    fn native_test_contents(prompt: Prompt) -> serde_json::Value {
+        // Saved tool history passes through serialization before prompt preparation.
+        let prompt = serde_json::from_str(&serde_json::to_string(&prompt).unwrap()).unwrap();
+        let model = SerializedLLMProvider::mock_provider().model;
+        let result = gemini_prepare_messages(&model, prompt).unwrap();
+        let PromptResultEnum::Value(payload) = result.messages else {
+            panic!("Expected JSON payload");
+        };
+        payload["contents"].clone()
+    }
+
+    #[test]
+    fn native_parallel_calls_get_missing_result_errors_without_changing_parts() {
+        let native = json!([
+            {"text": "", "thought": true, "thoughtSignature": "signed-thought"},
+            {"functionCall": {"name": "lookup", "args": {"city": "Paris"}, "id": "a"}, "thoughtSignature": "signed-call"},
+            {"functionCall": {"name": "lookup", "args": {"city": "London"}, "id": "b"}},
+            {"functionCall": {"name": "lookup", "args": {"city": "Rome"}, "id": "c"}}
+        ]);
+        for records in [
+            vec![(0, Some("Argument validation failed"))],
+            vec![(0, Some("{\"temperature\":20}")), (1, Some("Execution failed"))],
+            vec![(2, Some("{\"temperature\":30}"))],
+            vec![(0, None)],
+            vec![
+                (2, Some("30")),
+                (0, Some("{\"temperature\":20}")),
+                (1, Some("Execution failed")),
+            ],
+        ] {
+            for interleaved in [false, true] {
+                let mut prompt = Prompt::new();
+                append_native_turn(&mut prompt, &native, Some("turn"), &records, interleaved);
+                let contents = native_test_contents(prompt);
+                assert_eq!(contents.as_array().unwrap().len(), 2);
+                assert_eq!(contents[0], json!({"role": "model", "parts": native}));
+                let responses = contents[1]["parts"].as_array().unwrap();
+                assert_eq!(responses.len(), 3);
+                for (index, id) in ["a", "b", "c"].iter().enumerate() {
+                    let response = &responses[index]["functionResponse"];
+                    assert_eq!(response["id"], *id);
+                    assert_eq!(response["name"], "lookup");
+                    let recorded = records
+                        .iter()
+                        .find(|(recorded, _)| *recorded == index)
+                        .and_then(|(_, outcome)| *outcome);
+                    let expected = recorded
+                        .map(|outcome| {
+                            let parsed = serde_json::from_str::<serde_json::Value>(outcome)
+                                .unwrap_or_else(|_| json!({"result": outcome}));
+                            if parsed.is_object() {
+                                parsed
+                            } else {
+                                json!({"result": parsed})
+                            }
+                        })
+                        .unwrap_or_else(|| json!({"error": "No execution result is recorded for this tool call."}));
+                    assert_eq!(response["response"], expected);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn native_calls_without_ids_match_recorded_arguments_and_keep_result_order() {
+        let native = json!([
+            {"functionCall": {"name": "lookup", "args": {"city": "Paris"}}, "thoughtSignature": "signed"},
+            {"functionCall": {"name": "lookup", "args": {"city": "London"}}}
+        ]);
+        for (records, expected) in [
+            (
+                vec![(1, Some("London result"))],
+                vec![
+                    json!({"error": "No execution result is recorded for this tool call."}),
+                    json!({"result": "London result"}),
+                ],
+            ),
+            (
+                vec![(0, Some("Paris result")), (1, Some("London result"))],
+                vec![json!({"result": "Paris result"}), json!({"result": "London result"})],
+            ),
+            (
+                vec![(1, Some("London result")), (0, Some("Paris result"))],
+                vec![json!({"result": "Paris result"}), json!({"result": "London result"})],
+            ),
+        ] {
+            for interleaved in [false, true] {
+                let mut prompt = Prompt::new();
+                append_native_turn(&mut prompt, &native, None, &records, interleaved);
+                let contents = native_test_contents(prompt);
+                assert_eq!(contents[0]["parts"], native);
+                let responses = contents[1]["parts"].as_array().unwrap();
+                assert_eq!(responses.len(), 2);
+                for (response, expected) in responses.iter().zip(&expected) {
+                    assert_eq!(response["functionResponse"]["response"], *expected);
+                    assert!(response["functionResponse"].get("id").is_none());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn repeated_native_turns_without_ids_do_not_share_results() {
+        let first = json!([
+            {"functionCall": {"name": "lookup", "args": {"city": "Paris"}}, "thoughtSignature": "first-signature"},
+            {"functionCall": {"name": "lookup", "args": {"city": "London"}}}
+        ]);
+        for tagged in [false, true] {
+            let mut second = first.clone();
+            if !tagged {
+                second[0]["thoughtSignature"] = json!("second-signature");
+            }
+            let mut prompt = Prompt::new();
+            append_native_turn(
+                &mut prompt,
+                &first,
+                tagged.then_some("first"),
+                &[(0, Some("first error"))],
+                true,
+            );
+            append_native_turn(
+                &mut prompt,
+                &second,
+                tagged.then_some("second"),
+                &[(1, Some("second result"))],
+                true,
+            );
+            let contents = native_test_contents(prompt);
+            assert_eq!(contents.as_array().unwrap().len(), 4);
+            assert_eq!(contents[0]["parts"], first);
+            assert_eq!(contents[2]["parts"], second);
+            assert_eq!(
+                contents[1]["parts"][0]["functionResponse"]["response"],
+                json!({"result": "first error"})
+            );
+            assert!(contents[1]["parts"][1]["functionResponse"]["response"]
+                .get("error")
+                .is_some());
+            assert!(contents[3]["parts"][0]["functionResponse"]["response"]
+                .get("error")
+                .is_some());
+            assert_eq!(
+                contents[3]["parts"][1]["functionResponse"]["response"],
+                json!({"result": "second result"})
+            );
+        }
+    }
 
     fn generate_test_payload(
         prompt: Prompt,

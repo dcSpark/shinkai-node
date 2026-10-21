@@ -1,4 +1,7 @@
-use std::{collections::HashMap, fmt};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt,
+};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -53,6 +56,138 @@ pub struct Prompt {
     pub highest_priority: u8,
 }
 
+// Metadata contains a complete provider turn, repeated on each parallel call.
+// Retain the positions of its calls and results so truncation is atomic.
+struct NativeToolTurn<'a> {
+    positions: Vec<usize>,
+    call_ids: HashSet<String>,
+    payloads: Vec<(&'static str, &'a Value)>,
+}
+
+fn native_replay_payload(metadata: Option<&Value>) -> Option<(&'static str, &Value)> {
+    let metadata = metadata?;
+    for key in ["openrouter_assistant", "claude_content", "gemini_parts"] {
+        if let Some(value) = metadata.get(key).filter(|value| value.is_object() || value.is_array()) {
+            return Some((key, value));
+        }
+    }
+    if let Some(value) = metadata
+        .pointer("/openai_responses/output")
+        .filter(|value| value.is_array())
+    {
+        return Some(("openai_responses", value));
+    }
+    for key in ["deepseek_reasoning_content", "together_reasoning_content"] {
+        if let Some(value) = metadata.get(key).filter(|value| value.is_string()) {
+            return Some((key, value));
+        }
+    }
+    metadata
+        .get("reasoning_details")
+        .filter(|value| value.is_array())
+        .map(|value| ("reasoning_details", value))
+}
+
+enum ToolHistoryItem<'a> {
+    Call {
+        metadata: Option<&'a Value>,
+        id: Option<&'a str>,
+        name: Option<&'a str>,
+    },
+    Result {
+        metadata: Option<&'a Value>,
+        id: Option<&'a str>,
+        name: Option<&'a str>,
+    },
+    Boundary,
+}
+
+fn native_tool_turns<'a>(items: impl Iterator<Item = ToolHistoryItem<'a>>) -> Vec<NativeToolTurn<'a>> {
+    let mut turns: Vec<NativeToolTurn<'a>> = Vec::new();
+    let mut tagged_turns = HashMap::<&str, usize>::new();
+    let mut call_owners = HashMap::<(bool, &str), Option<usize>>::new();
+    let mut legacy_turn: Option<usize> = None;
+    for (position, item) in items.enumerate() {
+        match item {
+            ToolHistoryItem::Call {
+                metadata,
+                id: call_id,
+                name,
+            } => {
+                let payload = native_replay_payload(metadata);
+                let tag = metadata
+                    .and_then(|value| value.get("inference_turn_id"))
+                    .and_then(Value::as_str);
+                let existing = match tag {
+                    Some(tag) => {
+                        legacy_turn = None;
+                        tagged_turns.get(tag).copied()
+                    }
+                    None => legacy_turn.filter(|&index| {
+                        payload.is_some()
+                            && turns[index].payloads.first().copied() == payload
+                            && !call_id.map(|id| turns[index].call_ids.contains(id)).unwrap_or(false)
+                    }),
+                };
+                if payload.is_none() && tag.is_none() {
+                    legacy_turn = None;
+                    if let Some(id) = call_id {
+                        call_owners.insert((true, id), None);
+                    }
+                    if let Some(name) = name {
+                        call_owners.insert((false, name), None);
+                    }
+                    continue;
+                }
+                let index = existing.unwrap_or_else(|| {
+                    turns.push(NativeToolTurn {
+                        positions: vec![],
+                        call_ids: HashSet::new(),
+                        payloads: vec![],
+                    });
+                    turns.len() - 1
+                });
+                if let Some(tag) = tag {
+                    tagged_turns.insert(tag, index);
+                } else {
+                    legacy_turn = Some(index);
+                }
+                let turn = &mut turns[index];
+                turn.positions.push(position);
+                if let Some(id) = call_id {
+                    turn.call_ids.insert(id.into());
+                }
+                if let Some(id) = call_id {
+                    call_owners.insert((true, id), Some(index));
+                }
+                if let Some(name) = name {
+                    call_owners.insert((false, name), Some(index));
+                }
+                if let Some(payload) = payload {
+                    if !turn.payloads.contains(&payload) {
+                        turn.payloads.push(payload);
+                    }
+                }
+            }
+            ToolHistoryItem::Result { metadata, id, name } => {
+                let tag = metadata
+                    .and_then(|value| value.get("inference_turn_id"))
+                    .and_then(Value::as_str);
+                let index = tag.and_then(|tag| tagged_turns.get(tag).copied()).or_else(|| {
+                    id.and_then(|id| call_owners.get(&(true, id)).copied().flatten())
+                        .or_else(|| name.and_then(|name| call_owners.get(&(false, name)).copied().flatten()))
+                });
+                if let Some(index) = index {
+                    turns[index].positions.push(position);
+                }
+            }
+            ToolHistoryItem::Boundary => legacy_turn = None,
+        }
+    }
+    turns.retain(|turn| !turn.payloads.is_empty());
+    turns
+}
+
 impl Default for Prompt {
     fn default() -> Self {
         Self::new()
@@ -60,6 +195,53 @@ impl Default for Prompt {
 }
 
 impl Prompt {
+    fn native_tool_turns(&self) -> Vec<NativeToolTurn<'_>> {
+        native_tool_turns(self.sub_prompts.iter().map(|item| match item {
+            SubPrompt::FunctionCall(_, call, _) => ToolHistoryItem::Call {
+                metadata: call.get("provider_metadata"),
+                id: call.get("call_id").and_then(Value::as_str),
+                name: call.get("name").and_then(Value::as_str),
+            },
+            SubPrompt::FunctionCallResponse(_, response, _) => {
+                let call = &response["function_call"];
+                ToolHistoryItem::Result {
+                    metadata: call.get("provider_metadata"),
+                    id: call.get("id").and_then(Value::as_str),
+                    name: call.get("name").and_then(Value::as_str),
+                }
+            }
+            _ => ToolHistoryItem::Boundary,
+        }))
+    }
+
+    /// Conservative token charge for native payloads that adapters replay.
+    /// Parallel calls share a turn; separate inference turns are charged separately.
+    pub fn count_native_replay_tokens(messages: &[LlmMessage]) -> usize {
+        let turns = native_tool_turns(messages.iter().map(|message| {
+            if let Some(call) = &message.function_call {
+                ToolHistoryItem::Call {
+                    metadata: call.provider_metadata.as_ref(),
+                    id: call.id.as_deref(),
+                    name: Some(&call.name),
+                }
+            } else if matches!(message.role.as_deref(), Some("function" | "tool")) {
+                ToolHistoryItem::Result {
+                    metadata: None,
+                    id: message.name.as_deref(),
+                    name: message.name.as_deref(),
+                }
+            } else {
+                ToolHistoryItem::Boundary
+            }
+        }));
+        turns
+            .into_iter()
+            .flat_map(|turn| turn.payloads)
+            .fold(0usize, |total, (_, payload)| {
+                total.saturating_add(payload.to_string().len())
+            })
+    }
+
     pub fn new() -> Self {
         Self {
             sub_prompts: Vec::new(),
@@ -316,8 +498,13 @@ impl Prompt {
     /// Removes the first sub-prompt from the end of the sub_prompts list that has the lowest priority value.
     /// Used primarily for cutting down prompt when it is too large to fit in context window.
     pub fn remove_lowest_priority_sub_prompt(&mut self) -> Option<SubPrompt> {
+        self.lowest_priority_position()
+            .map(|position| self.remove_sub_prompt(position))
+    }
+
+    fn lowest_priority_position(&self) -> Option<usize> {
         let lowest_priority = self.lowest_priority;
-        if let Some(position) = self.sub_prompts.iter().rposition(|sub_prompt| match sub_prompt {
+        self.sub_prompts.iter().rposition(|sub_prompt| match sub_prompt {
             SubPrompt::Content(_, _, priority) | SubPrompt::ToolAvailable(_, _, priority) => {
                 *priority == lowest_priority
             }
@@ -325,10 +512,7 @@ impl Prompt {
             SubPrompt::FunctionCall(_, _, priority) => *priority == lowest_priority,
             SubPrompt::FunctionCallResponse(_, _, priority) => *priority == lowest_priority,
             SubPrompt::Omni(_, _, _, priority) => *priority == lowest_priority,
-        }) {
-            return Some(self.remove_sub_prompt(position));
-        }
-        None
+        })
     }
 
     /// Removes lowest priority sub-prompts until the total token count is under the specified cap.
@@ -344,19 +528,22 @@ impl Prompt {
         let mut removed_subprompts = vec![];
 
         let mut current_token_count = self.generate_chat_completion_messages(None, token_counter).1;
-        while current_token_count + 200 > max_prompt_tokens {
-            match self.remove_lowest_priority_sub_prompt() {
-                Some(removed_sub_prompt) => {
-                    let removed_tokens = removed_sub_prompt.count_tokens_as_completion_message(token_counter);
-                    if current_token_count >= removed_tokens {
-                        current_token_count -= removed_tokens;
-                    } else {
-                        current_token_count = 0;
-                    }
-                    removed_subprompts.push(removed_sub_prompt);
-                }
-                None => break, // No more sub-prompts to remove, exit the loop
+        while current_token_count.saturating_add(200) > max_prompt_tokens {
+            let Some(position) = self.lowest_priority_position() else {
+                break;
+            };
+            let positions = self
+                .native_tool_turns()
+                .into_iter()
+                .find(|turn| turn.positions.contains(&position))
+                .map(|turn| turn.positions)
+                .unwrap_or_else(|| vec![position]);
+            for position in positions.into_iter().rev() {
+                removed_subprompts.push(self.remove_sub_prompt(position));
             }
+            // Native metadata is shared by calls. Subtracting one raw sub-prompt
+            // cannot represent the cost of the retained provider payload.
+            current_token_count = self.generate_chat_completion_messages(None, token_counter).1;
         }
 
         removed_subprompts.reverse();
@@ -396,8 +583,7 @@ impl Prompt {
         // Accumulator for ExtraContext content
         let mut extra_context_content = String::new();
         let mut last_user_message: Option<LlmMessage> = None;
-        let mut function_calls: Vec<LlmMessage> = Vec::new();
-        let mut function_call_responses: Vec<LlmMessage> = Vec::new();
+        let mut tool_messages: Vec<LlmMessage> = Vec::new();
 
         for sub_prompt in &self.sub_prompts {
             match sub_prompt {
@@ -437,14 +623,25 @@ impl Prompt {
                             .to_string();
 
                         new_message.function_call = Some(DetailedFunctionCall {
+                            provider_metadata: content.get("provider_metadata").cloned().filter(|v| !v.is_null()),
                             name: name.to_string(),
                             arguments,
                             id: if call_id.is_empty() { None } else { Some(call_id) },
                         });
                     }
+                    // Count generic arguments as before. Native metadata is
+                    // accounted once per turn below, even if this counter also
+                    // understands native message history.
+                    let metadata = new_message
+                        .function_call
+                        .as_mut()
+                        .and_then(|call| call.provider_metadata.take());
                     current_length +=
                         sub_prompt.count_tokens_with_pregenerated_completion_message(&new_message, token_counter);
-                    function_calls.push(new_message);
+                    if let Some(call) = new_message.function_call.as_mut() {
+                        call.provider_metadata = metadata;
+                    }
+                    tool_messages.push(new_message);
                 }
                 SubPrompt::FunctionCallResponse(_, content, _) => {
                     let mut new_message = LlmMessage {
@@ -474,7 +671,7 @@ impl Prompt {
 
                     current_length +=
                         sub_prompt.count_tokens_with_pregenerated_completion_message(&new_message, token_counter);
-                    function_call_responses.push(new_message);
+                    tool_messages.push(new_message);
                 }
                 SubPrompt::Content(SubPromptType::UserLastMessage, content, _) => {
                     last_user_message = Some(LlmMessage {
@@ -539,14 +736,23 @@ impl Prompt {
             tiktoken_messages.push(combined_message);
         }
 
-        // Add function calls after the last user message
-        for function_call in function_calls {
-            tiktoken_messages.push(function_call);
-        }
+        // Keep tool turns in their original order after the current user message.
+        tiktoken_messages.extend(tool_messages);
 
-        // Add function call responses after function calls
-        for response in function_call_responses {
-            tiktoken_messages.push(response);
+        for turn in self.native_tool_turns() {
+            for (_, payload) in turn.payloads {
+                let encoded = payload.to_string();
+                let bytes = encoded.len();
+                let message = LlmMessage {
+                    role: Some("assistant".into()),
+                    content: Some(encoded),
+                    ..Default::default()
+                };
+                // Opaque signatures and encrypted reasoning can tokenize very
+                // differently from prose. One token per encoded byte is a
+                // conservative bound, without changing the stored native data.
+                current_length = current_length.saturating_add(bytes.max(token_counter(&[message])));
+            }
         }
 
         (tiktoken_messages, current_length)
@@ -632,5 +838,258 @@ impl Prompt {
         let output = messages.join(" ");
         // eprintln!("generate_genericapi_messages output: {:?}", output);
         Ok(output)
+    }
+}
+
+#[cfg(test)]
+mod provider_history_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn text_and_call_tokens(messages: &[LlmMessage]) -> usize {
+        messages
+            .iter()
+            .map(|message| {
+                message.content.as_ref().map_or(0, String::len)
+                    + message
+                        .function_call
+                        .as_ref()
+                        .map_or(0, |call| call.name.len() + call.arguments.len())
+            })
+            .sum()
+    }
+
+    fn add_turn(prompt: &mut Prompt, metadata: Value, ids: &[&str], priority: u8) {
+        for id in ids {
+            prompt.add_function_call(json!({"name":"tool", "call_id":id, "arguments":{"query":"keep arguments"}, "provider_metadata":metadata}), priority);
+        }
+        for id in ids {
+            prompt.add_function_call_response(
+                json!({"function_call":{"name":"tool", "id":id, "provider_metadata":metadata}, "response":"done"}),
+                priority,
+            );
+        }
+    }
+
+    fn without_metadata(prompt: &Prompt) -> Prompt {
+        let mut prompt = prompt.clone();
+        for item in &mut prompt.sub_prompts {
+            if let SubPrompt::FunctionCall(_, call, _) = item {
+                call.as_object_mut().unwrap().remove("provider_metadata");
+            }
+        }
+        prompt
+    }
+
+    #[test]
+    fn native_payloads_reduce_the_remaining_budget() {
+        let opaque = "signed reasoning ".repeat(1024);
+        for (metadata, payload) in [
+            (
+                json!({"claude_content":[{"type":"thinking","thinking":opaque,"signature":"opaque signature"}]}),
+                json!([{"type":"thinking","thinking":opaque,"signature":"opaque signature"}]),
+            ),
+            (
+                json!({"gemini_parts":[{"text":opaque,"thoughtSignature":"opaque signature"}]}),
+                json!([{"text":opaque,"thoughtSignature":"opaque signature"}]),
+            ),
+            (
+                json!({"openai_responses":{"output":[{"type":"reasoning","encrypted_content":opaque}]}}),
+                json!([{"type":"reasoning","encrypted_content":opaque}]),
+            ),
+            (
+                json!({"openrouter_assistant":{"role":"assistant","tool_calls":[],"reasoning_details":[{"data":opaque}]},"reasoning_details":[{"data":opaque}]}),
+                json!({"role":"assistant","tool_calls":[],"reasoning_details":[{"data":opaque}]}),
+            ),
+            (json!({"deepseek_reasoning_content":opaque}), json!(opaque)),
+            (json!({"together_reasoning_content":opaque}), json!(opaque)),
+            (json!({"reasoning_details":[{"data":opaque}]}), json!([{"data":opaque}])),
+        ] {
+            let mut prompt = Prompt::new();
+            add_turn(&mut prompt, metadata, &["a"], 10);
+            let baseline = without_metadata(&prompt)
+                .generate_chat_completion_messages(None, &text_and_call_tokens)
+                .1;
+            let actual = prompt.generate_chat_completion_messages(None, &text_and_call_tokens).1;
+            assert_eq!(actual - baseline, payload.to_string().len());
+            let budget = actual + 200;
+            assert!(budget.saturating_sub(actual) < budget.saturating_sub(baseline));
+        }
+    }
+
+    #[test]
+    fn parallel_native_metadata_is_charged_once_per_turn() {
+        let payload = json!([{"type":"thinking","thinking":"long reasoning ".repeat(500),"signature":"signed"}]);
+        let mut prompt = Prompt::new();
+        add_turn(
+            &mut prompt,
+            json!({"inference_turn_id":"first","claude_content":payload}),
+            &["a", "b"],
+            10,
+        );
+        let baseline = without_metadata(&prompt)
+            .generate_chat_completion_messages(None, &text_and_call_tokens)
+            .1;
+        assert_eq!(
+            prompt.generate_chat_completion_messages(None, &text_and_call_tokens).1 - baseline,
+            payload.to_string().len()
+        );
+        // An identical payload in a later actual inference turn is not a clone.
+        add_turn(
+            &mut prompt,
+            json!({"inference_turn_id":"second","claude_content":payload}),
+            &["c"],
+            10,
+        );
+        let baseline = without_metadata(&prompt)
+            .generate_chat_completion_messages(None, &text_and_call_tokens)
+            .1;
+        assert_eq!(
+            prompt.generate_chat_completion_messages(None, &text_and_call_tokens).1 - baseline,
+            2 * payload.to_string().len()
+        );
+    }
+
+    #[test]
+    fn untagged_parallel_history_uses_local_turn_boundaries() {
+        let payload = json!([{"thoughtSignature":"signed","text":"reasoning ".repeat(100)}]);
+        let metadata = json!({"gemini_parts":payload});
+        let mut prompt = Prompt::new();
+        // Older stored prompts alternate individual calls and their results.
+        add_turn(&mut prompt, metadata.clone(), &["a"], 10);
+        add_turn(&mut prompt, metadata.clone(), &["b"], 10);
+        let baseline = without_metadata(&prompt)
+            .generate_chat_completion_messages(None, &text_and_call_tokens)
+            .1;
+        assert_eq!(
+            prompt.generate_chat_completion_messages(None, &text_and_call_tokens).1 - baseline,
+            payload.to_string().len()
+        );
+        prompt.add_content("A later conversation turn".into(), SubPromptType::Assistant, 10);
+        add_turn(&mut prompt, metadata, &["c"], 10);
+        let baseline = without_metadata(&prompt)
+            .generate_chat_completion_messages(None, &text_and_call_tokens)
+            .1;
+        assert_eq!(
+            prompt.generate_chat_completion_messages(None, &text_and_call_tokens).1 - baseline,
+            2 * payload.to_string().len()
+        );
+    }
+
+    #[test]
+    fn native_truncation_removes_complete_turns_and_recounts() {
+        let payload = json!([{"type":"thinking","thinking":"long reasoning ".repeat(500),"signature":"must remain exact"}, {"type":"tool_use","id":"a","name":"tool","input":{}}]);
+        let metadata = json!({"inference_turn_id":"first","claude_content":payload});
+        let mut prompt = Prompt::new();
+        prompt.add_content("Keep the current request".into(), SubPromptType::UserLastMessage, 100);
+        prompt.add_content("Remove this context first".repeat(100), SubPromptType::ExtraContext, 1);
+        add_turn(&mut prompt, metadata.clone(), &["a", "b"], 10);
+        let before = prompt.generate_chat_completion_messages(None, &text_and_call_tokens).1;
+        // Enough space preserves signed native data byte-for-byte.
+        let messages = prompt
+            .generate_llm_messages(Some(before + 200), None, &text_and_call_tokens)
+            .unwrap();
+        for message in messages.iter().filter_map(|message| message.function_call.as_ref()) {
+            assert_eq!(message.provider_metadata.as_ref(), Some(&metadata));
+        }
+        let removed = prompt.remove_subprompts_until_under_max(300, &text_and_call_tokens);
+        assert_eq!(removed.len(), 5); // Context plus both calls and both results.
+        assert_eq!(prompt.sub_prompts.len(), 1);
+        assert!(prompt.generate_chat_completion_messages(None, &text_and_call_tokens).1 + 200 <= 300);
+        assert_eq!(
+            removed
+                .iter()
+                .filter(|item| matches!(item, SubPrompt::FunctionCall(_, _, _)))
+                .count(),
+            2
+        );
+        assert_eq!(
+            removed
+                .iter()
+                .filter(|item| matches!(item, SubPrompt::FunctionCallResponse(_, _, _)))
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn metadata_free_calls_keep_existing_argument_accounting() {
+        let mut prompt = Prompt::new();
+        add_turn(&mut prompt, Value::Null, &["a", "b"], 10);
+        let expected = prompt.generate_chat_completion_messages(None, &text_and_call_tokens).1;
+        let mut tagged = prompt.clone();
+        for item in &mut tagged.sub_prompts {
+            if let SubPrompt::FunctionCall(_, call, _) = item {
+                call["provider_metadata"] = json!({"inference_turn_id":"generic"});
+            }
+        }
+        assert_eq!(
+            tagged.generate_chat_completion_messages(None, &text_and_call_tokens).1,
+            expected
+        );
+        assert_eq!(
+            without_metadata(&prompt)
+                .generate_chat_completion_messages(None, &text_and_call_tokens)
+                .1,
+            expected
+        );
+    }
+
+    #[test]
+    fn test_provider_metadata_prompt_round_trip() {
+        let mut prompt = Prompt::new();
+        prompt.add_content("Use two tools".into(), SubPromptType::UserLastMessage, 100);
+        for (name, signature) in [("first", "signed-one"), ("second", "signed-two")] {
+            prompt.add_function_call(
+                json!({
+                    "name": name, "call_id": name, "arguments": {},
+                    "provider_metadata": {"gemini_parts": [{"thoughtSignature": signature}]}
+                }),
+                100,
+            );
+            prompt.add_function_call_response(
+                json!({
+                    "function_call": {"name": name, "id": name}, "response": "done"
+                }),
+                100,
+            );
+        }
+        let saved = serde_json::to_string(&prompt).unwrap();
+        let loaded: Prompt = serde_json::from_str(&saved).unwrap();
+        let (messages, _) = loaded.generate_chat_completion_messages(None, &|_| 0);
+        assert_eq!(
+            messages.iter().map(|m| m.role.as_deref().unwrap()).collect::<Vec<_>>(),
+            ["user", "assistant", "function", "assistant", "function"]
+        );
+        assert_eq!(
+            messages[1]
+                .function_call
+                .as_ref()
+                .unwrap()
+                .provider_metadata
+                .as_ref()
+                .unwrap()["gemini_parts"][0]["thoughtSignature"],
+            "signed-one"
+        );
+        assert_eq!(
+            messages[3]
+                .function_call
+                .as_ref()
+                .unwrap()
+                .provider_metadata
+                .as_ref()
+                .unwrap()["gemini_parts"][0]["thoughtSignature"],
+            "signed-two"
+        );
+    }
+
+    #[test]
+    fn test_old_function_history_has_no_provider_metadata() {
+        let call: DetailedFunctionCall = serde_json::from_value(json!({
+            "name": "legacy", "arguments": "{}", "id": "old-id"
+        }))
+        .unwrap();
+        assert!(call.provider_metadata.is_none());
+        assert!(serde_json::to_value(call).unwrap().get("provider_metadata").is_none());
     }
 }

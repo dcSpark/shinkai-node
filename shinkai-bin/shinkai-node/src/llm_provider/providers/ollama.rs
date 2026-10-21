@@ -91,7 +91,13 @@ impl LLMService for Ollama {
             });
 
             // Modify payload to add options if needed
-            add_options_to_payload(&mut payload, config.as_ref(), &model, messages_result.tokens_used);
+            add_options_to_payload(
+                &mut payload,
+                config.as_ref(),
+                &model,
+                messages_result.tokens_used,
+                messages_result.remaining_output_tokens,
+            );
 
             // Ollama path: if stream is true, then we the response is in Chinese for minicpm-v so if stream is true,
             // then we need to remove to remove it
@@ -393,6 +399,7 @@ async fn process_stream(
                                 });
 
                                 let function_call = FunctionCall {
+                                    provider_metadata: None,
                                     name: name.clone(),
                                     arguments: arguments.clone(),
                                     tool_router_key,
@@ -453,6 +460,35 @@ async fn process_stream(
                 );
                 return Err(LLMProviderError::NetworkError(e.to_string()));
             }
+        }
+    }
+
+    // A stop can arrive while the last stream poll returns EOF, without another chunk.
+    if let Some(ref inbox) = inbox_name {
+        if llm_stopper.should_stop(&inbox.to_string()) {
+            llm_stopper.reset(&inbox.to_string());
+            let _ = send_ws_update(
+                &ws_manager_trait,
+                Some(inbox.clone()),
+                &session_id,
+                regular_content.clone(),
+                false,
+                true,
+                Some("Stopped by user request".to_string()),
+            )
+            .await;
+            return Ok(LLMInferenceResponse::new(
+                regular_content,
+                if thinking_content.is_empty() {
+                    None
+                } else {
+                    Some(thinking_content)
+                },
+                json!({}),
+                Vec::new(),
+                Vec::new(),
+                None,
+            ));
         }
     }
 
@@ -575,6 +611,7 @@ async fn handle_non_streaming_response(
                                             });
 
                                             let function_call = FunctionCall {
+                    provider_metadata: None,
                                                 name: name.to_string(),
                                                 arguments: arguments.clone(),
                                                 tool_router_key,
@@ -652,6 +689,7 @@ fn add_options_to_payload(
     config: Option<&JobConfig>,
     model: &LLMProviderInterface,
     used_tokens: usize,
+    remaining_output_tokens: usize,
 ) {
     eprintln!("config: {:?}", config);
     let mut options = serde_json::Map::new();
@@ -756,8 +794,189 @@ fn add_options_to_payload(
         }
     }
 
+    // These requests have a prepared model/context ceiling. Ollama's -1/-2
+    // sentinels must not turn bounded inference into unlimited generation.
+    // https://docs.ollama.com/modelfile#valid-parameters-and-values
+    let requested = options
+        .get("num_predict")
+        .and_then(serde_json::Value::as_u64)
+        .filter(|value| *value > 0);
+    options.insert(
+        "num_predict".into(),
+        json!(requested
+            .unwrap_or(remaining_output_tokens as u64)
+            .min(remaining_output_tokens as u64)),
+    );
+
     // Add options to payload if not empty
     if !options.is_empty() {
         payload["options"] = serde_json::Value::Object(options);
+    }
+}
+
+#[cfg(test)]
+mod cancellation_tests {
+    use super::*;
+    use shinkai_message_primitives::schemas::ws_types::{WSMessageType, WSMetadata};
+    use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
+
+    struct StreamUpdates {
+        events: Arc<std::sync::Mutex<Vec<(String, WSMetadata)>>>,
+        parsed: std::sync::mpsc::Sender<()>,
+    }
+
+    #[async_trait]
+    impl WSUpdateHandler for StreamUpdates {
+        async fn queue_message(&self, _: WSTopic, _: String, update: String, metadata: WSMessageType, _: bool) {
+            if let WSMessageType::Metadata(metadata) = metadata {
+                let parsed = update == "Text" && !metadata.is_done;
+                self.events.lock().unwrap().push((update, metadata));
+                if parsed {
+                    let _ = self.parsed.send(());
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn ollama_stop_at_eof_discards_completed_calls_and_keeps_reasoning() {
+        for stop_at_eof in [false, true] {
+            let mut server = mockito::Server::new_async().await;
+            let inbox = InboxName::get_job_inbox_name_from_params("ollama-eof-stop".into()).unwrap();
+            let stopper = Arc::new(LLMStopper::new());
+            let writer_stopper = stopper.clone();
+            let writer_inbox = inbox.clone();
+            let (parsed, received) = std::sync::mpsc::channel();
+            let received = std::sync::Mutex::new(received);
+            let events = Arc::new(std::sync::Mutex::new(Vec::new()));
+            let manager: Arc<Mutex<dyn WSUpdateHandler + Send>> = Arc::new(Mutex::new(StreamUpdates {
+                events: events.clone(),
+                parsed,
+            }));
+            let body = json!({"model":"qwen3.5:9b", "created_at":"2026-10-21T00:00:00Z",
+                "message":{"role":"assistant","content":"Text","thinking":"Plan","tool_calls":[
+                    {"function":{"name":"weather","arguments":{"city":"Paris"}}}
+                ]}, "done":true, "done_reason":"stop", "eval_count":10, "eval_duration":1000000000
+            })
+            .to_string();
+            let mock = server
+                .mock("POST", "/api/chat")
+                .with_header("content-type", "application/x-ndjson")
+                .with_chunked_body(move |writer| {
+                    writer.write_all(body.as_bytes())?;
+                    writer.flush()?;
+                    // Close only after the real parser has stored the call, text, and thinking.
+                    received
+                        .lock()
+                        .unwrap()
+                        .recv_timeout(std::time::Duration::from_secs(5))
+                        .map_err(|error| std::io::Error::new(std::io::ErrorKind::TimedOut, error))?;
+                    if stop_at_eof {
+                        writer_stopper.stop(&writer_inbox.to_string());
+                    }
+                    Ok(())
+                })
+                .create_async()
+                .await;
+            let response = tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                handle_streaming_response(
+                    &Client::new(),
+                    format!("{}/api/chat", server.url()),
+                    json!({}),
+                    Some(inbox.clone()),
+                    Some(manager),
+                    stopper.clone(),
+                    "test-session".into(),
+                    Some(vec![
+                        json!({"function":{"name":"weather","tool_router_key":"weather-route"}}),
+                    ]),
+                ),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            mock.assert_async().await;
+            assert_eq!(response.response_string, "Text");
+            assert_eq!(response.reasoning_content.as_deref(), Some("Plan"));
+            assert!(!stopper.should_stop(&inbox.to_string()));
+            let events = events.lock().unwrap();
+            let stopped: Vec<_> = events
+                .iter()
+                .filter(|(_, metadata)| metadata.done_reason.as_deref() == Some("Stopped by user request"))
+                .collect();
+            if stop_at_eof {
+                assert!(response.function_calls.is_empty());
+                assert_eq!(stopped.len(), 1);
+                assert_eq!(stopped[0].0, "Text");
+                assert!(stopped[0].1.is_done);
+                assert!(!stopped[0].1.is_reasoning);
+                assert_eq!(
+                    events.last().unwrap().1.done_reason.as_deref(),
+                    Some("Stopped by user request")
+                );
+            } else {
+                assert!(stopped.is_empty());
+                assert_eq!(response.function_calls.len(), 1);
+                let call = &response.function_calls[0];
+                assert_eq!(call.name, "weather");
+                assert_eq!(call.tool_router_key.as_deref(), Some("weather-route"));
+                assert_eq!(call.arguments["city"], "Paris");
+                assert_eq!(response.tps, Some(10.0));
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod output_budget_tests {
+    use super::*;
+    use shinkai_message_primitives::schemas::subprompts::{SubPrompt, SubPromptType};
+
+    #[test]
+    fn ollama_request_prediction_limit_uses_prepared_budget() {
+        for id in ["qwen3.5:9b", "gpt-oss:20b"] {
+            let model = LLMProviderInterface::Ollama(Ollama { model_type: id.into() });
+            let mut prompt = Prompt::new();
+            prompt.add_sub_prompts(vec![SubPrompt::Content(SubPromptType::User, "Hello".into(), 100)]);
+            let prepared = ollama_conversation_prepare_messages_with_tooling(&model, prompt).unwrap();
+            let budget = prepared.remaining_output_tokens;
+            assert!(budget > 1024);
+            let PromptResultEnum::Value(messages) = prepared.messages else {
+                panic!("Expected messages")
+            };
+            let mut config = JobConfig::empty();
+            config.max_tokens = Some((budget + 1) as u64);
+            let mut payload = json!({"model": id, "messages": messages});
+            add_options_to_payload(&mut payload, Some(&config), &model, prepared.tokens_used, budget);
+            assert_eq!(payload["options"]["num_predict"], budget);
+            config.max_tokens = Some(1024);
+            let mut payload = json!({"model": id});
+            add_options_to_payload(&mut payload, Some(&config), &model, prepared.tokens_used, budget);
+            assert_eq!(payload["options"]["num_predict"], 1024);
+            for key in ["num_predict", "max_tokens"] {
+                for requested in [
+                    json!(-1),
+                    json!(-2),
+                    json!(0),
+                    json!("invalid"),
+                    json!(999999),
+                    json!(1.5),
+                ] {
+                    config.other_model_params = Some(json!({key: requested}));
+                    let mut payload = json!({"model": id});
+                    add_options_to_payload(&mut payload, Some(&config), &model, prepared.tokens_used, 512);
+                    assert_eq!(payload["options"]["num_predict"], 512, "{key}: {requested}");
+                }
+                config.other_model_params = Some(json!({key: 256}));
+                let mut payload = json!({"model": id});
+                add_options_to_payload(&mut payload, Some(&config), &model, prepared.tokens_used, 512);
+                assert_eq!(payload["options"]["num_predict"], 256);
+            }
+            let mut payload = json!({"model": id});
+            // The same final clamp applies when environment settings supply options.
+            add_options_to_payload(&mut payload, None, &model, prepared.tokens_used, 512);
+            assert!(payload["options"]["num_predict"].as_u64().unwrap() <= 512);
+        }
     }
 }

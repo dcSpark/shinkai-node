@@ -15,7 +15,7 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::Node;
 use std::fs;
-use std::net::{IpAddr, Ipv4Addr, TcpListener};
+use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
 use std::sync::Arc;
 use std::{net::SocketAddr, time::Duration};
@@ -28,13 +28,6 @@ use crate::it::utils::node_test_api::{
 use crate::it::utils::test_boilerplate::{default_embedding_model, supported_embedding_models};
 
 use super::utils::node_test_local::local_registration_profile_node;
-
-fn port_is_available(port: u16) -> bool {
-    match TcpListener::bind(("127.0.0.1", port)) {
-        Ok(_) => true,
-        Err(_) => false,
-    }
-}
 
 #[test]
 fn setup() {
@@ -93,10 +86,8 @@ fn subidentity_registration() {
         let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name));
         let node2_db_path = format!("db_tests/{}", hash_string(node2_identity_name));
 
-        assert!(port_is_available(12006), "Port 12006 is not available");
-        assert!(port_is_available(12007), "Port 12007 is not available");
         // Create node1 and node2
-        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12006);
+        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0);
         let node1 = Node::new(
             node1_identity_name.to_string(),
             addr1,
@@ -119,7 +110,7 @@ fn subidentity_registration() {
         )
         .await;
 
-        let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12007);
+        let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0);
         let node2 = Node::new(
             node2_identity_name.to_string(),
             addr2,
@@ -216,6 +207,8 @@ fn subidentity_registration() {
         );
 
         eprintln!("Starting nodes");
+        let _relay = super::utils::local_relay::LocalRelay::start(&[&node1, &node2]).await;
+
         // Start node1 and node2
         let node1_clone = Arc::clone(&node1);
         let node1_handler = tokio::spawn(async move {
@@ -713,10 +706,8 @@ fn test_relay_server_communication() {
         let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name));
         let node2_db_path = format!("db_tests/{}", hash_string(node2_identity_name));
 
-        assert!(port_is_available(8082), "Port 8082 is not available");
-        assert!(port_is_available(8083), "Port 8083 is not available");
-        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8082);
-        let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8083);
+        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0);
+        let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0);
 
         let node1 = Node::new(
             node1_identity_name.to_string(),
@@ -765,6 +756,8 @@ fn test_relay_server_communication() {
         eprintln!(">> Starting relay test with real identities and relay server");
 
         eprintln!("Starting nodes");
+        let _relay = super::utils::local_relay::LocalRelay::start(&[&node1, &node2]).await;
+
         // Start node1 and node2
         let node1_clone = Arc::clone(&node1);
         let node1_handler = tokio::spawn(async move {
@@ -1121,10 +1114,9 @@ fn test_localhost_relay_server_communication() {
         let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name));
         let node2_db_path = format!("db_tests/{}", hash_string(node2_identity_name));
 
-        assert!(port_is_available(12050), "Port 12050 is not available");
-        assert!(port_is_available(12051), "Port 12051 is not available");
-        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12050);
-        let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12051);
+        // The real listeners select and own their ports; delivery uses the local relay.
+        let addr1 = "127.0.0.1:0".parse().unwrap();
+        let addr2 = "127.0.0.1:0".parse().unwrap();
 
         let node1 = Node::new(
             node1_identity_name.to_string(),
@@ -1173,6 +1165,8 @@ fn test_localhost_relay_server_communication() {
         eprintln!(">> Starting relay test with real identities and relay server");
 
         eprintln!("Starting nodes");
+        let _relay = super::utils::local_relay::LocalRelay::start(&[&node1, &node2]).await;
+
         // Start node1 and node2
         let node1_clone = Arc::clone(&node1);
         let node1_handler = tokio::spawn(async move {
@@ -1470,19 +1464,9 @@ fn test_send_message_to_localhost_node() {
         let node2_identity_name = "@@localhost.sep-shinkai";
         let relay_identity_name = Some("@@libp2p_relayer.sep-shinkai".to_string());
 
-        // Get relay's encryption public key from blockchain identity
-        let relay_encryption_pk = {
-            use shinkai_message_primitives::shinkai_utils::encryption::string_to_encryption_public_key;
-            // Relay's encryption key from blockchain: e2705427237521cf0ca3703a95a20039bd17728a38c7693341dc3d1ae590080c
-            string_to_encryption_public_key("e2705427237521cf0ca3703a95a20039bd17728a38c7693341dc3d1ae590080c")
-                .expect("Failed to parse relay encryption key")
-        };
-        let relay_signature_pk = {
-            use shinkai_message_primitives::shinkai_utils::signatures::string_to_signature_public_key;
-            // Relay's signature key from blockchain: f5f44767a4efcc1e608bc289454610a14ecb762f9340bcabf9f934af174cfe6f
-            string_to_signature_public_key("f5f44767a4efcc1e608bc289454610a14ecb762f9340bcabf9f934af174cfe6f")
-                .expect("Failed to parse relay signature key")
-        };
+        // Use the same public keys as the local relay fixture.
+        let (_, relay_encryption_pk) = unsafe_deterministic_encryption_keypair(42);
+        let (_, relay_signature_pk) = unsafe_deterministic_signature_keypair(42);
 
         let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
@@ -1500,10 +1484,8 @@ fn test_send_message_to_localhost_node() {
         let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name));
         let node2_db_path = format!("db_tests/{}", hash_string(node2_identity_name));
 
-        assert!(port_is_available(12052), "Port 12052 is not available");
-        assert!(port_is_available(12053), "Port 12053 is not available");
-        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12052);
-        let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12053);
+        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0);
+        let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0);
 
         let node1 = Node::new(
             node1_identity_name.to_string(),
@@ -1552,6 +1534,8 @@ fn test_send_message_to_localhost_node() {
         eprintln!(">> Starting relay test with real identities and relay server");
 
         eprintln!("Starting nodes");
+        let _relay = super::utils::local_relay::LocalRelay::start(&[&node1, &node2]).await;
+
         // Start node1 and node2
         let node1_clone = Arc::clone(&node1);
         let node1_handler = tokio::spawn(async move {

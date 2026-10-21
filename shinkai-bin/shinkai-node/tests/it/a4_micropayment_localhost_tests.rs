@@ -24,7 +24,7 @@ use shinkai_tools_primitives::tools::network_tool::NetworkTool;
 use shinkai_tools_primitives::tools::parameters::Parameters;
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader, ShinkaiToolWithAssets};
 use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
-use std::net::{IpAddr, Ipv4Addr, TcpListener};
+use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
 use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
@@ -175,19 +175,9 @@ fn micropayment_localhost_flow_test() {
         let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name));
         let node2_db_path = format!("db_tests/{}", hash_string(node2_identity_name));
 
-        // Create node1 and node2
-        fn port_is_available(port: u16) -> bool {
-            match TcpListener::bind(("127.0.0.1", port)) {
-                Ok(_) => true,
-                Err(_) => false,
-            }
-        }
+        // The real listeners select and own their ports; delivery uses the local relay.
 
-        // Create node1 and node2
-        assert!(port_is_available(13000), "Port 13000 is not available");
-        assert!(port_is_available(13001), "Port 13001 is not available");
-        
-        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 13000);
+        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0);
         let node1 = Node::new(
             node1_identity_name.to_string(),
             addr1,
@@ -210,7 +200,7 @@ fn micropayment_localhost_flow_test() {
         )
         .await;
 
-        let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 13001);
+        let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0);
         let node2 = Node::new(
             node2_identity_name.to_string(),
             addr2,
@@ -232,6 +222,10 @@ fn micropayment_localhost_flow_test() {
             Some(api_v2_key.to_string()),
         )
         .await;
+
+        let facilitator = super::utils::local_facilitator::LocalFacilitator::start();
+        node1.lock().await.ext_agent_payments_manager.lock().await.use_local_test_facilitator(facilitator.config.clone()).unwrap();
+        node2.lock().await.ext_agent_payments_manager.lock().await.use_local_test_facilitator(facilitator.config.clone()).unwrap();
 
         // Printing
         eprintln!(
@@ -307,6 +301,8 @@ fn micropayment_localhost_flow_test() {
         );
 
         eprintln!("Starting nodes");
+        let _relay = super::utils::local_relay::LocalRelay::start(&[&node1, &node2]).await;
+
         // Start node1 and node2
         let node1_clone = Arc::clone(&node1);
         let node1_handler = tokio::spawn(async move {
@@ -509,7 +505,7 @@ fn micropayment_localhost_flow_test() {
                     .unwrap();
                 let all_tools_resp = receiver.recv().await.unwrap();
                 eprintln!("\nAll available Shinkai tools (name, tool_router_key):");
-                
+
                 if let Ok(tools) = &all_tools_resp {
                     if let Some(array) = tools.as_array() {
                         for tool in array {
@@ -626,7 +622,7 @@ fn micropayment_localhost_flow_test() {
                     .send(NodeCommand::V2ApiRestoreLocalEthersWallet {
                         bearer: api_v2_key.to_string(),
                         network: x402_types::Network::BaseSepolia,
-                        source: WalletSource::Mnemonic(std::env::var("RESTORE_WALLET_MNEMONICS_NODE2").unwrap()),
+                        source: WalletSource::Mnemonic("test test test test test test test test test test test junk".to_string()),
                         role: WalletRole::Both,
                         res: sender,
                     })
@@ -871,7 +867,8 @@ fn micropayment_localhost_flow_test() {
 
                 let mut found_processed_invoice = false;
                 let mut resp: Result<Value, APIError> = Ok(serde_json::json!({}));
-                for _ in 0..20 {
+                // Deno tools can need a cold runtime start in CI. Keep the paid-flow assertion bounded.
+                for _ in 0..180 {
                     let (sender, receiver) = async_channel::bounded(1);
                     node2_commands_sender
                         .send(NodeCommand::V2ApiListInvoices {
@@ -912,6 +909,7 @@ fn micropayment_localhost_flow_test() {
                 }
             }
 
+            facilitator.assert_paid_flow().await;
             node1_abort_handler.abort();
             node2_abort_handler.abort();
         });

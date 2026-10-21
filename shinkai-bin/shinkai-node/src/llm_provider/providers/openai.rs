@@ -47,8 +47,21 @@ pub fn truncate_image_url_in_payload(payload: &mut JsonValue) {
     }
 }
 
-#[derive(Debug, Clone)]
+/// Identity fields are fragments in OpenAI streams and complete values in Together streams.
+#[derive(Debug, Clone, Copy, Default)]
+pub enum ToolIdentityMode {
+    #[default]
+    Fragments,
+    Complete,
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct PartialFunctionCall {
+    pub identity_mode: ToolIdentityMode,
+    pub indexed_calls: std::collections::BTreeMap<u64, PartialFunctionCall>,
+    pub unindexed_calls: Vec<PartialFunctionCall>,
+    pub argument_error: Option<String>,
+    pub has_string_arguments: bool,
     pub name: Option<String>,
     pub arguments: String,
     pub is_accumulating: bool, // Track if we're currently accumulating a function call
@@ -73,10 +86,31 @@ impl LLMService for OpenAILegacy {
         db: Arc<SqliteManager>,
         tracing_message_id: Option<String>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
+        // GPT-6 tool calls require the Responses API.
+        if ModelCapabilitiesManager::is_gpt6(&self.model_type) {
+            let provider = shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::OpenAI {
+                model_type: self.model_type.clone(),
+            };
+            return provider
+                .call_api(
+                    client,
+                    url,
+                    api_key,
+                    prompt,
+                    model,
+                    inbox_name,
+                    ws_manager_trait,
+                    config,
+                    llm_stopper,
+                    db,
+                    tracing_message_id,
+                )
+                .await;
+        }
         let session_id = Uuid::new_v4().to_string();
         if let Some(base_url) = url {
             if let Some(key) = api_key {
-                let url = format!("{}{}", base_url, "/v1/chat/completions");
+                let url = super::openai_responses::openai_endpoint(base_url, "chat/completions");
 
                 let is_stream = config.as_ref().and_then(|c| c.stream).unwrap_or(true);
 
@@ -217,7 +251,29 @@ fn finalize_function_call_sync(
     partial_fc: &mut PartialFunctionCall,
     function_calls: &mut Vec<FunctionCall>,
     tools: &Option<Vec<JsonValue>>,
+    completed: bool,
 ) {
+    let reserved_indices: std::collections::HashSet<_> = partial_fc.indexed_calls.keys().copied().collect();
+    for (index, mut pending) in std::mem::take(&mut partial_fc.indexed_calls) {
+        let before = function_calls.len();
+        let index_in_use = function_calls.iter().any(|call| call.index == index);
+        finalize_function_call_sync(&mut pending, function_calls, tools, completed);
+        let output_index = if index_in_use {
+            (0u64..)
+                .find(|candidate| {
+                    !reserved_indices.contains(candidate) && !function_calls.iter().any(|call| call.index == *candidate)
+                })
+                .unwrap()
+        } else {
+            index
+        };
+        if let Some(call) = function_calls.get_mut(before) {
+            call.index = output_index;
+        }
+    }
+    for mut pending in std::mem::take(&mut partial_fc.unindexed_calls) {
+        finalize_function_call_sync(&mut pending, function_calls, tools, completed);
+    }
     if let Some(ref name) = partial_fc.name {
         if name.is_empty() {
             return;
@@ -231,36 +287,37 @@ fn finalize_function_call_sync(
 
         // If it starts with {\" but not with quotes, let's wrap in outer quotes:
         // so that it becomes a JSON string (which will parse as Value::String).
-        let mut wrapped_args = raw_args.to_owned();
+        // Some compatible providers omit arguments for completed zero-parameter calls.
+        let mut wrapped_args = if completed && raw_args.is_empty() {
+            "{}".to_string()
+        } else {
+            raw_args.to_owned()
+        };
         if raw_args.starts_with("{\\") && !raw_args.starts_with("\"{\\") {
             wrapped_args = format!("\"{}\"", raw_args);
         }
 
-        // Now do the first parse
-        let parsed_once = serde_json::from_str::<serde_json::Value>(&wrapped_args);
-        let fc_arguments = match parsed_once {
-            Ok(json_value) => {
-                // If the top-level is a JSON string, parse again
-                if let Some(json_str) = json_value.as_str() {
-                    match serde_json::from_str::<serde_json::Value>(json_str) {
-                        Ok(inner_value) => inner_value.as_object().cloned().unwrap_or_default(),
-                        Err(e) => {
-                            eprintln!("[ERROR] Inner parse failed: {:?}. Returning empty object.", e);
-                            serde_json::Map::new()
-                        }
-                    }
+        let parsed_arguments = serde_json::from_str::<JsonValue>(&wrapped_args)
+            .map_err(|error| format!("Tool arguments are not valid JSON: {error}"))
+            .and_then(|value| {
+                // Preserve the existing compatible double-encoded object format.
+                if let Some(encoded) = value.as_str() {
+                    serde_json::from_str::<JsonValue>(encoded)
+                        .map_err(|error| format!("Tool arguments are not valid JSON: {error}"))
                 } else {
-                    // Already an object or array
-                    json_value.as_object().cloned().unwrap_or_default()
+                    Ok(value)
                 }
-            }
-            Err(e) => {
-                eprintln!(
-                    "[ERROR] Failed to parse raw_args even once: {:?}. Returning empty object.",
-                    e
-                );
-                serde_json::Map::new()
-            }
+            })
+            .and_then(|value| {
+                value
+                    .as_object()
+                    .cloned()
+                    .ok_or_else(|| "Tool arguments must be a JSON object".to_string())
+            });
+        let parsed_arguments = partial_fc.argument_error.take().map_or(parsed_arguments, Err);
+        let (fc_arguments, provider_metadata) = match parsed_arguments {
+            Ok(arguments) => (arguments, None),
+            Err(error) => (Default::default(), Some(json!({"function_argument_error": error}))),
         };
 
         eprintln!("[DEBUG] Final function call JSON object: {:#?}", fc_arguments);
@@ -268,8 +325,11 @@ fn finalize_function_call_sync(
         // Look up the optional tool_router_key
         let tool_router_key = tools.as_ref().and_then(|tools_array| {
             tools_array.iter().find_map(|tool| {
-                if tool.get("name")?.as_str()? == name {
-                    tool.get("tool_router_key")
+                let function = tool.get("function").unwrap_or(tool);
+                if function.get("name")?.as_str()? == name {
+                    function
+                        .get("tool_router_key")
+                        .or_else(|| tool.get("tool_router_key"))
                         .and_then(|key| key.as_str().map(|s| s.to_string()))
                 } else {
                     None
@@ -283,11 +343,14 @@ fn finalize_function_call_sync(
             .clone()
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let new_function_call = FunctionCall {
+            provider_metadata,
             name: name.clone(),
             arguments: fc_arguments,
             tool_router_key,
             response: None,
-            index: function_calls.len() as u64,
+            index: (0u64..)
+                .find(|index| !function_calls.iter().any(|call| call.index == *index))
+                .unwrap(),
             id: Some(id),
             call_type: partial_fc.call_type.clone(),
         };
@@ -300,6 +363,88 @@ fn finalize_function_call_sync(
     partial_fc.is_accumulating = false;
     partial_fc.id = None;
     partial_fc.call_type = None;
+    partial_fc.has_string_arguments = false;
+}
+
+const NULL_ARGUMENT_PLACEHOLDER: &str = "Tool arguments are missing after a null placeholder";
+
+fn append_argument_delta(pending: &mut PartialFunctionCall, arguments: &JsonValue) {
+    match arguments {
+        JsonValue::String(fragment) => {
+            pending.has_string_arguments = true;
+            if pending.argument_error.as_deref() == Some(NULL_ARGUMENT_PLACEHOLDER) {
+                pending.argument_error = None;
+            }
+            pending.arguments.push_str(fragment);
+        }
+        JsonValue::Null => {
+            // Compatible streams can send null before their first string fragment.
+            // Null alone is not an executable empty object at completion or EOF.
+            if !pending.has_string_arguments && pending.argument_error.is_none() {
+                pending.argument_error = Some(NULL_ARGUMENT_PLACEHOLDER.into());
+            }
+        }
+        _ => {
+            if pending.argument_error.is_none() || pending.argument_error.as_deref() == Some(NULL_ARGUMENT_PLACEHOLDER)
+            {
+                pending.argument_error = Some("Tool arguments must be a JSON-encoded object string".into());
+            }
+        }
+    }
+}
+
+// A missing index is not a standard delta. Retain calls by full ID when possible;
+// never assign an identity-free fragment to a chunk-local array position.
+fn unindexed_tool_delta<'a>(
+    state: &'a mut PartialFunctionCall,
+    delta: &JsonValue,
+) -> Option<&'a mut PartialFunctionCall> {
+    let id = delta["id"].as_str().filter(|id| !id.is_empty());
+    let name = delta
+        .pointer("/function/name")
+        .and_then(JsonValue::as_str)
+        .filter(|name| !name.is_empty());
+    if let Some(id) = id {
+        if let Some(index) = state
+            .indexed_calls
+            .iter()
+            .find_map(|(index, call)| (call.id.as_deref() == Some(id)).then_some(*index))
+        {
+            return state.indexed_calls.get_mut(&index);
+        }
+        if let Some(position) = state
+            .unindexed_calls
+            .iter()
+            .position(|call| call.id.as_deref() == Some(id))
+        {
+            return state.unindexed_calls.get_mut(position);
+        }
+    }
+    let count = state.indexed_calls.len() + state.unindexed_calls.len();
+    // Fragment-mode identities cannot prove a new call without an index,
+    // even when a provider repeats type:function with those fragments.
+    let new_header = id.is_some() && matches!(state.identity_mode, ToolIdentityMode::Complete);
+    if count == 0 || new_header {
+        state.unindexed_calls.push(PartialFunctionCall::default());
+        return state.unindexed_calls.last_mut();
+    }
+    if count == 1 && id.is_none() {
+        let pending = state
+            .indexed_calls
+            .values_mut()
+            .next()
+            .or_else(|| state.unindexed_calls.first_mut())
+            .unwrap();
+        if name.is_none() || pending.name.as_deref() == name {
+            return Some(pending);
+        }
+        pending.argument_error = Some("Tool call delta has no index and its identity is ambiguous".into());
+        return None;
+    }
+    for call in state.indexed_calls.values_mut().chain(state.unindexed_calls.iter_mut()) {
+        call.argument_error = Some("Tool call delta has no index and cannot be assigned to one call".into());
+    }
+    None
 }
 
 pub async fn parse_openai_stream_chunk(
@@ -399,8 +544,10 @@ pub async fn parse_openai_stream_chunk(
             // If it is literally [DONE], skip
             if line == "[DONE]" {
                 // If we were accumulating a function call, finalize it
-                if partial_fc.is_accumulating && partial_fc.name.is_some() {
-                    finalize_function_call_sync(partial_fc, function_calls, tools);
+                if (!partial_fc.indexed_calls.is_empty() || !partial_fc.unindexed_calls.is_empty())
+                    || partial_fc.is_accumulating && partial_fc.name.is_some()
+                {
+                    finalize_function_call_sync(partial_fc, function_calls, tools, true);
                 }
                 continue;
             }
@@ -439,8 +586,10 @@ pub async fn parse_openai_stream_chunk(
         // If it's "[DONE]", send final update and skip
         if chunk.trim() == "[DONE]" {
             // If we were accumulating a function call, finalize it
-            if partial_fc.is_accumulating && partial_fc.name.is_some() {
-                finalize_function_call_sync(partial_fc, function_calls, tools);
+            if (!partial_fc.indexed_calls.is_empty() || !partial_fc.unindexed_calls.is_empty())
+                || partial_fc.is_accumulating && partial_fc.name.is_some()
+            {
+                finalize_function_call_sync(partial_fc, function_calls, tools, true);
             }
             if let Some(inbox_name) = inbox_name.as_ref() {
                 let _ = send_ws_update(
@@ -457,37 +606,20 @@ pub async fn parse_openai_stream_chunk(
             continue;
         }
 
-        // Extract any function call arguments before parsing JSON
-        let (maybe_args, cleaned_chunk) = extract_and_remove_arguments(chunk);
-
-        // If we extracted arguments and we're accumulating a function call, append them
-        if let Some(args) = maybe_args {
-            if partial_fc.is_accumulating {
-                // Only clear if we truly are at the first chunk of a new function call
-                // i.e., partial_fc.arguments is empty and the chunk starts with '{'
-                if partial_fc.arguments.is_empty() && args.starts_with('{') {
-                    partial_fc.arguments.clear();
-                }
-                partial_fc.arguments.push_str(&args);
-
-                // If we have a complete JSON object, try to parse it
-                if partial_fc.arguments.starts_with('{') && partial_fc.arguments.ends_with('}') {
-                    match serde_json::from_str::<JsonValue>(&partial_fc.arguments) {
-                        Ok(_) => {
-                            // We have a complete valid JSON object, finalize the function call
-                            finalize_function_call_sync(partial_fc, function_calls, tools);
-                        }
-                        Err(_) => {
-                            // Not a complete valid JSON yet, continue
-                            // accumulating
-                        }
-                    }
-                }
+        // Choices are alternative completions, not parts of one response. Select
+        // before extracting legacy argument fragments as well as indexed deltas.
+        let selected_chunk = serde_json::from_str::<JsonValue>(chunk).ok().map(|mut value| {
+            if let Some(choices) = value.get_mut("choices").and_then(|value| value.as_array_mut()) {
+                // Missing indices remain accepted for legacy compatible streams.
+                choices.retain(|choice| choice["index"].as_u64().unwrap_or(0) == 0);
             }
-        }
+            value.to_string()
+        });
+        let chunk = selected_chunk.as_deref().unwrap_or(chunk);
 
-        // Attempt to parse the cleaned JSON
-        match serde_json::from_str::<JsonValue>(&cleaned_chunk) {
+        // Parse each argument string once through serde, including its escapes.
+        // Legacy and indexed calls share append_argument_delta below.
+        match serde_json::from_str::<JsonValue>(chunk) {
             Ok(json_data) => {
                 // If there's an error object, record it
                 if let Some(error_obj) = json_data.get("error") {
@@ -516,7 +648,12 @@ pub async fn parse_openai_stream_chunk(
 
                         if let Some(delta) = choice.get("delta") {
                             // Handle reasoning_content
-                            if let Some(reasoning) = delta.get("reasoning_content").and_then(|c| c.as_str()) {
+                            if let Some(reasoning) = delta
+                                .get("reasoning_content")
+                                .and_then(|value| value.as_str())
+                                .filter(|value| !value.is_empty())
+                                .or_else(|| delta.get("reasoning").and_then(|value| value.as_str()))
+                            {
                                 // First reasoning delta, set reasoning_started to true
                                 if !partial_fc.reasoning_started {
                                     partial_fc.reasoning_started = true;
@@ -587,7 +724,7 @@ pub async fn parse_openai_stream_chunk(
                                     // changes
                                     if let Some(old_name) = &partial_fc.name {
                                         if !old_name.is_empty() && old_name != name {
-                                            finalize_function_call_sync(partial_fc, function_calls, tools);
+                                            finalize_function_call_sync(partial_fc, function_calls, tools, false);
                                         }
                                     }
                                     partial_fc.name = Some(name.to_string());
@@ -595,72 +732,86 @@ pub async fn parse_openai_stream_chunk(
                                     // Legacy function_call format doesn't have IDs, so we clear it
                                     partial_fc.id = None;
                                 }
+                                if let Some(arguments) = fc.get("arguments") {
+                                    append_argument_delta(partial_fc, arguments);
+                                }
                             }
 
-                            // Handle tool_calls (new format)
-                            if let Some(tool_calls) = delta.get("tool_calls") {
-                                if let Some(tool_calls_array) = tool_calls.as_array() {
-                                    // Process each tool call in the array instead of just the first one
-                                    for tool_call in tool_calls_array {
-                                        if let Some(function) = tool_call.get("function") {
-                                            if let Some(name) = function.get("name").and_then(|n| n.as_str()) {
-                                                let new_id = tool_call.get("id").and_then(|id| id.as_str());
-                                                let _index = tool_call.get("index").and_then(|i| i.as_u64());
-
-                                                // If partial_fc is in use, check both name and ID before continuing
-                                                if partial_fc.is_accumulating {
-                                                    let same_name = partial_fc.name.as_deref() == Some(name);
-                                                    let same_id = match (partial_fc.id.as_deref(), new_id) {
-                                                        (Some(old_id), Some(nid)) => old_id == nid,
-                                                        (None, None) => true,
-                                                        _ => false,
-                                                    };
-
-                                                    // Finalize if either name changed or ID changed
-                                                    if !(same_name && same_id) {
-                                                        finalize_function_call_sync(partial_fc, function_calls, tools);
-                                                    }
+                            // Indexed calls can be interleaved. Each index owns its fragments.
+                            if let Some(calls) = delta["tool_calls"].as_array() {
+                                for call in calls {
+                                    let mode = partial_fc.identity_mode;
+                                    let indexed = call["index"].as_u64();
+                                    let mut promoted = false;
+                                    let pending = if let Some(index) = indexed {
+                                        if !partial_fc.indexed_calls.contains_key(&index) {
+                                            let id = call["id"].as_str().filter(|id| !id.is_empty());
+                                            let candidate = if let Some(id) = id {
+                                                partial_fc
+                                                    .unindexed_calls
+                                                    .iter()
+                                                    .position(|pending| pending.id.as_deref() == Some(id))
+                                            } else if partial_fc.unindexed_calls.len() == 1
+                                                && call
+                                                    .pointer("/function/name")
+                                                    .and_then(JsonValue::as_str)
+                                                    .filter(|name| !name.is_empty())
+                                                    .is_none_or(|name| {
+                                                        partial_fc.unindexed_calls[0].name.as_deref() == Some(name)
+                                                    })
+                                            {
+                                                Some(0)
+                                            } else {
+                                                None
+                                            };
+                                            if let Some(position) = candidate {
+                                                let pending = partial_fc.unindexed_calls.remove(position);
+                                                partial_fc.indexed_calls.insert(index, pending);
+                                                promoted = true;
+                                            } else if id.is_none() && !partial_fc.unindexed_calls.is_empty() {
+                                                // An index alone cannot identify one of several earlier calls.
+                                                for pending in &mut partial_fc.unindexed_calls {
+                                                    pending.argument_error = Some(
+                                                        "Indexed delta cannot identify its earlier unindexed call"
+                                                            .into(),
+                                                    );
                                                 }
-
-                                                // Now start or continue a partial FC
-                                                partial_fc.name = Some(name.to_string());
-                                                partial_fc.is_accumulating = true;
-
-                                                // Set the ID of the current tool call
-                                                if let Some(id) = new_id {
-                                                    partial_fc.id = Some(id.to_string());
+                                                continue;
+                                            }
+                                        }
+                                        partial_fc.indexed_calls.entry(index).or_default()
+                                    } else if let Some(pending) = unindexed_tool_delta(partial_fc, call) {
+                                        pending
+                                    } else {
+                                        continue;
+                                    };
+                                    pending.is_accumulating = true;
+                                    for (field, target) in [
+                                        (call.get("id"), &mut pending.id),
+                                        (call.pointer("/function/name"), &mut pending.name),
+                                    ] {
+                                        if let Some(fragment) = field.and_then(|value| value.as_str()) {
+                                            // No-index routing recognizes full identities, not fragments.
+                                            if (indexed.is_none() || promoted) && target.as_deref() == Some(fragment) {
+                                                continue;
+                                            }
+                                            match mode {
+                                                ToolIdentityMode::Fragments => {
+                                                    target.get_or_insert_with(String::new).push_str(fragment)
                                                 }
-
-                                                // Store call_type if present
-                                                if let Some(call_type) = tool_call.get("type").and_then(|t| t.as_str())
-                                                {
-                                                    partial_fc.call_type = Some(call_type.to_string());
-                                                }
-
-                                                // If this tool call has arguments, process them
-                                                if let Some(args) = function.get("arguments").and_then(|a| a.as_str()) {
-                                                    partial_fc.arguments.push_str(args);
-
-                                                    // Check if the accumulated arguments form a valid JSON object
-                                                    if partial_fc.arguments.starts_with('{')
-                                                        && partial_fc.arguments.ends_with('}')
-                                                    {
-                                                        match serde_json::from_str::<JsonValue>(&partial_fc.arguments) {
-                                                            Ok(_) => {
-                                                                finalize_function_call_sync(
-                                                                    partial_fc,
-                                                                    function_calls,
-                                                                    tools,
-                                                                );
-                                                            }
-                                                            Err(_e) => {
-                                                                // Continue accumulating
-                                                            }
-                                                        }
+                                                ToolIdentityMode::Complete => {
+                                                    if !fragment.is_empty() {
+                                                        *target = Some(fragment.to_string());
                                                     }
                                                 }
                                             }
                                         }
+                                    }
+                                    if let Some(kind) = call["type"].as_str() {
+                                        pending.call_type = Some(kind.into());
+                                    }
+                                    if let Some(arguments) = call.pointer("/function/arguments") {
+                                        append_argument_delta(pending, arguments);
                                     }
                                 }
                             }
@@ -668,12 +819,14 @@ pub async fn parse_openai_stream_chunk(
 
                         // If finish_reason == "function_call", finalize the partial
                         if finish_reason == "function_call" || finish_reason == "tool_calls" {
-                            finalize_function_call_sync(partial_fc, function_calls, tools);
+                            finalize_function_call_sync(partial_fc, function_calls, tools, true);
                         } else if finish_reason == "stop" {
                             // If the user or model stops, we can finalize
                             // any function call that wasn't yet finished.
-                            if partial_fc.name.is_some() {
-                                finalize_function_call_sync(partial_fc, function_calls, tools);
+                            if partial_fc.name.is_some()
+                                || (!partial_fc.indexed_calls.is_empty() || !partial_fc.unindexed_calls.is_empty())
+                            {
+                                finalize_function_call_sync(partial_fc, function_calls, tools, true);
                             }
 
                             // Close reasoning tag if it was started but not closed
@@ -692,6 +845,8 @@ pub async fn parse_openai_stream_chunk(
                                 }
                                 partial_fc.reasoning_started = false;
                             }
+                        } else if !finish_reason.is_empty() {
+                            finalize_function_call_sync(partial_fc, function_calls, tools, false);
                         }
                     }
                 }
@@ -724,9 +879,109 @@ pub async fn handle_streaming_response(
     tools: Option<Vec<JsonValue>>,
     headers: Option<JsonValue>,
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
-    let res = client
-        .post(url)
-        .bearer_auth(api_key)
+    handle_streaming_response_with_identity_mode(
+        client,
+        url,
+        payload,
+        api_key,
+        inbox_name,
+        ws_manager_trait,
+        llm_stopper,
+        session_id,
+        tools,
+        headers,
+        ToolIdentityMode::Fragments,
+    )
+    .await
+}
+
+pub async fn handle_streaming_response_with_identity_mode(
+    client: &Client,
+    url: String,
+    payload: JsonValue,
+    api_key: String,
+    inbox_name: Option<InboxName>,
+    ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    llm_stopper: Arc<LLMStopper>,
+    session_id: String,
+    tools: Option<Vec<JsonValue>>,
+    headers: Option<JsonValue>,
+    identity_mode: ToolIdentityMode,
+) -> Result<LLMInferenceResponse, LLMProviderError> {
+    handle_streaming_response_with_optional_auth(
+        client,
+        url,
+        payload,
+        Some(api_key),
+        inbox_name,
+        ws_manager_trait,
+        llm_stopper,
+        session_id,
+        tools,
+        headers,
+        identity_mode,
+    )
+    .await
+}
+
+pub async fn handle_streaming_response_with_optional_auth(
+    client: &Client,
+    url: String,
+    payload: JsonValue,
+    api_key: Option<String>,
+    inbox_name: Option<InboxName>,
+    ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    llm_stopper: Arc<LLMStopper>,
+    session_id: String,
+    tools: Option<Vec<JsonValue>>,
+    headers: Option<JsonValue>,
+    identity_mode: ToolIdentityMode,
+) -> Result<LLMInferenceResponse, LLMProviderError> {
+    handle_streaming_response_with_policy(
+        client,
+        url,
+        payload,
+        api_key,
+        inbox_name,
+        ws_manager_trait,
+        llm_stopper,
+        session_id,
+        tools,
+        headers,
+        identity_mode,
+        ChatStreamPolicy::Compatible,
+    )
+    .await
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum ChatStreamPolicy {
+    Compatible,
+    // Groq must confirm completion before returning tool calls.
+    Groq,
+}
+
+pub(super) async fn handle_streaming_response_with_policy(
+    client: &Client,
+    url: String,
+    payload: JsonValue,
+    api_key: Option<String>,
+    inbox_name: Option<InboxName>,
+    ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    llm_stopper: Arc<LLMStopper>,
+    session_id: String,
+    tools: Option<Vec<JsonValue>>,
+    headers: Option<JsonValue>,
+    identity_mode: ToolIdentityMode,
+    policy: ChatStreamPolicy,
+) -> Result<LLMInferenceResponse, LLMProviderError> {
+    let request = client.post(url);
+    let request = if let Some(key) = api_key {
+        request.bearer_auth(key)
+    } else {
+        request
+    };
+    let res = request
         .header("Content-Type", "application/json")
         .header(
             "X-Shinkai-Job-Id",
@@ -866,9 +1121,16 @@ pub async fn handle_streaming_response(
     let mut response_text = String::new();
     let mut reasoning_content = String::new();
     let mut buffer = String::new();
+    let mut terminal_buffer = String::new();
+    let mut terminal_confirmed = false;
+    let mut terminal_aborted = false;
     let mut function_calls: Vec<FunctionCall> = Vec::new();
-    let mut error_message: Option<String> = None;
     let mut partial_fc = PartialFunctionCall {
+        identity_mode,
+        indexed_calls: Default::default(),
+        unindexed_calls: Default::default(),
+        argument_error: None,
+        has_string_arguments: false,
         name: None,
         arguments: String::new(),
         is_accumulating: false,
@@ -934,14 +1196,11 @@ pub async fn handle_streaming_response(
                         Some(reasoning_content.clone())
                     },
                     json!({}),
-                    function_calls.clone(),
+                    Vec::new(),
                     Vec::new(),
                     None,
                 );
-
-                // Log the response if LOG_REQUESTS is enabled
                 log_response_to_file(&response_text, &function_calls, true);
-
                 return Ok(response);
             }
         }
@@ -950,9 +1209,45 @@ pub async fn handle_streaming_response(
             Ok(chunk) => {
                 let chunk_str = String::from_utf8_lossy(&chunk).to_string();
                 buffer.push_str(&chunk_str);
+                if policy == ChatStreamPolicy::Groq {
+                    // Keep framing separate from the shared parser, which can drain
+                    // a data line before its second newline arrives.
+                    terminal_buffer.push_str(&chunk_str);
+                    while let Some((end, delimiter_len)) = terminal_buffer
+                        .find("\n\n")
+                        .map(|end| (end, 2))
+                        .into_iter()
+                        .chain(terminal_buffer.find("\r\n\r\n").map(|end| (end, 4)))
+                        .min_by_key(|(end, _)| *end)
+                    {
+                        let frame = terminal_buffer[..end].to_owned();
+                        terminal_buffer.drain(..end + delimiter_len);
+                        for data in frame.lines().filter_map(|line| line.strip_prefix("data:")) {
+                            let data = data.trim();
+                            if data == "[DONE]" {
+                                terminal_confirmed = true;
+                            } else if let Ok(value) = serde_json::from_str::<JsonValue>(data) {
+                                if let Some(choices) = value["choices"].as_array() {
+                                    for choice in choices {
+                                        if choice["index"].as_u64().unwrap_or(0) != 0 {
+                                            continue;
+                                        }
+                                        if let Some(reason) = choice["finish_reason"].as_str() {
+                                            if matches!(reason, "tool_calls" | "function_call" | "stop") {
+                                                terminal_confirmed = true;
+                                            } else {
+                                                terminal_aborted = true;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
 
                 // Process complete messages in the buffer
-                if let Ok(Some(err)) = parse_openai_stream_chunk(
+                if let Some(err) = parse_openai_stream_chunk(
                     &mut buffer,
                     &mut response_text,
                     &mut reasoning_content,
@@ -963,9 +1258,9 @@ pub async fn handle_streaming_response(
                     inbox_name.clone(),
                     &session_id,
                 )
-                .await
+                .await?
                 {
-                    error_message = Some(err);
+                    return Err(LLMProviderError::LLMServiceUnexpectedError(err));
                 }
 
                 // Handle WebSocket updates for function calls
@@ -989,15 +1284,48 @@ pub async fn handle_streaming_response(
         }
     }
 
-    // If there's an unfinalized function call at the end, finalize it
-    if partial_fc.name.is_some() && !partial_fc.arguments.is_empty() {
-        finalize_function_call_sync(&mut partial_fc, &mut function_calls, &tools);
+    // EOF can arrive without another chunk on which to observe cancellation.
+    if let Some(ref inbox) = inbox_name {
+        if llm_stopper.should_stop(&inbox.to_string()) {
+            llm_stopper.reset(&inbox.to_string());
+            let _ = send_ws_update(
+                &ws_manager_trait,
+                Some(inbox.clone()),
+                &session_id,
+                response_text.clone(),
+                false,
+                true,
+                Some("Stopped by user request".into()),
+            )
+            .await;
+            return Ok(LLMInferenceResponse::new(
+                response_text,
+                if reasoning_content.is_empty() {
+                    None
+                } else {
+                    Some(reasoning_content)
+                },
+                json!({}),
+                Vec::new(),
+                Vec::new(),
+                None,
+            ));
+        }
+    }
+    if policy == ChatStreamPolicy::Groq {
+        if terminal_aborted {
+            return Err(LLMProviderError::APIError(
+                "Groq stream ended with an incomplete finish reason".into(),
+            ));
+        }
+        if !terminal_confirmed {
+            return Err(LLMProviderError::APIError("Groq stream ended before completion".into()));
+        }
     }
 
-    if let Some(ref error_message) = error_message {
-        if response_text.is_empty() {
-            return Err(LLMProviderError::LLMServiceUnexpectedError(error_message.to_string()));
-        }
+    // If there's an unfinalized function call at the end, finalize it
+    if (!partial_fc.indexed_calls.is_empty() || !partial_fc.unindexed_calls.is_empty()) || partial_fc.name.is_some() {
+        finalize_function_call_sync(&mut partial_fc, &mut function_calls, &tools, false);
     }
 
     // Create the response object
@@ -1031,10 +1359,39 @@ pub async fn handle_non_streaming_response(
     tools: Option<Vec<JsonValue>>,
     headers: Option<JsonValue>,
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
+    handle_non_streaming_response_with_optional_auth(
+        client,
+        url,
+        payload,
+        Some(api_key),
+        inbox_name,
+        llm_stopper,
+        ws_manager_trait,
+        tools,
+        headers,
+    )
+    .await
+}
+
+pub async fn handle_non_streaming_response_with_optional_auth(
+    client: &Client,
+    url: String,
+    payload: JsonValue,
+    api_key: Option<String>,
+    inbox_name: Option<InboxName>,
+    llm_stopper: Arc<LLMStopper>,
+    ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    tools: Option<Vec<JsonValue>>,
+    headers: Option<JsonValue>,
+) -> Result<LLMInferenceResponse, LLMProviderError> {
     let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(500));
-    let response_fut = client
-        .post(url)
-        .bearer_auth(api_key)
+    let request = client.post(url);
+    let request = if let Some(key) = api_key {
+        request.bearer_auth(key)
+    } else {
+        request
+    };
+    let response_fut = request
         .header("Content-Type", "application/json")
         .header(
             "X-Shinkai-Job-Id",
@@ -1135,23 +1492,21 @@ pub async fn handle_non_streaming_response(
                 let data_resp: Result<JsonValue, _> = serde_json::from_str(&response_text);
 
                 match data_resp {
-                    Ok(value) => {
-                        // Extract reasoning_content (if any) to prepend to final response
-                        let reasoning_concat = value
-                            .get("choices")
-                            .and_then(|c| c.as_array())
-                            .map(|arr| {
-                                arr.iter()
-                                    .filter_map(|choice| {
-                                        choice
-                                            .get("message")
-                                            .and_then(|m| m.get("reasoning_content"))
-                                            .and_then(|rc| rc.as_str())
-                                    })
-                                    .collect::<Vec<_>>()
-                                    .join("")
-                            })
-                            .unwrap_or_default();
+                    Ok(mut value) => {
+                        let arguments_complete = value.pointer("/choices/0/finish_reason").and_then(|reason| reason.as_str())
+                            .is_some_and(|reason| matches!(reason, "tool_calls" | "function_call" | "stop"));
+                        if let Some(calls) = value.pointer_mut("/choices/0/message/tool_calls").and_then(|calls| calls.as_array_mut()) {
+                            for call in calls {
+                                if let Some(function) = call.get_mut("function").and_then(|function| function.as_object_mut()) {
+                                    function.entry("arguments".to_string()).or_insert_with(|| json!(""));
+                                }
+                            }
+                        }
+                        let selected_message = value.pointer("/choices/0/message").cloned().unwrap_or_default();
+                        let reasoning_concat = selected_message["reasoning_content"].as_str().filter(|value| !value.is_empty())
+                            .or_else(|| selected_message["reasoning"].as_str()).unwrap_or_default().to_string();
+                        // Provider adapters attach only the native data they can replay.
+                        // Generic Chat callers must not store unused reasoning metadata.
 
                         if let Some(error) = value.get("error") {
                             let code = error.get("code").and_then(|c| c.as_str());
@@ -1172,58 +1527,48 @@ pub async fn handle_non_streaming_response(
 
                         let data: OpenAIResponse = serde_json::from_value(value).map_err(LLMProviderError::SerdeError)?;
 
-                        let response_string: String = data
-                            .choices
-                            .iter()
-                            .filter_map(|choice| match &choice.message.content {
-                                Some(MessageContent::Text(text)) => {
-                                    // Unescape the JSON string
-                                    let cleaned_json_str = text.replace("\\\"", "\"").replace("\\n", "\n");
-                                    Some(cleaned_json_str)
+                        // Each choice is an alternative completion. Use one complete choice.
+                        let selected = data.choices.first();
+                        let response_string = selected.and_then(|choice| match &choice.message.content {
+                            Some(MessageContent::Text(text)) => Some(text.clone()),
+                            _ => None,
+                        }).unwrap_or_default();
+
+                        let function_calls: Vec<FunctionCall> = selected
+                            .and_then(|choice| choice.message.tool_calls.as_ref())
+                            .into_iter().flatten().enumerate().map(|(index, tool_call)| {
+                                let raw_arguments = if arguments_complete && tool_call.function.arguments.trim().is_empty() {
+                                    "{}"
+                                } else { &tool_call.function.arguments };
+                                let parsed_arguments = serde_json::from_str::<JsonValue>(raw_arguments)
+                                    .map_err(|error| format!("Tool arguments are not valid JSON: {error}"))
+                                    .and_then(|value| value.as_object().cloned()
+                                        .ok_or_else(|| "Tool arguments must be a JSON object".to_string()));
+                                let (arguments, provider_metadata) = match parsed_arguments {
+                                    Ok(arguments) => (arguments, None),
+                                    Err(error) => (Default::default(), Some(json!({"function_argument_error": error}))),
+                                };
+                                let tool_router_key = tools.as_ref().and_then(|definitions| {
+                                    definitions.iter().find_map(|tool| {
+                                        let function = tool.get("function").unwrap_or(tool);
+                                        if function.get("name").and_then(|name| name.as_str()) == Some(tool_call.function.name.as_str()) {
+                                            function.get("tool_router_key").or_else(|| tool.get("tool_router_key"))
+                                                .and_then(|key| key.as_str()).map(str::to_owned)
+                                        } else { None }
+                                    })
+                                });
+                                FunctionCall {
+                                    provider_metadata,
+                                    name: tool_call.function.name.clone(), arguments, tool_router_key,
+                                    response: None, index: index as u64, id: Some(tool_call.id.clone()),
+                                    call_type: Some(tool_call.call_type.clone()),
                                 }
-                                Some(MessageContent::ImageUrl { .. }) => None,
-                                Some(MessageContent::FunctionCall(_)) => None,
-                                None => None,
-                            })
-                            .collect::<Vec<String>>()
-                            .join(" ");
-
-                        let function_call: Option<FunctionCall> = data.choices.iter().find_map(|choice| {
-                            choice.message.tool_calls.as_ref().and_then(|tool_calls| {
-                                tool_calls.first().map(|tool_call| {
-                                    let arguments = serde_json::from_str::<serde_json::Value>(&tool_call.function.arguments)
-                                        .ok()
-                                        .and_then(|args_value: serde_json::Value| args_value.as_object().cloned())
-                                        .unwrap_or_else(|| serde_json::Map::new());
-
-                                    // Extract tool_router_key
-                                    let tool_router_key = tools.as_ref().and_then(|tools_array| {
-                                        tools_array.iter().find_map(|tool| {
-                                            if tool.get("name")?.as_str()? == tool_call.function.name {
-                                                tool.get("tool_router_key").and_then(|key| key.as_str().map(|s| s.to_string()))
-                                            } else {
-                                                None
-                                            }
-                                        })
-                                    });
-
-                                    FunctionCall {
-                                        name: tool_call.function.name.clone(),
-                                        arguments,
-                                        tool_router_key,
-                                        response: None,
-                                        index: 0,
-                                        id: Some(tool_call.id.clone()),
-                                        call_type: Some(tool_call.call_type.clone()),
-                                    }
-                                })
-                            })
-                        });
-                        eprintln!("Function Call: {:?}", function_call);
+                            }).collect();
+                        eprintln!("Function Calls: {:?}", function_calls);
                         eprintln!("Response String: {:?}", response_string);
 
                         // Updated WS message handling for tooling
-                        if let Some(ref function_call) = function_call {
+                        for function_call in &function_calls {
                             let _ = send_tool_ws_update(&ws_manager_trait, inbox_name.clone(), function_call).await;
                         }
 
@@ -1231,7 +1576,7 @@ pub async fn handle_non_streaming_response(
                             response_string,
                             if reasoning_concat.is_empty() { None } else { Some(reasoning_concat) },
                             json!({}),
-                            function_call.map_or_else(Vec::new, |fc| vec![fc]),
+                            function_calls,
                             Vec::new(),
                             None,
                         ));
@@ -1251,6 +1596,12 @@ pub async fn handle_non_streaming_response(
 }
 
 pub fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobConfig>) {
+    // The prepared request already accounts for the model and prompt budgets.
+    let prepared_limit = ["max_tokens", "max_completion_tokens"]
+        .iter()
+        .filter_map(|key| payload.get(*key).and_then(JsonValue::as_u64))
+        .min();
+
     // Helper function to read and parse environment variables
     fn read_env_var<T: std::str::FromStr>(key: &str) -> Option<T> {
         std::env::var(key).ok().and_then(|val| val.parse::<T>().ok())
@@ -1295,6 +1646,14 @@ pub fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&J
                     "parallel_tool_calls" => payload["parallel_tool_calls"] = value.clone(),
                     _ => (),
                 };
+            }
+        }
+    }
+    if let Some(limit) = prepared_limit {
+        for key in ["max_tokens", "max_completion_tokens"] {
+            if let Some(value) = payload.get_mut(key) {
+                let requested = value.as_u64().filter(|tokens| *tokens > 0).unwrap_or(limit);
+                *value = json!(requested.min(limit));
             }
         }
     }
@@ -1362,11 +1721,230 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    async fn stream_reasoning_alias_falls_back_without_duplicating_canonical_reasoning() {
+        let mut buffer = String::new();
+        let mut text = String::new();
+        let mut reasoning = String::new();
+        let mut calls = Vec::new();
+        let mut partial = PartialFunctionCall::default();
+        for delta in [
+            json!({"reasoning_content":"", "reasoning":"alias "}),
+            json!({"reasoning_content":"canonical", "reasoning":"must not repeat"}),
+        ] {
+            buffer.push_str(&format!("data: {}\n\n", json!({"choices":[{"index":0,"delta":delta}]})));
+            parse_openai_stream_chunk(
+                &mut buffer,
+                &mut text,
+                &mut reasoning,
+                &mut calls,
+                &mut partial,
+                &None,
+                &None,
+                None,
+                "test",
+            )
+            .await
+            .unwrap();
+        }
+        assert_eq!(reasoning, "alias canonical");
+    }
+
+    #[tokio::test]
+    async fn test_stream_multiple_choices_only_accumulates_choice_zero() {
+        let mut buffer = String::new();
+        let mut text = String::new();
+        let mut reasoning = String::new();
+        let mut calls = Vec::new();
+        let mut partial = PartialFunctionCall::default();
+        let chunks = [
+            json!({"choices":[
+                {"index":1,"delta":{"content":"ignored", "reasoning_content":"ignored reasoning", "tool_calls":[
+                    {"index":0,"id":"other","function":{"name":"other","arguments":"{\"wrong\":"}}
+                ]}},
+                {"index":0,"delta":{"content":"selected", "reasoning_content":"selected reasoning", "tool_calls":[
+                    {"index":0,"id":"native","function":{"name":"weather","arguments":"{\"city\":"}}
+                ]}}
+            ]}),
+            json!({"choices":[
+                {"index":1,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"wrong\"}"}}]},"finish_reason":"tool_calls"},
+                {"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"Santiago\"}"}}]}}
+            ]}),
+            json!({"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}),
+        ];
+        for (index, chunk) in chunks.into_iter().enumerate() {
+            buffer.push_str(&format!("data: {chunk}\n\n"));
+            parse_openai_stream_chunk(
+                &mut buffer,
+                &mut text,
+                &mut reasoning,
+                &mut calls,
+                &mut partial,
+                &None,
+                &None,
+                None,
+                "test",
+            )
+            .await
+            .unwrap();
+            if index < 2 {
+                assert!(calls.is_empty(), "alternative finish must not finalize choice zero");
+            }
+        }
+        assert_eq!(text, "selected");
+        assert_eq!(reasoning, "selected reasoning");
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].id.as_deref(), Some("native"));
+        assert_eq!(calls[0].name, "weather");
+        assert_eq!(
+            calls[0].arguments,
+            json!({"city":"Santiago"}).as_object().unwrap().clone()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_stream_complete_identities_keep_repeated_headers_and_argument_fragments() {
+        let mut buffer = String::new();
+        let mut text = String::new();
+        let mut reasoning = String::new();
+        let mut calls = Vec::new();
+        let mut partial = PartialFunctionCall {
+            identity_mode: ToolIdentityMode::Complete,
+            ..Default::default()
+        };
+        let deltas = [
+            json!({"tool_calls": [
+                {"index": 0, "id": "first", "type": "function", "function": {"name": "weather", "arguments": "{\"city\":"}},
+                {"index": 1, "id": "second", "type": "function", "function": {"name": "time", "arguments": "{\"zone\":"}}
+            ]}),
+            json!({"tool_calls": [
+                {"index": 1, "id": "second", "function": {"name": "time", "arguments": "\"UT"}},
+                {"index": 0, "id": "first", "function": {"name": "weather", "arguments": "\"Sant"}}
+            ]}),
+            json!({"tool_calls": [{"index": 0, "function": {"name": "weather", "arguments": "iago\"}"}}]}),
+            json!({"tool_calls": [{"index": 1, "function": {"name": "time", "arguments": "C\"}"}}]}),
+        ];
+        for delta in deltas {
+            buffer.push_str(&format!(
+                "data: {}\n\n",
+                json!({"choices": [{"index": 0, "delta": delta}]})
+            ));
+            parse_openai_stream_chunk(
+                &mut buffer,
+                &mut text,
+                &mut reasoning,
+                &mut calls,
+                &mut partial,
+                &None,
+                &None,
+                None,
+                "test",
+            )
+            .await
+            .unwrap();
+        }
+        buffer.push_str("data: [DONE]\n\n");
+        parse_openai_stream_chunk(
+            &mut buffer,
+            &mut text,
+            &mut reasoning,
+            &mut calls,
+            &mut partial,
+            &None,
+            &None,
+            None,
+            "test",
+        )
+        .await
+        .unwrap();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].id.as_deref(), Some("first"));
+        assert_eq!(calls[0].name, "weather");
+        assert_eq!(calls[0].arguments["city"], "Santiago");
+        assert_eq!(calls[1].id.as_deref(), Some("second"));
+        assert_eq!(calls[1].name, "time");
+        assert_eq!(calls[1].arguments["zone"], "UTC");
+    }
+
+    #[tokio::test]
+    async fn test_stream_interleaved_indexed_tool_calls() {
+        let mut buffer = String::new();
+        let mut text = String::new();
+        let mut reasoning = String::new();
+        let mut calls = Vec::new();
+        let mut partial = PartialFunctionCall::default();
+        let tools = Some(vec![
+            json!({"type": "function", "function": {"name": "weather", "tool_router_key": "weather-router"}}),
+        ]);
+        let deltas = [
+            json!({"tool_calls": [
+                {"index": 0, "id": "call_", "type": "function", "function": {"name": "wea", "arguments": "{\"city\":"}},
+                {"index": 1, "id": "other", "type": "function", "function": {"name": "time", "arguments": "{\"zone\":"}}
+            ]}),
+            json!({"tool_calls": [{"index": 1, "function": {"arguments": "\"UTC\"}"}}]}),
+            json!({"tool_calls": [{"index": 0, "id": "first", "function": {"name": "ther", "arguments": "\"Santiago\"}"}}]}),
+            // More deltas can follow a complete JSON value; do not finalize early.
+            json!({"tool_calls": [{"index": 0, "function": {"arguments": " "}}]}),
+        ];
+        for delta in deltas {
+            let event = format!("data: {}\n\n", json!({"choices": [{"index": 0, "delta": delta}]}));
+            // Split each SSE event across network chunks.
+            let split = event.len() / 2;
+            for fragment in [&event[..split], &event[split..]] {
+                buffer.push_str(fragment);
+                parse_openai_stream_chunk(
+                    &mut buffer,
+                    &mut text,
+                    &mut reasoning,
+                    &mut calls,
+                    &mut partial,
+                    &tools,
+                    &None,
+                    None,
+                    "test",
+                )
+                .await
+                .unwrap();
+            }
+        }
+        assert!(calls.is_empty());
+        buffer.push_str(
+            "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
+        );
+        parse_openai_stream_chunk(
+            &mut buffer,
+            &mut text,
+            &mut reasoning,
+            &mut calls,
+            &mut partial,
+            &tools,
+            &None,
+            None,
+            "test",
+        )
+        .await
+        .unwrap();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].index, 0);
+        assert_eq!(calls[0].id.as_deref(), Some("call_first"));
+        assert_eq!(calls[0].name, "weather");
+        assert_eq!(calls[0].arguments["city"], "Santiago");
+        assert_eq!(calls[0].tool_router_key.as_deref(), Some("weather-router"));
+        assert_eq!(calls[1].index, 1);
+        assert_eq!(calls[1].id.as_deref(), Some("other"));
+        assert_eq!(calls[1].arguments["zone"], "UTC");
+    }
+
+    #[tokio::test]
     async fn test_parse_openai_stream_chunk_basic_content() {
         let mut buffer = String::new();
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
         let mut partial_fc = PartialFunctionCall {
+            identity_mode: ToolIdentityMode::default(),
+            indexed_calls: Default::default(),
+            unindexed_calls: Default::default(),
+            argument_error: None,
+            has_string_arguments: false,
             name: None,
             arguments: String::new(),
             is_accumulating: false,
@@ -1418,6 +1996,11 @@ mod tests {
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
         let mut partial_fc = PartialFunctionCall {
+            identity_mode: ToolIdentityMode::default(),
+            indexed_calls: Default::default(),
+            unindexed_calls: Default::default(),
+            argument_error: None,
+            has_string_arguments: false,
             name: None,
             arguments: String::new(),
             is_accumulating: false,
@@ -1488,6 +2071,11 @@ mod tests {
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
         let mut partial_fc = PartialFunctionCall {
+            identity_mode: ToolIdentityMode::default(),
+            indexed_calls: Default::default(),
+            unindexed_calls: Default::default(),
+            argument_error: None,
+            has_string_arguments: false,
             name: None,
             arguments: String::new(),
             is_accumulating: false,
@@ -1579,6 +2167,11 @@ mod tests {
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
         let mut partial_fc = PartialFunctionCall {
+            identity_mode: ToolIdentityMode::default(),
+            indexed_calls: Default::default(),
+            unindexed_calls: Default::default(),
+            argument_error: None,
+            has_string_arguments: false,
             name: None,
             arguments: String::new(),
             is_accumulating: false,
@@ -1676,6 +2269,11 @@ mod tests {
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
         let mut partial_fc = PartialFunctionCall {
+            identity_mode: ToolIdentityMode::default(),
+            indexed_calls: Default::default(),
+            unindexed_calls: Default::default(),
+            argument_error: None,
+            has_string_arguments: false,
             name: None,
             arguments: String::new(),
             is_accumulating: false,
@@ -1744,7 +2342,21 @@ mod tests {
         ];
 
         for chunk in argument_chunks {
-            buffer.push_str(&format!("data: {{\"id\":\"chatcmpl-ApllfOJ8EuDsd9Qe6J1j3EMGPhywA\",\"object\":\"chat.completion.chunk\",\"created\":1736901711,\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_72ed7ab54c\",\"choices\":[{{\"index\":0,\"delta\":{{\"function_call\":{{\"arguments\":\"{}\"}}}},\"logprobs\":null,\"finish_reason\":null}}]}}\n", chunk));
+            let event = json!({
+                "id":"chatcmpl-smtp-test", "object":"chat.completion.chunk", "created":1736901711,
+                "model":"gpt-4o-mini-2024-07-18",
+                "choices":[{"index":0,"delta":{"function_call":{"arguments":chunk}},
+                    "logprobs":null,"finish_reason":null}]
+            });
+            buffer.push_str(&format!("data: {event}\n"));
+            for line in buffer.lines().filter_map(|line| line.strip_prefix("data: ")) {
+                if line.trim() != "[DONE]" {
+                    assert!(
+                        serde_json::from_str::<JsonValue>(line).is_ok(),
+                        "Fixture SSE data must be valid JSON"
+                    );
+                }
+            }
             let result = parse_openai_stream_chunk(
                 &mut buffer,
                 &mut response_text,
@@ -1762,6 +2374,14 @@ mod tests {
 
         // Final message with finish_reason
         buffer.push_str("data: {\"id\":\"chatcmpl-ApllfOJ8EuDsd9Qe6J1j3EMGPhywA\",\"object\":\"chat.completion.chunk\",\"created\":1736901711,\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_72ed7ab54c\",\"choices\":[{\"index\":0,\"delta\":{},\"logprobs\":null,\"finish_reason\":\"function_call\"}]}\n");
+        for line in buffer.lines().filter_map(|line| line.strip_prefix("data: ")) {
+            if line.trim() != "[DONE]" {
+                assert!(
+                    serde_json::from_str::<JsonValue>(line).is_ok(),
+                    "Fixture SSE data must be valid JSON"
+                );
+            }
+        }
         let result = parse_openai_stream_chunk(
             &mut buffer,
             &mut response_text,
@@ -1778,6 +2398,14 @@ mod tests {
 
         // [DONE] message
         buffer.push_str("data: [DONE]\n");
+        for line in buffer.lines().filter_map(|line| line.strip_prefix("data: ")) {
+            if line.trim() != "[DONE]" {
+                assert!(
+                    serde_json::from_str::<JsonValue>(line).is_ok(),
+                    "Fixture SSE data must be valid JSON"
+                );
+            }
+        }
         let result = parse_openai_stream_chunk(
             &mut buffer,
             &mut response_text,
@@ -1819,6 +2447,11 @@ mod tests {
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
         let mut partial_fc = PartialFunctionCall {
+            identity_mode: ToolIdentityMode::default(),
+            indexed_calls: Default::default(),
+            unindexed_calls: Default::default(),
+            argument_error: None,
+            has_string_arguments: false,
             name: None,
             arguments: String::new(),
             is_accumulating: false,
@@ -1832,10 +2465,10 @@ mod tests {
         })]);
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
 
-        // Test each chunk exactly as they appeared in the logs
+        // Replay the recorded argument fragments in valid Chat SSE envelopes.
         let chunks = vec![
             r#"data: {"id":"chatcmpl-Ar9TM4lQXVkjrdwTchuU6H3TPiAFB","object":"chat.completion.chunk","created":1737231160,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"role":"assistant","content":null,"function_call":{"name":"duckduckgo_search","arguments":""},"refusal":null},"logprobs":null,"finish_reason":null}]}"#,
-            r#"data: {"id":"chatcmpl-Ar9TM4lQXVkjrdwTchuU6H3TPiAFB","object":"chat.completion.chunk","created":1737231160,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"{\""}}},"logprobs":null,"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-Ar9TM4lQXVkjrdwTchuU6H3TPiAFB","object":"chat.completion.chunk","created":1737231160,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"{\""}},"logprobs":null,"finish_reason":null}]}"#,
             r#"data: {"id":"chatcmpl-Ar9TM4lQXVkjrdwTchuU6H3TPiAFB","object":"chat.completion.chunk","created":1737231160,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"message"}},"logprobs":null,"finish_reason":null}]}"#,
             r#"data: {"id":"chatcmpl-Ar9TM4lQXVkjrdwTchuU6H3TPiAFB","object":"chat.completion.chunk","created":1737231160,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"\":\""}},"logprobs":null,"finish_reason":null}]}"#,
             r#"data: {"id":"chatcmpl-Ar9TM4lQXVkjrdwTchuU6H3TPiAFB","object":"chat.completion.chunk","created":1737231160,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"movies"}},"logprobs":null,"finish_reason":null}]}"#,
@@ -1848,6 +2481,14 @@ mod tests {
         for chunk in chunks {
             buffer.push_str(chunk);
             buffer.push('\n');
+            for line in buffer.lines().filter_map(|line| line.strip_prefix("data: ")) {
+                if line.trim() != "[DONE]" {
+                    assert!(
+                        serde_json::from_str::<JsonValue>(line).is_ok(),
+                        "Fixture SSE data must be valid JSON"
+                    );
+                }
+            }
             let result = parse_openai_stream_chunk(
                 &mut buffer,
                 &mut response_text,
@@ -2000,6 +2641,11 @@ mod tests {
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
         let mut partial_fc = PartialFunctionCall {
+            identity_mode: ToolIdentityMode::default(),
+            indexed_calls: Default::default(),
+            unindexed_calls: Default::default(),
+            argument_error: None,
+            has_string_arguments: false,
             name: None,
             arguments: String::new(),
             is_accumulating: false,
@@ -2052,6 +2698,11 @@ mod tests {
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
         let mut partial_fc = PartialFunctionCall {
+            identity_mode: ToolIdentityMode::default(),
+            indexed_calls: Default::default(),
+            unindexed_calls: Default::default(),
+            argument_error: None,
+            has_string_arguments: false,
             name: None,
             arguments: String::new(),
             is_accumulating: false,
@@ -2139,6 +2790,971 @@ mod tests {
             ]
         });
         assert_eq!(serde_json::to_value(&fc.arguments).unwrap(), expected_args);
+    }
+
+    async fn parse_test_tool_events(deltas: Vec<JsonValue>, mode: ToolIdentityMode) -> Vec<FunctionCall> {
+        let mut buffer = String::new();
+        let mut text = String::new();
+        let mut reasoning = String::new();
+        let mut calls = Vec::new();
+        let mut partial = PartialFunctionCall {
+            identity_mode: mode,
+            ..Default::default()
+        };
+        for delta in deltas {
+            buffer.push_str(&format!("data: {}\n\n", json!({"choices":[{"index":0,"delta":delta}]})));
+            parse_openai_stream_chunk(
+                &mut buffer,
+                &mut text,
+                &mut reasoning,
+                &mut calls,
+                &mut partial,
+                &None,
+                &None,
+                None,
+                "test",
+            )
+            .await
+            .unwrap();
+        }
+        buffer.push_str("data: [DONE]\n\n");
+        parse_openai_stream_chunk(
+            &mut buffer,
+            &mut text,
+            &mut reasoning,
+            &mut calls,
+            &mut partial,
+            &None,
+            &None,
+            None,
+            "test",
+        )
+        .await
+        .unwrap();
+        calls
+    }
+
+    #[tokio::test]
+    async fn late_index_promotes_unindexed_arguments_without_duplicating_identity() {
+        for mode in [ToolIdentityMode::Fragments, ToolIdentityMode::Complete] {
+            for repeat_identity in [false, true] {
+                let mut continuation = json!({"index":0,"function":{"arguments":"\"Paris\"}"}});
+                if repeat_identity {
+                    continuation["id"] = json!("A");
+                    continuation["function"]["name"] = json!("weather");
+                }
+                let calls = parse_test_tool_events(vec![
+                    json!({"tool_calls":[{"id":"A","type":"function","function":{"name":"weather","arguments":"{\"city\":"}}]}),
+                    json!({"tool_calls":[continuation]})
+                ],mode).await;
+                assert_eq!(calls.len(), 1);
+                assert_eq!(calls[0].id.as_deref(), Some("A"));
+                assert_eq!(calls[0].name, "weather");
+                assert_eq!(calls[0].index, 0);
+                assert_eq!(calls[0].arguments["city"], "Paris");
+                assert!(calls[0].provider_metadata.is_none());
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn late_index_without_identity_does_not_promote_a_different_named_call() {
+        for mode in [ToolIdentityMode::Fragments, ToolIdentityMode::Complete] {
+            let calls = parse_test_tool_events(
+                vec![
+                    json!({"tool_calls":[{"id":"A","type":"function","function":{"name":"first","arguments":""}}]}),
+                    json!({"tool_calls":[{"index":0,"function":{"name":"different","arguments":"{}"}}]}),
+                ],
+                mode,
+            )
+            .await;
+            assert_eq!(calls.len(), 1);
+            assert_eq!(calls[0].id.as_deref(), Some("A"));
+            assert_eq!(calls[0].name, "first");
+            assert!(calls[0].provider_metadata.as_ref().unwrap()["function_argument_error"].is_string());
+        }
+    }
+
+    #[tokio::test]
+    async fn implicit_final_indices_do_not_collide_with_explicit_indices() {
+        let calls = parse_test_tool_events(vec![
+            json!({"tool_calls":[{"index":1,"id":"A","type":"function","function":{"name":"first","arguments":"{}"}}]}),
+            json!({"tool_calls":[{"id":"B","type":"function","function":{"name":"second","arguments":"{}"}}]})
+        ],ToolIdentityMode::Complete).await;
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].index, 1);
+        assert_eq!(calls[0].id.as_deref(), Some("A"));
+        assert_eq!(calls[1].id.as_deref(), Some("B"));
+        assert_ne!(calls[0].index, calls[1].index);
+        assert!(calls.iter().all(|call| call.provider_metadata.is_none()));
+    }
+
+    #[test]
+    fn completed_indices_do_not_consume_reserved_pending_indices() {
+        let mut completed = vec![FunctionCall {
+            provider_metadata: None,
+            name: "earlier".into(),
+            arguments: Default::default(),
+            tool_router_key: None,
+            response: None,
+            index: 0,
+            id: Some("earlier".into()),
+            call_type: Some("function".into()),
+        }];
+        let pending = |name: &str| PartialFunctionCall {
+            id: Some(name.into()),
+            name: Some(name.into()),
+            arguments: "{}".into(),
+            ..Default::default()
+        };
+        let mut state = PartialFunctionCall::default();
+        state.indexed_calls.insert(0, pending("reused"));
+        state.indexed_calls.insert(1, pending("explicit-one"));
+        state.unindexed_calls.push(pending("implicit"));
+        finalize_function_call_sync(&mut state, &mut completed, &None, true);
+        let unique: std::collections::HashSet<_> = completed.iter().map(|call| call.index).collect();
+        assert_eq!(unique.len(), completed.len());
+        assert_eq!(
+            completed.iter().find(|call| call.name == "explicit-one").unwrap().index,
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn repeated_function_type_does_not_make_unindexed_fragments_executable() {
+        use crate::llm_provider::execution::chains::generic_chain::generic_inference_chain::execute_valid_function_call;
+        use crate::managers::tool_router::ToolCallFunctionResponse;
+        let calls = parse_test_tool_events(
+            vec![
+                json!({"tool_calls":[{"id":"call_","type":"function","function":{"name":"clear","arguments":""}}]}),
+                json!({"tool_calls":[{"id":"123","type":"function","function":{"name":"_cache","arguments":"{}"}}]}),
+            ],
+            ToolIdentityMode::Fragments,
+        )
+        .await;
+        assert_eq!(calls.len(), 1);
+        let call = &calls[0];
+        assert_eq!(call.id.as_deref(), Some("call_"));
+        assert!(call.provider_metadata.as_ref().unwrap()["function_argument_error"].is_string());
+        let mut executed = false;
+        let execution_call = call.clone();
+        let result = execute_valid_function_call(call, async {
+            executed = true;
+            Ok(ToolCallFunctionResponse {
+                function_call: execution_call,
+                response: "must not execute".into(),
+            })
+        })
+        .await;
+        assert!(result.is_err());
+        assert!(!executed);
+    }
+
+    #[tokio::test]
+    async fn null_argument_placeholders_do_not_corrupt_later_sse_fragments() {
+        let mut server = mockito::Server::new_async().await;
+        let deltas = [
+            json!({"tool_calls":[{"index":0,"id":"A","type":"function","function":{"name":"weather","arguments":null}}]}),
+            json!({"tool_calls":[{"index":1,"id":"B","type":"function","function":{"name":"time","arguments":null}}]}),
+            json!({"tool_calls":[{"index":0,"function":{"arguments":"{\"city\":"}},{"index":1,"function":{"arguments":"{\"zone\":"}}]}),
+            json!({"tool_calls":[{"index":1,"function":{"arguments":"\"UTC\"}"}},{"index":0,"function":{"arguments":"\"Paris\"}"}}]}),
+            json!({"tool_calls":[{"index":0,"function":{"arguments":null}}]}),
+        ];
+        let mut body = deltas
+            .into_iter()
+            .map(|delta| format!("data: {}\n\n", json!({"choices":[{"index":0,"delta":delta}]})))
+            .collect::<String>();
+        body.push_str(
+            "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
+        );
+        let mock = server
+            .mock("POST", "/chat/completions")
+            .with_header("content-type", "text/event-stream")
+            .with_body(body)
+            .create_async()
+            .await;
+        let response = handle_streaming_response(
+            &Client::new(),
+            format!("{}/chat/completions", server.url()),
+            json!({"stream":true}),
+            "test-key".into(),
+            None,
+            None,
+            Arc::new(LLMStopper::new()),
+            "test".into(),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        mock.assert_async().await;
+        assert_eq!(response.function_calls.len(), 2);
+        assert_eq!(response.function_calls[0].id.as_deref(), Some("A"));
+        assert_eq!(response.function_calls[0].arguments["city"], "Paris");
+        assert_eq!(response.function_calls[1].id.as_deref(), Some("B"));
+        assert_eq!(response.function_calls[1].arguments["zone"], "UTC");
+        assert!(response
+            .function_calls
+            .iter()
+            .all(|call| call.provider_metadata.is_none()));
+    }
+
+    #[tokio::test]
+    async fn argument_placeholders_do_not_clear_real_argument_errors() {
+        use crate::llm_provider::execution::chains::generic_chain::generic_inference_chain::execute_valid_function_call;
+        use crate::managers::tool_router::ToolCallFunctionResponse;
+        for initial in [
+            json!(null),
+            json!({}),
+            json!([]),
+            json!(7),
+            json!(true),
+            json!("{broken"),
+            json!("null"),
+            json!("[]"),
+        ] {
+            for append_valid in [false, true] {
+                // Null may be followed by real string fragments. Other malformed input stays blocked.
+                let expected_valid = initial.is_null() && append_valid;
+                let mut deltas = vec![
+                    json!({"tool_calls":[{"index":0,"id":"A","type":"function","function":{"name":"zero_arg_tool","arguments":initial}}]}),
+                ];
+                if append_valid {
+                    deltas.push(json!({"tool_calls":[{"index":0,"function":{"arguments":"{}"}}]}));
+                }
+                let calls = parse_test_tool_events(deltas, ToolIdentityMode::Fragments).await;
+                assert_eq!(calls.len(), 1);
+                let call = &calls[0];
+                let mut executed = false;
+                let execution_call = call.clone();
+                let result = execute_valid_function_call(call, async {
+                    executed = true;
+                    Ok(ToolCallFunctionResponse {
+                        function_call: execution_call,
+                        response: "executed".into(),
+                    })
+                })
+                .await;
+                assert_eq!(
+                    executed, expected_valid,
+                    "initial={initial}, append_valid={append_valid}"
+                );
+                assert_eq!(result.is_ok(), expected_valid);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn null_placeholder_with_incomplete_arguments_stays_blocked_at_eof() {
+        let mut buffer = String::new();
+        let mut text = String::new();
+        let mut reasoning = String::new();
+        let mut calls = Vec::new();
+        let mut partial = PartialFunctionCall::default();
+        for (position, arguments) in [json!(null), json!("{\"city\":")].into_iter().enumerate() {
+            let mut call = json!({"index":0,"function":{"arguments":arguments}});
+            if position == 0 {
+                call["id"] = json!("A");
+                call["type"] = json!("function");
+                call["function"]["name"] = json!("weather");
+            }
+            buffer.push_str(&format!(
+                "data: {}\n\n",
+                json!({"choices":[{"index":0,"delta":{"tool_calls":[call]}}]})
+            ));
+            parse_openai_stream_chunk(
+                &mut buffer,
+                &mut text,
+                &mut reasoning,
+                &mut calls,
+                &mut partial,
+                &None,
+                &None,
+                None,
+                "test",
+            )
+            .await
+            .unwrap();
+        }
+        assert!(calls.is_empty());
+        finalize_function_call_sync(&mut partial, &mut calls, &None, false);
+        assert_eq!(calls.len(), 1);
+        assert!(calls[0].provider_metadata.as_ref().unwrap()["function_argument_error"].is_string());
+    }
+
+    #[tokio::test]
+    async fn unindexed_parallel_calls_keep_stable_ids_across_chunks() {
+        for mode in [ToolIdentityMode::Complete] {
+            let mut buffer = String::new();
+            let mut text = String::new();
+            let mut reasoning = String::new();
+            let mut calls = Vec::new();
+            let mut partial = PartialFunctionCall {
+                identity_mode: mode,
+                ..Default::default()
+            };
+            let deltas = [
+                json!({"tool_calls":[{"id":"A","type":"function","function":{"name":"weather","arguments":"{\"city\":"}}]}),
+                json!({"tool_calls":[{"id":"B","type":"function","function":{"name":"time","arguments":"{\"zone\":"}}]}),
+                json!({"tool_calls":[{"id":"B","function":{"arguments":"\"UTC\"}"}}]}),
+                json!({"tool_calls":[{"id":"A","function":{"arguments":"\"Paris\"}"}}]}),
+            ];
+            for delta in deltas {
+                buffer.push_str(&format!("data: {}\n\n", json!({"choices":[{"index":0,"delta":delta}]})));
+                parse_openai_stream_chunk(
+                    &mut buffer,
+                    &mut text,
+                    &mut reasoning,
+                    &mut calls,
+                    &mut partial,
+                    &None,
+                    &None,
+                    None,
+                    "test",
+                )
+                .await
+                .unwrap();
+            }
+            assert!(calls.is_empty());
+            buffer.push_str("data: [DONE]\n\n");
+            parse_openai_stream_chunk(
+                &mut buffer,
+                &mut text,
+                &mut reasoning,
+                &mut calls,
+                &mut partial,
+                &None,
+                &None,
+                None,
+                "test",
+            )
+            .await
+            .unwrap();
+            assert_eq!(calls.len(), 2);
+            assert_eq!(calls[0].id.as_deref(), Some("A"));
+            assert_eq!(calls[0].name, "weather");
+            assert_eq!(calls[0].arguments["city"], "Paris");
+            assert_eq!(calls[1].id.as_deref(), Some("B"));
+            assert_eq!(calls[1].name, "time");
+            assert_eq!(calls[1].arguments["zone"], "UTC");
+            assert!(calls.iter().all(|call| call.provider_metadata.is_none()));
+        }
+    }
+
+    #[tokio::test]
+    async fn ambiguous_unindexed_fragments_remain_blocked_from_execution() {
+        use crate::llm_provider::execution::chains::generic_chain::generic_inference_chain::execute_valid_function_call;
+        use crate::managers::tool_router::ToolCallFunctionResponse;
+        for ambiguous in [
+            json!({"function":{"arguments":" "}}),
+            json!({"id":"fragment","function":{"name":"fragment","arguments":"{}"}}),
+        ] {
+            let mut buffer = String::new();
+            let mut text = String::new();
+            let mut reasoning = String::new();
+            let mut calls = Vec::new();
+            let mode = if ambiguous.get("id").is_some() {
+                ToolIdentityMode::Fragments
+            } else {
+                ToolIdentityMode::Complete
+            };
+            let expected_calls = if ambiguous.get("id").is_some() { 1 } else { 2 };
+            let mut partial = PartialFunctionCall {
+                identity_mode: mode,
+                ..Default::default()
+            };
+            for delta in [
+                json!({"tool_calls":[{"id":"A","type":"function","function":{"name":"first","arguments":"{}"}}]}),
+                json!({"tool_calls":[{"id":"B","type":"function","function":{"name":"second","arguments":"{}"}}]}),
+                json!({"tool_calls":[ambiguous]}),
+            ] {
+                buffer.push_str(&format!("data: {}\n\n", json!({"choices":[{"index":0,"delta":delta}]})));
+                parse_openai_stream_chunk(
+                    &mut buffer,
+                    &mut text,
+                    &mut reasoning,
+                    &mut calls,
+                    &mut partial,
+                    &None,
+                    &None,
+                    None,
+                    "test",
+                )
+                .await
+                .unwrap();
+            }
+            buffer.push_str("data: [DONE]\n\n");
+            parse_openai_stream_chunk(
+                &mut buffer,
+                &mut text,
+                &mut reasoning,
+                &mut calls,
+                &mut partial,
+                &None,
+                &None,
+                None,
+                "test",
+            )
+            .await
+            .unwrap();
+            assert_eq!(calls.len(), expected_calls);
+            for call in calls {
+                assert!(call.provider_metadata.as_ref().unwrap()["function_argument_error"]
+                    .as_str()
+                    .unwrap()
+                    .contains("no index"));
+                let mut executed = false;
+                let execution_call = call.clone();
+                let result = execute_valid_function_call(&call, async {
+                    executed = true;
+                    Ok(ToolCallFunctionResponse {
+                        function_call: execution_call,
+                        response: "must not run".into(),
+                    })
+                })
+                .await;
+                assert!(result.is_err());
+                assert!(!executed);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn shared_chat_sse_errors_fail_before_or_after_partial_text() {
+        for partial in [false, true] {
+            let mut server = mockito::Server::new_async().await;
+            let prefix = if partial {
+                "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"partial answer\"}}]}\n\n"
+            } else {
+                ""
+            };
+            let body = format!(
+                "{prefix}data: {{\"error\":{{\"code\":\"provider_failed\",\"message\":\"generation failed\"}}}}\n\n"
+            );
+            let mock = server
+                .mock("POST", "/chat/completions")
+                .with_header("content-type", "text/event-stream")
+                .with_body(body)
+                .create_async()
+                .await;
+            let result = handle_streaming_response_with_identity_mode(
+                &Client::new(),
+                format!("{}/chat/completions", server.url()),
+                json!({"stream":true}),
+                "test-key".into(),
+                None,
+                None,
+                Arc::new(LLMStopper::new()),
+                "test".into(),
+                None,
+                None,
+                ToolIdentityMode::Complete,
+            )
+            .await;
+            mock.assert_async().await;
+            let error = result.unwrap_err().to_string();
+            assert!(error.contains("provider_failed"), "{error}");
+            assert!(error.contains("generation failed"), "{error}");
+        }
+    }
+
+    #[tokio::test]
+    async fn shared_chat_sse_completion_and_deliberate_stop_remain_successful() {
+        for stopped in [false, true] {
+            let mut server = mockito::Server::new_async().await;
+            let body = "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"complete answer\"}}]}\n\ndata: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
+            let mock = server
+                .mock("POST", "/chat/completions")
+                .with_header("content-type", "text/event-stream")
+                .with_body(body)
+                .create_async()
+                .await;
+            let stopper = Arc::new(LLMStopper::new());
+            let inbox = InboxName::get_job_inbox_name_from_params("test-stopped-job".into()).unwrap();
+            if stopped {
+                stopper.stop(&inbox.to_string());
+            }
+            let response = handle_streaming_response(
+                &Client::new(),
+                format!("{}/chat/completions", server.url()),
+                json!({"stream":true}),
+                "test-key".into(),
+                if stopped { Some(inbox) } else { None },
+                None,
+                stopper,
+                "test".into(),
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+            mock.assert_async().await;
+            assert_eq!(response.response_string, if stopped { "" } else { "complete answer" });
+        }
+    }
+
+    async fn assert_completed_argument_execution(call: &FunctionCall, allowed: bool) {
+        use crate::llm_provider::execution::chains::generic_chain::generic_inference_chain::execute_valid_function_call;
+        use crate::managers::tool_router::ToolCallFunctionResponse;
+        let mut executed = false;
+        let result = execute_valid_function_call(call, async {
+            executed = true;
+            Ok(ToolCallFunctionResponse {
+                function_call: call.clone(),
+                response: "executed".into(),
+            })
+        })
+        .await;
+        assert_eq!(executed, allowed);
+        assert_eq!(result.is_ok(), allowed);
+        if !allowed {
+            assert!(call.provider_metadata.as_ref().unwrap()["function_argument_error"].is_string());
+        }
+    }
+
+    #[tokio::test]
+    async fn empty_stream_arguments_require_completion_before_zero_parameter_execution() {
+        let tools = Some(vec![json!({"type": "function", "function": {
+            "name": "zero_arg_tool", "tool_router_key": "zero_arg_tool",
+            "parameters": {"type": "object", "properties": {}, "required": []}
+        }})]);
+        for arguments in [
+            None,
+            Some(json!("")),
+            Some(json!(" \n\t")),
+            Some(json!("{bad")),
+            Some(json!("[]")),
+            Some(json!("null")),
+            Some(json!(null)),
+            Some(json!({})),
+        ] {
+            for finish in ["tool_calls", "done", "length", "eof"] {
+                let blank = arguments.as_ref().map_or(true, |value| {
+                    value.as_str().is_some_and(|value| value.trim().is_empty())
+                });
+                let mut function = json!({"name": "zero_arg_tool"});
+                if let Some(arguments) = &arguments {
+                    function["arguments"] = arguments.clone();
+                }
+                let mut buffer = format!(
+                    "data: {}\n\n",
+                    json!({"choices": [{"index": 0, "delta": {
+                        "tool_calls": [{"index": 0, "id": "native-call", "type": "function", "function": function}]
+                    }}]})
+                );
+                let mut text = String::new();
+                let mut reasoning = String::new();
+                let mut calls = Vec::new();
+                let mut partial = PartialFunctionCall::default();
+                parse_openai_stream_chunk(
+                    &mut buffer,
+                    &mut text,
+                    &mut reasoning,
+                    &mut calls,
+                    &mut partial,
+                    &tools,
+                    &None,
+                    None,
+                    "test",
+                )
+                .await
+                .unwrap();
+                // An identity-only delta cannot create an executable zero-parameter call.
+                assert!(calls.is_empty());
+                assert_eq!(partial.indexed_calls[&0].name.as_deref(), Some("zero_arg_tool"));
+                if finish == "eof" {
+                    // The transport uses the incomplete policy for pending calls at raw EOF.
+                    finalize_function_call_sync(&mut partial, &mut calls, &tools, false);
+                } else {
+                    buffer = if finish == "done" {
+                        "data: [DONE]\n\n".into()
+                    } else {
+                        format!(
+                            "data: {}\n\ndata: [DONE]\n\n",
+                            json!({"choices": [{"index": 0, "delta": {}, "finish_reason": finish}]})
+                        )
+                    };
+                    parse_openai_stream_chunk(
+                        &mut buffer,
+                        &mut text,
+                        &mut reasoning,
+                        &mut calls,
+                        &mut partial,
+                        &tools,
+                        &None,
+                        None,
+                        "test",
+                    )
+                    .await
+                    .unwrap();
+                }
+                assert_eq!(calls.len(), 1);
+                let call = &calls[0];
+                assert_eq!(call.id.as_deref(), Some("native-call"));
+                assert_eq!(call.tool_router_key.as_deref(), Some("zero_arg_tool"));
+                assert!(call.arguments.is_empty());
+                assert_completed_argument_execution(call, blank && matches!(finish, "tool_calls" | "done")).await;
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn completed_nonstreaming_zero_parameter_calls_accept_blank_or_missing_arguments() {
+        let tools = Some(vec![json!({"type": "function", "function": {
+            "name": "zero_arg_tool", "tool_router_key": "zero_arg_tool",
+            "parameters": {"type": "object", "properties": {}, "required": []}
+        }})]);
+        for arguments in [
+            None,
+            Some(""),
+            Some(" \n\t"),
+            Some("{bad"),
+            Some("[]"),
+            Some("null"),
+            Some("{}"),
+        ] {
+            for finish in ["tool_calls", "length"] {
+                let mut server = mockito::Server::new_async().await;
+                let mut function = json!({"name": "zero_arg_tool"});
+                if let Some(arguments) = arguments {
+                    function["arguments"] = json!(arguments);
+                }
+                let mock = server.mock("POST", "/chat/completions").with_header("content-type", "application/json")
+                    .with_body(json!({"id":"response", "object":"chat.completion", "created":1,
+                        "usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2},
+                        "choices":[{"index":0,"message":{"role":"assistant","content":null,
+                            "tool_calls":[{"id":"native-call","type":"function","function":function}]}, "finish_reason":finish}]
+                    }).to_string()).create_async().await;
+                let response = handle_non_streaming_response(
+                    &Client::new(),
+                    format!("{}/chat/completions", server.url()),
+                    json!({"stream":false}),
+                    "test-key".into(),
+                    None,
+                    Arc::new(LLMStopper::new()),
+                    None,
+                    tools.clone(),
+                    None,
+                )
+                .await
+                .unwrap();
+                mock.assert_async().await;
+                assert_eq!(response.function_calls.len(), 1);
+                let call = &response.function_calls[0];
+                assert_eq!(call.id.as_deref(), Some("native-call"));
+                assert_eq!(call.tool_router_key.as_deref(), Some("zero_arg_tool"));
+                let allowed = arguments == Some("{}")
+                    || finish == "tool_calls" && arguments.map_or(true, |value| value.trim().is_empty());
+                assert_completed_argument_execution(call, allowed).await;
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn malformed_streaming_arguments_cannot_execute_an_empty_schema_tool() {
+        use crate::llm_provider::execution::chains::generic_chain::generic_inference_chain::execute_valid_function_call;
+        use crate::managers::tool_router::ToolCallFunctionResponse;
+        for (arguments, valid) in [("{not-json", false), ("[]", false), ("null", false), ("{}", true)] {
+            let mut buffer = format!(
+                "data: {}\n\ndata: {}\n\n",
+                json!({"choices":[{"index":0,"delta":{"tool_calls":[{
+                    "index":0,"id":"native-call","type":"function","function":{"name":"zero_arg_tool","arguments":arguments}
+                }]}}]}),
+                json!({"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]})
+            );
+            let mut text = String::new();
+            let mut reasoning = String::new();
+            let mut calls = Vec::new();
+            let mut partial = PartialFunctionCall::default();
+            parse_openai_stream_chunk(
+                &mut buffer,
+                &mut text,
+                &mut reasoning,
+                &mut calls,
+                &mut partial,
+                &None,
+                &None,
+                None,
+                "test",
+            )
+            .await
+            .unwrap();
+            assert_eq!(calls.len(), 1);
+            let call = &calls[0];
+            assert_eq!(call.id.as_deref(), Some("native-call"));
+            assert_eq!(call.name, "zero_arg_tool");
+            let mut executed = false;
+            let execution_call = call.clone();
+            let result = execute_valid_function_call(call, async {
+                executed = true;
+                Ok(ToolCallFunctionResponse {
+                    function_call: execution_call,
+                    response: "executed".into(),
+                })
+            })
+            .await;
+            assert_eq!(executed, valid);
+            assert_eq!(result.is_ok(), valid);
+            if !valid {
+                assert!(call.provider_metadata.as_ref().unwrap()["function_argument_error"].is_string());
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn malformed_non_streaming_arguments_cannot_execute_an_empty_schema_tool() {
+        use crate::llm_provider::execution::chains::generic_chain::generic_inference_chain::execute_valid_function_call;
+        use crate::managers::tool_router::ToolCallFunctionResponse;
+        for (arguments, valid, expected_error) in [
+            ("{not-json", false, "not valid JSON"),
+            ("[]", false, "must be a JSON object"),
+            ("null", false, "must be a JSON object"),
+            ("{}", true, ""),
+        ] {
+            let mut server = mockito::Server::new_async().await;
+            let mock = server.mock("POST","/chat/completions")
+                .with_header("content-type","application/json")
+                .with_body(json!({"id":"response","object":"chat.completion","created":1,
+                    "usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2},
+                    "choices":[{"index":0,"message":{"role":"assistant","content":null,
+                        "reasoning_content":"not replayed", "tool_calls":[{"id":"native-call","type":"function",
+                            "function":{"name":"zero_arg_tool","arguments":arguments}}]},"finish_reason":"tool_calls"}]
+                }).to_string()).create_async().await;
+            let response = handle_non_streaming_response(
+                &Client::new(),
+                format!("{}/chat/completions", server.url()),
+                json!({"stream":false}),
+                "test-key".into(),
+                None,
+                Arc::new(LLMStopper::new()),
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+            mock.assert_async().await;
+            let call = &response.function_calls[0];
+            assert_eq!(call.id.as_deref(), Some("native-call"));
+            assert_eq!(call.name, "zero_arg_tool");
+            assert!(call.arguments.is_empty());
+            let mut executed = false;
+            let execution_call = call.clone();
+            let result = execute_valid_function_call(call, async {
+                executed = true;
+                Ok(ToolCallFunctionResponse {
+                    function_call: execution_call,
+                    response: "executed".into(),
+                })
+            })
+            .await;
+            assert_eq!(executed, valid);
+            if valid {
+                assert!(result.is_ok());
+                assert!(call.provider_metadata.is_none());
+            } else {
+                assert!(result.unwrap_err().to_string().contains(expected_error));
+                let metadata = call.provider_metadata.as_ref().unwrap();
+                assert_eq!(metadata.as_object().unwrap().len(), 1);
+                assert!(metadata["function_argument_error"]
+                    .as_str()
+                    .unwrap()
+                    .contains(expected_error));
+            }
+        }
+    }
+
+    #[test]
+    fn chat_token_overrides_keep_the_prepared_ceiling_and_valid_lower_values() {
+        for initial_key in ["max_tokens", "max_completion_tokens"] {
+            for requested in [
+                json!(9000),
+                json!(500),
+                json!(0),
+                json!(-1),
+                json!(null),
+                json!("unlimited"),
+                json!(false),
+            ] {
+                let mut payload = json!({"model":"gpt-4.1"});
+                payload[initial_key] = json!(2000);
+                let mut config = JobConfig::empty();
+                config.max_tokens = Some(7000);
+                config.other_model_params = Some(json!({"max_completion_tokens":requested}));
+                add_options_to_payload(&mut payload, Some(&config));
+                assert_eq!(
+                    payload["max_completion_tokens"],
+                    if requested == 500 { json!(500) } else { json!(2000) }
+                );
+                assert_eq!(payload[initial_key].as_u64().unwrap() <= 2000, true);
+            }
+            let mut payload = json!({});
+            payload[initial_key] = json!(2000);
+            let mut config = JobConfig::empty();
+            config.max_tokens = Some(600);
+            add_options_to_payload(&mut payload, Some(&config));
+            assert_eq!(payload["max_completion_tokens"], 600);
+        }
+    }
+
+    #[tokio::test]
+    async fn legacy_chat_request_caps_config_and_custom_output_limits() {
+        use mockito::Matcher;
+        use shinkai_embedding::model_type::EmbeddingModelType;
+        let provider = OpenAILegacy {
+            model_type: "gpt-4.1".into(),
+        };
+        let model = LLMProviderInterface::OpenAILegacy(provider.clone());
+        let mut prompt = Prompt::new();
+        prompt.add_content(
+            "Hello".into(),
+            shinkai_message_primitives::schemas::subprompts::SubPromptType::User,
+            100,
+        );
+        let prepared = openai_prepare_messages(&model, prompt.clone()).unwrap();
+        let budget = prepared.remaining_output_tokens as u64;
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v1/chat/completions")
+            .match_body(Matcher::PartialJson(
+                json!({"model":"gpt-4.1","stream":false,"max_tokens":budget,"max_completion_tokens":budget}),
+            ))
+            .with_header("content-type", "application/json")
+            .with_body(
+                json!({"id":"response","object":"chat.completion","created":1,
+                    "usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2},
+                    "choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+        let temp = tempfile::tempdir().unwrap();
+        let db = Arc::new(
+            SqliteManager::new(
+                temp.path().join("test.db"),
+                String::new(),
+                EmbeddingModelType::default(),
+            )
+            .unwrap(),
+        );
+        let mut config = JobConfig::empty();
+        config.stream = Some(false);
+        config.max_tokens = Some(budget + 1000);
+        config.other_model_params = Some(json!({"max_completion_tokens":budget + 2000}));
+        let response = provider
+            .call_api(
+                &Client::new(),
+                Some(&server.url()),
+                Some(&"test-key".into()),
+                prompt,
+                model,
+                None,
+                None,
+                Some(config),
+                Arc::new(LLMStopper::new()),
+                db,
+                None,
+            )
+            .await
+            .unwrap();
+        mock.assert_async().await;
+        assert_eq!(response.response_string, "ok");
+    }
+
+    #[tokio::test]
+    async fn generic_chat_does_not_store_unused_together_or_groq_reasoning() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server.mock("POST","/chat/completions").expect(2)
+            .with_header("content-type","application/json")
+            .with_body(json!({"id":"response","object":"chat.completion","created":1,
+                "usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2},
+                "choices":[{"index":0,"message":{"role":"assistant","content":null,
+                    "reasoning_content":"", "reasoning":"unused provider reasoning", "reasoning_details":[{"data":"unused encrypted data"}],
+                    "tool_calls":[{"id":"native","type":"function","function":{"name":"lookup","arguments":"{}"}}]
+                },"finish_reason":"tool_calls"}]
+            }).to_string()).create_async().await;
+        for model in ["moonshotai/Kimi-K3", "openai/gpt-oss-120b"] {
+            let response = handle_non_streaming_response(
+                &Client::new(),
+                format!("{}/chat/completions", server.url()),
+                json!({"model":model,"stream":false}),
+                "test-key".into(),
+                None,
+                Arc::new(LLMStopper::new()),
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+            assert_eq!(response.function_calls.len(), 1);
+            assert!(response.function_calls[0].provider_metadata.is_none());
+            assert_eq!(response.reasoning_content.as_deref(), Some("unused provider reasoning"));
+        }
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_non_streaming_keeps_parallel_calls_and_router_keys() {
+        let mut server = mockito::Server::new_async().await;
+        let call = |id: &str, name: &str| {
+            json!({
+                "id": id, "type": "function", "function": {"name": name, "arguments": "{\"value\":1}"}
+            })
+        };
+        let details = json!([{ "type": "reasoning.encrypted", "data": "signed" }]);
+        let mock = server
+            .mock("POST", "/chat/completions")
+            .with_header("content-type", "application/json")
+            .with_body(
+                json!({
+                    "id": "response", "object": "chat.completion", "created": 1,
+                "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
+                    "choices": [
+                        {"index": 0, "message": {"role": "assistant", "content": null,
+                            "reasoning_content": "reason", "reasoning_details": details,
+                            "tool_calls": [call("native-first", "first"), call("native-second", "second")]
+                        }, "finish_reason": "tool_calls"},
+                        {"index": 1, "message": {"role": "assistant", "content": "alternative",
+                            "tool_calls": [call("ignored", "third")]}, "finish_reason": "tool_calls"}
+                    ]
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+        let response = handle_non_streaming_response(
+            &Client::new(),
+            format!("{}/chat/completions", server.url()),
+            json!({"stream": false}),
+            "test-key".into(),
+            None,
+            Arc::new(LLMStopper::new()),
+            None,
+            Some(vec![
+                json!({"type": "function", "function": {"name": "first", "tool_router_key": "router-first"}}),
+                json!({"name": "second", "tool_router_key": "router-second"}),
+            ]),
+            None,
+        )
+        .await
+        .unwrap();
+        mock.assert_async().await;
+        assert!(response.response_string.is_empty());
+        assert_eq!(response.reasoning_content.as_deref(), Some("reason"));
+        assert_eq!(response.function_calls.len(), 2);
+        for (index, (id, key)) in [("native-first", "router-first"), ("native-second", "router-second")]
+            .into_iter()
+            .enumerate()
+        {
+            let call = &response.function_calls[index];
+            assert_eq!(call.id.as_deref(), Some(id));
+            assert_eq!(call.index, index as u64);
+            assert_eq!(call.tool_router_key.as_deref(), Some(key));
+            assert_eq!(call.arguments["value"], 1);
+            assert!(call.provider_metadata.is_none());
+        }
     }
 
     #[test]
@@ -2281,4 +3897,158 @@ fn log_request_to_file(payload: &JsonValue) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod cancellation_and_legacy_tests {
+    use super::*;
+    use crate::llm_provider::execution::chains::generic_chain::generic_inference_chain::execute_valid_function_call;
+    use crate::managers::tool_router::ToolCallFunctionResponse;
+
+    fn event(value: JsonValue) -> String {
+        format!("data: {value}\n\n")
+    }
+
+    #[tokio::test]
+    async fn compatible_and_complete_identity_stops_never_return_executable_calls() {
+        for mode in [ToolIdentityMode::Fragments, ToolIdentityMode::Complete] {
+            for eof_after_stop in [false, true] {
+                let mut server = mockito::Server::new_async().await;
+                let inbox = InboxName::get_job_inbox_name_from_params("chat-stop".into()).unwrap();
+                let stopper = Arc::new(LLMStopper::new());
+                let writer_stopper = stopper.clone();
+                let writer_inbox = inbox.clone();
+                let first = event(
+                    json!({"choices":[{"index":0,"delta":{"content":"Text","reasoning":"Plan","tool_calls":[
+                    {"index":0,"id":"call_finished","type":"function","function":{"name":"zero","arguments":"{}"}}
+                ]},"finish_reason":"tool_calls"}]}),
+                );
+                let mock = server
+                    .mock("POST", "/chat/completions")
+                    .with_header("content-type", "text/event-stream")
+                    .with_chunked_body(move |writer| {
+                        writer.write_all(first.as_bytes())?;
+                        writer.flush()?;
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                        writer_stopper.stop(&writer_inbox.to_string());
+                        if !eof_after_stop {
+                            writer.write_all(b"data: [DONE]\n\n")?;
+                            writer.flush()?;
+                        }
+                        Ok(())
+                    })
+                    .create_async()
+                    .await;
+                let result = handle_streaming_response_with_identity_mode(
+                    &Client::new(),
+                    format!("{}/chat/completions", server.url()),
+                    json!({}),
+                    "test".into(),
+                    Some(inbox.clone()),
+                    None,
+                    stopper.clone(),
+                    "test".into(),
+                    None,
+                    None,
+                    mode,
+                )
+                .await
+                .unwrap();
+                mock.assert_async().await;
+                assert_eq!(result.response_string, "Text");
+                assert_eq!(result.reasoning_content.as_deref(), Some("Plan"));
+                assert!(!stopper.should_stop(&inbox.to_string()));
+                let mut executed = false;
+                for call in &result.function_calls {
+                    let execution_call = call.clone();
+                    let _ = execute_valid_function_call(call, async {
+                        executed = true;
+                        Ok(ToolCallFunctionResponse {
+                            function_call: execution_call,
+                            response: "executed".into(),
+                        })
+                    })
+                    .await;
+                }
+                assert!(!executed);
+                assert!(result.function_calls.is_empty());
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn legacy_string_fragments_are_decoded_once_and_keep_execution_guards() {
+        let cases = [
+            (vec![json!("{\"city\":"), json!("\"Paris\\\" Centre\"}")], true, true),
+            (vec![json!(""), json!("{}")], true, true),
+            (vec![json!("  ")], true, true),
+            (vec![json!(null), json!("{}")], true, true),
+            (vec![json!(null)], true, false),
+            (vec![json!({})], true, false),
+            (vec![json!([])], true, false),
+            (vec![json!("null")], true, false),
+            (vec![json!("{")], true, false),
+            (vec![json!("")], false, false),
+        ];
+        for (case_index, (fragments, completed, valid)) in cases.into_iter().enumerate() {
+            let mut server = mockito::Server::new_async().await;
+            let mut body = event(json!({"choices":[{"index":0,"delta":{"function_call":{"name":"zero"}}}]}));
+            for fragment in fragments {
+                body.push_str(&event(
+                    json!({"choices":[{"index":0,"delta":{"function_call":{"arguments":fragment}}}]}),
+                ));
+            }
+            if completed {
+                body.push_str(&event(
+                    json!({"choices":[{"index":0,"delta":{},"finish_reason":"function_call"}]}),
+                ));
+                body.push_str("data: [DONE]\n\n");
+            }
+            let mock = server
+                .mock("POST", "/chat/completions")
+                .with_header("content-type", "text/event-stream")
+                .with_body(body)
+                .create_async()
+                .await;
+            let result = handle_streaming_response(
+                &Client::new(),
+                format!("{}/chat/completions", server.url()),
+                json!({}),
+                "test".into(),
+                None,
+                None,
+                Arc::new(LLMStopper::new()),
+                "test".into(),
+                Some(vec![json!({"name":"zero","tool_router_key":"zero-router"})]),
+                None,
+            )
+            .await
+            .unwrap();
+            mock.assert_async().await;
+            assert_eq!(result.function_calls.len(), 1);
+            let call = &result.function_calls[0];
+            assert_eq!(call.name, "zero");
+            assert_eq!(call.tool_router_key.as_deref(), Some("zero-router"));
+            if case_index == 0 {
+                assert_eq!(
+                    call.arguments,
+                    json!({"city":"Paris\" Centre"}).as_object().unwrap().clone()
+                );
+            } else {
+                assert!(call.arguments.is_empty());
+            }
+            let mut executed = false;
+            let execution_call = call.clone();
+            let outcome = execute_valid_function_call(call, async {
+                executed = true;
+                Ok(ToolCallFunctionResponse {
+                    function_call: execution_call,
+                    response: "executed".into(),
+                })
+            })
+            .await;
+            assert_eq!(executed, valid);
+            assert_eq!(outcome.is_ok(), valid);
+        }
+    }
 }

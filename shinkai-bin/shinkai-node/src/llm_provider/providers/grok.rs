@@ -8,7 +8,7 @@ use super::shared::shared_model_logic::{send_tool_ws_update, send_ws_update};
 use super::LLMService;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
 use crate::llm_provider::llm_stopper::LLMStopper;
-use crate::managers::model_capabilities_manager::PromptResultEnum;
+use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
 use async_trait::async_trait;
 use futures::StreamExt;
 use reqwest::Client;
@@ -44,7 +44,7 @@ impl LLMService for Grok {
         let session_id = Uuid::new_v4().to_string();
         if let Some(base_url) = url {
             if let Some(key) = api_key {
-                let url = format!("{}/v1/chat/completions", base_url);
+                let url = grok_chat_url(base_url);
                 let is_stream = config.as_ref().and_then(|c| c.stream).unwrap_or(true);
 
                 let result = openai_prepare_messages(&model, prompt)?;
@@ -61,11 +61,12 @@ impl LLMService for Grok {
                 let tools_json = result.functions.clone().unwrap_or_else(Vec::new);
                 let original_tools = result.functions.clone();
 
-                let mut payload = json!({
-                    "model": self.model_type,
-                    "messages": messages_json,
-                    "stream": is_stream,
-                });
+                let mut payload = initial_grok_payload(
+                    &self.model_type,
+                    messages_json,
+                    result.remaining_output_tokens,
+                    is_stream,
+                );
 
                 // Add tools to payload if they exist, but remove tool_router_key
                 if !tools_json.is_empty() {
@@ -365,6 +366,7 @@ async fn handle_streaming_response(
                                                                         });
 
                                                                     let function_call = FunctionCall {
+                                                                        provider_metadata: None,
                                                                         name: name.as_str().unwrap_or("").to_string(),
                                                                         arguments: fc_arguments.clone(),
                                                                         tool_router_key,
@@ -438,6 +440,31 @@ async fn handle_streaming_response(
                     format!("Error while receiving chunk: {:?}, Error Source: {:?}", e, e.source()).as_str(),
                 );
             }
+        }
+    }
+
+    // A stop can arrive while the last stream poll returns EOF, without another chunk.
+    if let Some(ref inbox) = inbox_name {
+        if llm_stopper.should_stop(&inbox.to_string()) {
+            llm_stopper.reset(&inbox.to_string());
+            let _ = send_ws_update(
+                &ws_manager_trait,
+                Some(inbox.clone()),
+                &session_id,
+                response_text.clone(),
+                false,
+                true,
+                Some("Stopped by user request".to_string()),
+            )
+            .await;
+            return Ok(LLMInferenceResponse::new(
+                response_text,
+                None,
+                json!({}),
+                Vec::new(),
+                Vec::new(),
+                None,
+            ));
         }
     }
 
@@ -586,6 +613,7 @@ async fn handle_non_streaming_response(
                                     });
 
                                     calls.push(FunctionCall {
+                    provider_metadata: None,
                                         name: tool_call.function.name.clone(),
                                         arguments,
                                         tool_router_key,
@@ -634,7 +662,33 @@ async fn handle_non_streaming_response(
     }
 }
 
+fn grok_chat_url(base_url: &str) -> String {
+    let base_url = base_url.trim_end_matches('/');
+    if base_url.ends_with("/v1") {
+        format!("{}/chat/completions", base_url)
+    } else {
+        format!("{}/v1/chat/completions", base_url)
+    }
+}
+
+fn initial_grok_payload(
+    model: &str,
+    messages: JsonValue,
+    remaining_output_tokens: usize,
+    is_stream: bool,
+) -> JsonValue {
+    json!({
+        "model": model,
+        "messages": messages,
+        "max_completion_tokens": remaining_output_tokens,
+        "stream": is_stream,
+    })
+}
+
 fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobConfig>) {
+    // Message preparation bounds output by both the model limit and the remaining context.
+    let prepared_output_budget = payload["max_completion_tokens"].as_u64();
+
     // Helper function to read and parse environment variables
     fn read_env_var<T: std::str::FromStr>(key: &str) -> Option<T> {
         std::env::var(key).ok().and_then(|val| val.parse::<T>().ok())
@@ -659,11 +713,16 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
         payload["max_completion_tokens"] = serde_json::json!(max_tokens);
     }
 
+    if let Some(effort) = config.and_then(|c| c.reasoning_effort.as_ref()) {
+        payload["reasoning_effort"] = json!(effort);
+    }
+
     // Handle other model params
     if let Some(other_params) = config.and_then(|c| c.other_model_params.as_ref()) {
         if let Some(obj) = other_params.as_object() {
             for (key, value) in obj {
                 match key.as_str() {
+                    "reasoning_effort" => payload["reasoning_effort"] = value.clone(),
                     "frequency_penalty" => payload["frequency_penalty"] = value.clone(),
                     "logit_bias" => payload["logit_bias"] = value.clone(),
                     "logprobs" => payload["logprobs"] = value.clone(),
@@ -680,5 +739,235 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
                 };
             }
         }
+    }
+    // Apply the original budget after config, environment, and custom options are merged.
+    if let Some(budget) = prepared_output_budget {
+        let requested_limit = payload["max_completion_tokens"]
+            .as_u64()
+            .filter(|limit| *limit > 0)
+            .unwrap_or(budget);
+        payload["max_completion_tokens"] = json!(requested_limit.min(budget));
+    }
+    // The older Grok 4 models do not support adjustable reasoning effort.
+    let model = payload["model"].as_str().unwrap_or_default();
+    let supports_effort = model.starts_with("grok-3-mini")
+        || ["grok-4.5", "grok-4.6", "grok-4.7"]
+            .iter()
+            .any(|prefix| model.starts_with(prefix));
+    let is_reasoning = ModelCapabilitiesManager::grok_has_reasoning_capabilities(model);
+    if !supports_effort {
+        payload.as_object_mut().unwrap().remove("reasoning_effort");
+    }
+    // xAI rejects penalties and stop sequences for reasoning models.
+    if is_reasoning {
+        let payload = payload.as_object_mut().unwrap();
+        for key in ["presence_penalty", "frequency_penalty", "stop"] {
+            payload.remove(key);
+        }
+    }
+}
+
+#[cfg(test)]
+mod cancellation_tests {
+    use super::*;
+    use shinkai_message_primitives::schemas::ws_types::{WSMessageType, WSMetadata};
+    use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
+
+    struct StreamUpdates {
+        events: Arc<std::sync::Mutex<Vec<(String, WSMetadata)>>>,
+        parsed: std::sync::mpsc::Sender<()>,
+    }
+
+    #[async_trait]
+    impl WSUpdateHandler for StreamUpdates {
+        async fn queue_message(&self, _: WSTopic, _: String, update: String, metadata: WSMessageType, _: bool) {
+            if let WSMessageType::Metadata(metadata) = metadata {
+                let parsed = update == "Text" && !metadata.is_done;
+                self.events.lock().unwrap().push((update, metadata));
+                if parsed {
+                    let _ = self.parsed.send(());
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn grok_stop_at_eof_discards_completed_calls_and_reports_stop() {
+        for stop_at_eof in [false, true] {
+            let mut server = mockito::Server::new_async().await;
+            let inbox = InboxName::get_job_inbox_name_from_params("grok-eof-stop".into()).unwrap();
+            let stopper = Arc::new(LLMStopper::new());
+            let writer_stopper = stopper.clone();
+            let writer_inbox = inbox.clone();
+            let (parsed, received) = std::sync::mpsc::channel();
+            let received = std::sync::Mutex::new(received);
+            let events = Arc::new(std::sync::Mutex::new(Vec::new()));
+            let manager: Arc<Mutex<dyn WSUpdateHandler + Send>> = Arc::new(Mutex::new(StreamUpdates {
+                events: events.clone(),
+                parsed,
+            }));
+            let body = format!(
+                "data: {}\n\n",
+                json!({"choices":[{"index":0,"delta":{
+                "content":"Text", "tool_calls":[{"index":0,"id":"completed-call","type":"function",
+                "function":{"name":"weather","arguments":"{\"city\":\"Paris\"}"}}]
+            },"finish_reason":"tool_calls"}]})
+            );
+            let mock = server
+                .mock("POST", "/chat/completions")
+                .with_header("content-type", "text/event-stream")
+                .with_chunked_body(move |writer| {
+                    writer.write_all(body.as_bytes())?;
+                    writer.flush()?;
+                    // Close only after the real parser has stored the call and its text.
+                    received
+                        .lock()
+                        .unwrap()
+                        .recv_timeout(std::time::Duration::from_secs(5))
+                        .map_err(|error| std::io::Error::new(std::io::ErrorKind::TimedOut, error))?;
+                    if stop_at_eof {
+                        writer_stopper.stop(&writer_inbox.to_string());
+                    }
+                    Ok(())
+                })
+                .create_async()
+                .await;
+            let response = tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                handle_streaming_response(
+                    &Client::new(),
+                    format!("{}/chat/completions", server.url()),
+                    json!({}),
+                    "test".into(),
+                    Some(inbox.clone()),
+                    Some(manager),
+                    stopper.clone(),
+                    "test-session".into(),
+                    Some(vec![
+                        json!({"function":{"name":"weather","tool_router_key":"weather-route"}}),
+                    ]),
+                ),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            mock.assert_async().await;
+            assert_eq!(response.response_string, "Text");
+            assert!(response.reasoning_content.is_none());
+            assert!(!stopper.should_stop(&inbox.to_string()));
+            let events = events.lock().unwrap();
+            let stopped: Vec<_> = events
+                .iter()
+                .filter(|(_, metadata)| metadata.done_reason.as_deref() == Some("Stopped by user request"))
+                .collect();
+            if stop_at_eof {
+                assert!(response.function_calls.is_empty());
+                assert_eq!(stopped.len(), 1);
+                assert_eq!(stopped[0].0, "Text");
+                assert!(stopped[0].1.is_done);
+                assert!(!stopped[0].1.is_reasoning);
+                assert_eq!(
+                    events.last().unwrap().1.done_reason.as_deref(),
+                    Some("Stopped by user request")
+                );
+            } else {
+                assert!(stopped.is_empty());
+                assert_eq!(response.function_calls.len(), 1);
+                let call = &response.function_calls[0];
+                assert_eq!(call.name, "weather");
+                assert_eq!(call.tool_router_key.as_deref(), Some("weather-route"));
+                assert_eq!(call.arguments["city"], "Paris");
+                assert_eq!(events.last().unwrap().1.done_reason.as_deref(), Some("finished"));
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod request_tests {
+    use super::*;
+    use shinkai_message_primitives::schemas::subprompts::{SubPrompt, SubPromptType};
+
+    #[test]
+    fn grok_requests_keep_the_prepared_output_budget() {
+        for id in ["grok-4.7", "grok-4", "grok-3", "grok-4-1-fast-non-reasoning"] {
+            let model = LLMProviderInterface::Grok(Grok { model_type: id.into() });
+            let mut prompt = Prompt::new();
+            prompt.add_sub_prompts(vec![SubPrompt::Content(SubPromptType::User, "Hello".into(), 100)]);
+            let prepared = openai_prepare_messages(&model, prompt).unwrap();
+            let budget = prepared.remaining_output_tokens as u64;
+            assert!(budget > 1024, "{}", id);
+            let PromptResultEnum::Value(messages) = prepared.messages else {
+                panic!("Expected prepared JSON messages");
+            };
+            let initial = initial_grok_payload(id, messages.clone(), prepared.remaining_output_tokens, false);
+            assert_eq!(initial["max_completion_tokens"], budget);
+            assert_eq!(initial["model"], id);
+            assert_eq!(initial["messages"], messages);
+            assert_eq!(initial["stream"], false);
+
+            let mut config = JobConfig::empty();
+            for (limit, expected) in [(budget + 1, budget), (1024, 1024)] {
+                config.max_tokens = Some(limit);
+                let mut payload = initial.clone();
+                add_options_to_payload(&mut payload, Some(&config));
+                assert_eq!(payload["max_completion_tokens"], expected, "{}", id);
+            }
+            // Custom limits override config, but cannot bypass the original prepared budget.
+            config.max_tokens = Some(1024);
+            for (limit, expected) in [
+                (json!(budget + 1), budget),
+                (json!(256), 256),
+                (json!(null), budget),
+                (json!(0), budget),
+                (json!(-1), budget),
+                (json!(1.5), budget),
+                (json!("invalid"), budget),
+                (json!(false), budget),
+            ] {
+                config.other_model_params = Some(json!({"max_completion_tokens": limit}));
+                let mut payload = initial.clone();
+                add_options_to_payload(&mut payload, Some(&config));
+                assert_eq!(payload["max_completion_tokens"], expected, "{}", id);
+                assert!(payload.get("max_tokens").is_none());
+                assert_eq!(payload["model"], initial["model"]);
+                assert_eq!(payload["messages"], initial["messages"]);
+                assert_eq!(payload["stream"], false);
+            }
+        }
+    }
+
+    #[test]
+    fn grok_url_accepts_root_and_versioned_base() {
+        for base in [
+            "https://api.x.ai",
+            "https://api.x.ai/",
+            "https://api.x.ai/v1",
+            "https://api.x.ai/v1/",
+        ] {
+            assert_eq!(grok_chat_url(base), "https://api.x.ai/v1/chat/completions");
+        }
+    }
+
+    #[test]
+    fn grok_reasoning_options_remove_rejected_fields() {
+        let mut config = JobConfig::empty();
+        config.reasoning_effort = Some("high".to_string());
+        config.other_model_params = Some(json!({"presence_penalty": 0.5, "frequency_penalty": 0.5, "stop": ["END"]}));
+        for model in ["grok-4.7", "grok-4.6", "grok-4.5", "grok-4", "grok-3-mini"] {
+            let mut payload = json!({"model": model});
+            add_options_to_payload(&mut payload, Some(&config));
+            if model == "grok-4" {
+                assert!(payload.get("reasoning_effort").is_none());
+            } else {
+                assert_eq!(payload["reasoning_effort"], "high");
+            }
+            for field in ["presence_penalty", "frequency_penalty", "stop"] {
+                assert!(payload.get(field).is_none(), "{} contains {}", model, field);
+            }
+        }
+        let mut payload = json!({"model": "grok-4-1-fast-non-reasoning"});
+        add_options_to_payload(&mut payload, Some(&config));
+        assert_eq!(payload["presence_penalty"], 0.5);
     }
 }

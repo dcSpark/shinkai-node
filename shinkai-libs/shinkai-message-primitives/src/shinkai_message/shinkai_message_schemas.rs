@@ -281,6 +281,8 @@ pub struct MessageMetadata {
 // New struct for function call metadata
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, ToSchema)]
 pub struct FunctionCallMetadata {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_metadata: Option<serde_json::Value>,
     pub name: String,
     pub arguments: serde_json::Map<String, serde_json::Value>,
     pub tool_router_key: Option<String>,
@@ -634,6 +636,7 @@ mod tests {
                 tps: Some("10".to_string()),
                 duration_ms: Some("100".to_string()),
                 function_calls: Some(vec![FunctionCallMetadata {
+                    provider_metadata: None,
                     name: "test_function".to_string(),
                     arguments: {
                         let mut map = serde_json::Map::new();

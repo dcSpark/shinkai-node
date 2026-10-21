@@ -33,6 +33,9 @@ pub struct FunctionDetails {
 /// The structure for a function call with detailed parameters.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DetailedFunctionCall {
+    /// Opaque provider data needed to continue a tool call.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_metadata: Option<Value>,
     /// The name of the function.
     pub name: String,
     /// The arguments of the function call.

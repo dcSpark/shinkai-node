@@ -595,3 +595,175 @@ mod tests {
         assert!(num_tokens_llama3 > 13000);
     }
 }
+
+#[cfg(test)]
+mod current_model_tests {
+    use super::super::model_capabilities_manager::{ModelCapabilitiesManager as Manager, ModelCapability};
+    use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
+        Claude, DeepSeek, Gemini, Groq, LLMProviderInterface, Ollama, OpenAI, OpenAILegacy, OpenRouter,
+    };
+
+    #[test]
+    fn gpt6_limits_and_endpoint_tools() {
+        for id in ["gpt-6-astra", "gpt-6.1-sol", "gpt-6-sol", "gpt-6-luna"] {
+            let model = LLMProviderInterface::OpenAI(OpenAI { model_type: id.into() });
+            assert_eq!(Manager::get_max_tokens(&model), 1_050_000);
+            assert_eq!(Manager::get_max_input_tokens(&model), 922_000);
+            assert_eq!(Manager::get_max_output_tokens(&model), 128_000);
+            assert!(Manager::has_reasoning_capabilities(&model));
+            assert!(Manager::has_tool_capabilities(&model, None));
+            assert!(Manager::get_llm_provider_capabilities(&model).contains(&ModelCapability::ImageAnalysis));
+            let legacy = LLMProviderInterface::OpenAILegacy(OpenAILegacy { model_type: id.into() });
+            assert!(Manager::has_tool_capabilities(&legacy, None));
+        }
+    }
+
+    #[test]
+    fn current_multimodal_model_limits() {
+        for id in ["gemini-4-argon", "gemini-3.8-flash", "gemini-3.5-flash-lite"] {
+            let model = LLMProviderInterface::Gemini(Gemini { model_type: id.into() });
+            assert_eq!(Manager::get_max_tokens(&model), 1_048_576);
+            assert_eq!(Manager::get_max_output_tokens(&model), 65_536);
+            assert!(Manager::has_reasoning_capabilities(&model));
+            assert!(Manager::has_tool_capabilities(&model, None));
+            assert!(Manager::get_llm_provider_capabilities(&model).contains(&ModelCapability::AudioAnalysis));
+        }
+        for id in [
+            "claude-fable-5-1",
+            "claude-opus-5-5",
+            "claude-sonnet-5-5",
+            "claude-haiku-5-5",
+        ] {
+            let model = LLMProviderInterface::Claude(Claude { model_type: id.into() });
+            assert_eq!(Manager::get_max_tokens(&model), 1_000_000);
+            assert_eq!(Manager::get_max_output_tokens(&model), 128_000);
+            assert!(Manager::has_reasoning_capabilities(&model));
+        }
+    }
+
+    #[test]
+    fn openrouter_current_routes_override_old_catalog() {
+        for (id, context, output) in [
+            ("openai/gpt-6.1-sol", 1_050_000, 128_000),
+            ("anthropic/claude-opus-5.5", 1_000_000, 128_000),
+            ("google/gemini-4-argon", 1_048_576, 943_718),
+        ] {
+            let model = LLMProviderInterface::OpenRouter(OpenRouter { model_type: id.into() });
+            assert_eq!(Manager::get_max_tokens(&model), context);
+            assert_eq!(Manager::get_max_output_tokens(&model), output);
+            assert!(Manager::has_tool_capabilities(&model, None));
+            assert!(Manager::has_reasoning_capabilities(&model));
+            assert!(Manager::get_llm_provider_capabilities(&model).contains(&ModelCapability::ImageAnalysis));
+        }
+    }
+
+    #[test]
+    fn current_provider_limits_and_vision() {
+        let flash = LLMProviderInterface::DeepSeek(DeepSeek {
+            model_type: "deepseek-flash".into(),
+        });
+        assert_eq!(Manager::get_max_tokens(&flash), 1_000_000);
+        assert_eq!(Manager::get_max_output_tokens(&flash), 393_216);
+        assert!(Manager::get_llm_provider_capabilities(&flash).contains(&ModelCapability::ImageAnalysis));
+        let pro = LLMProviderInterface::DeepSeek(DeepSeek {
+            model_type: "deepseek-v4-pro".into(),
+        });
+        assert!(!Manager::get_llm_provider_capabilities(&pro).contains(&ModelCapability::ImageAnalysis));
+        let groq = LLMProviderInterface::Groq(Groq {
+            model_type: "qwen/qwen3.8-27b".into(),
+        });
+        assert_eq!(Manager::get_max_tokens(&groq), 131_042);
+        assert_eq!(Manager::get_max_output_tokens(&groq), 16_384);
+        assert!(Manager::has_tool_capabilities(&groq, None));
+        assert!(Manager::has_reasoning_capabilities(&groq));
+        for id in ["llama3.2-vision", "qwen3.5:9b"] {
+            let model = LLMProviderInterface::Ollama(Ollama { model_type: id.into() });
+            assert!(Manager::get_llm_provider_capabilities(&model).contains(&ModelCapability::ImageAnalysis));
+        }
+        let route = LLMProviderInterface::OpenRouter(OpenRouter {
+            model_type: "deepseek/deepseek-v4.1-flash-1017".into(),
+        });
+        assert_eq!(Manager::get_max_tokens(&route), 1_048_576);
+        assert_eq!(Manager::get_max_output_tokens(&route), 393_216);
+        assert!(Manager::has_tool_capabilities(&route, None));
+        assert!(Manager::get_llm_provider_capabilities(&route).contains(&ModelCapability::ImageAnalysis));
+    }
+}
+
+#[cfg(test)]
+mod together_reasoning_tests {
+    use super::super::model_capabilities_manager::ModelCapabilitiesManager;
+    use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
+        LLMProviderInterface, TogetherAI,
+    };
+
+    #[test]
+    fn current_together_models_support_reasoning() {
+        for id in ["moonshotai/Kimi-K3", "MiniMaxAI/MiniMax-M3", "Qwen/Qwen3.5-9B"] {
+            assert!(ModelCapabilitiesManager::has_reasoning_capabilities(
+                &LLMProviderInterface::TogetherAI(TogetherAI { model_type: id.into() })
+            ));
+        }
+    }
+}
+
+#[cfg(test)]
+mod provider_configuration_tests {
+    use super::super::model_capabilities_manager::{ModelCapabilitiesManager as Manager, ModelCapability};
+    use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::LLMProviderInterface;
+    use std::str::FromStr;
+
+    #[test]
+    fn environment_together_ids_keep_their_capabilities_after_parsing() {
+        for (id, context) in [
+            ("moonshotai/Kimi-K3", 1_048_576),
+            ("MiniMaxAI/MiniMax-M3", 524_288),
+            ("Qwen/Qwen3.5-9B", 262_144),
+        ] {
+            let model = LLMProviderInterface::from_str(&format!("ToGeThErAi:{id}")).unwrap();
+            let LLMProviderInterface::TogetherAI(provider) = &model else {
+                panic!("Expected TogetherAI")
+            };
+            assert_eq!(provider.model_type, id);
+            assert_eq!(Manager::get_max_tokens(&model), context);
+            assert!(Manager::get_llm_provider_capabilities(&model).contains(&ModelCapability::ImageAnalysis));
+            assert!(Manager::has_tool_capabilities(&model, None));
+            assert!(Manager::has_reasoning_capabilities(&model));
+            let stored = serde_json::to_value(&model).unwrap();
+            assert_eq!(serde_json::from_value::<LLMProviderInterface>(stored).unwrap(), model);
+        }
+    }
+
+    #[test]
+    fn exo_tools_require_a_verified_loaded_model() {
+        for id in [
+            "Qwen/Qwen3.5-9B",
+            "mlx-community/Qwen3.5-9B-4bit",
+            "mlx-community/Qwen3.5-9B-8bit",
+        ] {
+            let model = LLMProviderInterface::from_str(&format!("ExO:{id}")).unwrap();
+            assert!(Manager::has_tool_capabilities(&model, Some(true)), "{id}");
+            assert!(Manager::has_tool_capabilities(&model, Some(false)), "{id}");
+        }
+        for id in [
+            "mlx-community/Llama-3.2-1B-Instruct-4bit",
+            "custom/plain-text-model",
+            "custom/Qwen3.5-9B-4bit",
+            "mlx-community/Qwen3.5-9B-4bit-custom",
+        ] {
+            let model = LLMProviderInterface::from_str(&format!("exo:{id}")).unwrap();
+            assert!(!Manager::has_tool_capabilities(&model, None), "{id}");
+        }
+    }
+
+    #[test]
+    fn only_documented_direct_gpt6_aliases_use_gpt6_capabilities() {
+        for id in ["gpt-6-sol-pro", "gpt-6.1-sol-pro", "gpt-6-sol-2099-01-01"] {
+            let model = LLMProviderInterface::from_str(&format!("openai:{id}")).unwrap();
+            assert!(!Manager::is_gpt6(id));
+            assert!(!Manager::has_reasoning_capabilities(&model));
+            assert!(!Manager::get_llm_provider_capabilities(&model).contains(&ModelCapability::ImageAnalysis));
+            assert_ne!(Manager::get_max_tokens(&model), 1_050_000);
+        }
+    }
+}

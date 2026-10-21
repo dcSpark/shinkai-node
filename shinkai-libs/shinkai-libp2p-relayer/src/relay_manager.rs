@@ -256,7 +256,68 @@ impl RelayManager {
     ) -> Result<Self, LibP2PRelayError> {
         // Detect external IP address first
         let external_ip = Self::detect_external_ip().await;
+        Self::new_with_address(
+            format!("/ip4/0.0.0.0/tcp/{listen_port}").parse().unwrap(),
+            listen_port,
+            relay_node_name,
+            identity_secret_key,
+            encryption_secret_key,
+            registry,
+            status_endpoint_url,
+            external_ip,
+        )
+        .await
+    }
 
+    /// Bind a local relay to an OS-selected port without public IP discovery.
+    pub async fn new_loopback(
+        relay_node_name: String,
+        identity_secret_key: SigningKey,
+        encryption_secret_key: EncryptionStaticKey,
+        registry: ShinkaiRegistry,
+    ) -> Result<(Self, std::net::SocketAddr), LibP2PRelayError> {
+        let mut relay = Self::new_with_address(
+            "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
+            0,
+            relay_node_name,
+            identity_secret_key,
+            encryption_secret_key,
+            registry,
+            None,
+            None,
+        )
+        .await?;
+        let address = tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                let event = relay.swarm.select_next_some().await;
+                if let SwarmEvent::NewListenAddr { ref address, .. } = event {
+                    if let Some(libp2p::multiaddr::Protocol::Tcp(port)) = address.iter().last() {
+                        // Circuit reservations must advertise at least one reachable address.
+                        // The local listener is reachable by this fixture's local peers.
+                        relay.swarm.add_external_address(address.clone());
+                        relay.config.listen_port = port;
+                        return Ok::<_, LibP2PRelayError>(std::net::SocketAddr::from(([127, 0, 0, 1], port)));
+                    }
+                }
+                relay.handle_swarm_event(event).await?;
+            }
+        })
+        .await
+        .map_err(|_| LibP2PRelayError::LibP2PError("Timed out binding local relay".into()))??;
+        Ok((relay, address))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn new_with_address(
+        tcp_listen_addr: Multiaddr,
+        listen_port: u16,
+        relay_node_name: String,
+        identity_secret_key: SigningKey,
+        encryption_secret_key: EncryptionStaticKey,
+        registry: ShinkaiRegistry,
+        status_endpoint_url: Option<String>,
+        external_ip: Option<std::net::IpAddr>,
+    ) -> Result<Self, LibP2PRelayError> {
         // Read ping interval from environment variable, default to 10 seconds
         let ping_interval_secs: u64 = std::env::var("PING_INTERVAL_SECS")
             .unwrap_or_else(|_| "10".to_string())
@@ -338,11 +399,6 @@ impl RelayManager {
         // Create swarm with proper configuration and connection limits
         let swarm_config = Config::with_tokio_executor().with_idle_connection_timeout(Duration::from_secs(180)); // Close idle connections after 3 minutes
         let mut swarm = Swarm::new(transport, behaviour, local_peer_id, swarm_config);
-
-        // Listen on TCP - bind to all interfaces
-        let tcp_listen_addr: Multiaddr = format!("/ip4/0.0.0.0/tcp/{}", listen_port)
-            .parse()
-            .map_err(|e| LibP2PRelayError::ConfigurationError(format!("Invalid TCP listen address: {}", e)))?;
 
         swarm
             .listen_on(tcp_listen_addr.clone())
@@ -1904,5 +1960,41 @@ impl RelayManager {
 impl From<noise::Error> for LibP2PRelayError {
     fn from(e: noise::Error) -> Self {
         LibP2PRelayError::LibP2PError(format!("Noise error: {}", e))
+    }
+}
+
+#[cfg(test)]
+mod listener_tests {
+    use super::*;
+    use shinkai_message_primitives::shinkai_utils::{
+        encryption::unsafe_deterministic_encryption_keypair, signatures::unsafe_deterministic_signature_keypair,
+    };
+
+    #[tokio::test]
+    async fn loopback_constructor_returns_owned_distinct_ports_without_public_discovery() {
+        let mut relays = Vec::new();
+        let mut addresses = Vec::new();
+        for seed in [41, 42] {
+            let registry = ShinkaiRegistry::new("http://127.0.0.1:1", "unused", None)
+                .await
+                .unwrap();
+            let (signature, _) = unsafe_deterministic_signature_keypair(seed);
+            let (encryption, _) = unsafe_deterministic_encryption_keypair(seed);
+            let (relay, address) =
+                RelayManager::new_loopback("@@local-relay.sep-shinkai".into(), signature, encryption, registry)
+                    .await
+                    .unwrap();
+            assert!(address.ip().is_loopback());
+            assert_ne!(address.port(), 0);
+            assert!(relay.get_external_ip().is_none());
+            assert!(relay
+                .swarm
+                .external_addresses()
+                .any(|advertised| { advertised.to_string() == format!("/ip4/127.0.0.1/tcp/{}", address.port()) }));
+            assert!(std::net::TcpListener::bind(address).is_err());
+            addresses.push(address);
+            relays.push(relay);
+        }
+        assert_ne!(addresses[0], addresses[1]);
     }
 }
