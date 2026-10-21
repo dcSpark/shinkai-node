@@ -56,6 +56,7 @@ pub fn process_llm_messages(
     let messages_json = serde_json::to_value(messages_with_role)?;
     let tools_json = serde_json::to_value(tools)?;
 
+    let mut native_turns = std::collections::HashSet::new();
     let messages_vec = match messages_json {
         serde_json::Value::Array(arr) => {
             // First pass: collect function calls and generate unique IDs
@@ -123,6 +124,13 @@ pub fn process_llm_messages(
                         let key = serde_json::to_string(&content).unwrap_or_default();
                         if last_native_content.as_ref() == Some(&key) { return None; }
                         last_native_content = Some(key);
+                        // A tool_use without a usable identity cannot have a valid result.
+                        // Keep every other native block, especially signed thinking, unchanged.
+                        let content: Vec<_> = content.into_iter().filter(|block| {
+                            block["type"] != "tool_use" || claude_tool_identity(block).is_some()
+                        }).collect();
+                        if content.is_empty() { return None; }
+                        native_turns.insert(serde_json::to_string(&content).unwrap_or_default());
                         return Some(serde_json::json!({"role": "assistant", "content": content}));
                     }
                 }
@@ -267,6 +275,8 @@ pub fn process_llm_messages(
         _ => vec![],
     };
 
+    let messages_vec = complete_tool_results(messages_vec, &native_turns);
+
     let tools_vec = match tools_json {
         serde_json::Value::Array(arr) => arr
             .into_iter()
@@ -311,6 +321,87 @@ pub fn process_llm_messages(
     ))
 }
 
+fn claude_tool_identity(block: &serde_json::Value) -> Option<&str> {
+    if block["type"] != "tool_use" || block["name"].as_str().filter(|name| !name.is_empty()).is_none() {
+        return None;
+    }
+    block["id"].as_str().filter(|id| !id.is_empty())
+}
+
+fn complete_tool_results(
+    messages: Vec<serde_json::Value>,
+    native_turns: &std::collections::HashSet<String>,
+) -> Vec<serde_json::Value> {
+    let mut completed = Vec::new();
+    let mut messages = messages.into_iter().peekable();
+    while let Some(message) = messages.next() {
+        let mut seen = std::collections::HashSet::new();
+        let tool_ids: Vec<String> = if message["role"] == "assistant"
+            && native_turns.contains(&serde_json::to_string(&message["content"]).unwrap_or_default())
+        {
+            message["content"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(claude_tool_identity)
+                .filter(|id| seen.insert((*id).to_owned()))
+                .map(str::to_owned)
+                .collect()
+        } else {
+            Vec::new()
+        };
+        completed.push(message);
+        if tool_ids.is_empty() {
+            continue;
+        }
+        // A result for a filtered unusable native call must not become an orphan.
+        if let Some(next) = messages.peek_mut().filter(|message| message["role"] == "user") {
+            if let Some(blocks) = next["content"].as_array_mut() {
+                blocks.retain(|block| {
+                    block["type"] != "tool_result"
+                        || block["tool_use_id"]
+                            .as_str()
+                            .map(|id| tool_ids.iter().any(|expected| expected == id))
+                            .unwrap_or(false)
+                });
+            }
+        }
+        // Claude requires all outcomes in the user message immediately after tool_use.
+        // Inspect the complete grouped results before adding any missing-result errors.
+        let recorded: std::collections::HashSet<String> = messages
+            .peek()
+            .filter(|message| message["role"] == "user")
+            .and_then(|message| message["content"].as_array())
+            .into_iter()
+            .flatten()
+            .filter(|block| block["type"] == "tool_result")
+            .filter_map(|block| block["tool_use_id"].as_str().map(str::to_owned))
+            .collect();
+        let mut errors: Vec<_> = tool_ids
+            .into_iter()
+            .filter(|id| !recorded.contains(id))
+            .map(|id| {
+                serde_json::json!({
+                    "type": "tool_result", "tool_use_id": id, "is_error": true,
+                    "content": "No execution result is recorded for this tool call."
+                })
+            })
+            .collect();
+        if errors.is_empty() {
+            continue;
+        }
+        if let Some(next) = messages.peek_mut().filter(|message| message["role"] == "user") {
+            if let Some(blocks) = next["content"].as_array_mut() {
+                errors.append(blocks);
+                *blocks = errors;
+                continue;
+            }
+        }
+        completed.push(serde_json::json!({"role": "user", "content": errors}));
+    }
+    completed
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -321,6 +412,90 @@ mod tests {
         llm_providers::serialized_llm_provider::{Claude, SerializedLLMProvider},
         subprompts::{SubPrompt, SubPromptType},
     };
+
+    fn replay_partial_signed_turn(content: serde_json::Value, results: &[(&str, &str)]) -> serde_json::Value {
+        let mut prompt = Prompt::new();
+        prompt.add_content("Use tools".into(), SubPromptType::UserLastMessage, 100);
+        // Only a recorded call reaches Prompt when the chain retries early.
+        let call_id = results.first().map(|(id, _)| *id).unwrap_or("toolu_first");
+        let call_name = if call_id == "toolu_first" { "first" } else { "second" };
+        prompt.add_function_call(
+            json!({
+                "name": call_name, "call_id": call_id, "arguments": {},
+                "provider_metadata": {"claude_content": content}
+            }),
+            100,
+        );
+        for (id, outcome) in results {
+            prompt.add_function_call_response(
+                json!({
+                    "function_call": {"name": if *id == "toolu_first" { "first" } else { "second" }, "id": id},
+                    "response": outcome
+                }),
+                100,
+            );
+        }
+        let prompt = serde_json::from_str(&serde_json::to_string(&prompt).unwrap()).unwrap();
+        let model = LLMProviderInterface::Claude(Claude {
+            model_type: "claude-opus-5-5".into(),
+        });
+        let (result, _) = claude_prepare_messages(&model, prompt).unwrap();
+        let PromptResultEnum::Value(messages) = result.messages else {
+            panic!("Expected messages")
+        };
+        messages
+    }
+
+    #[test]
+    fn skipped_parallel_claude_calls_get_error_results_without_changing_signed_turn() {
+        let native = json!([
+            {"type": "thinking", "thinking": "opaque reasoning", "signature": "signed"},
+            {"type": "redacted_thinking", "data": "opaque redacted"},
+            {"type": "tool_use", "id": "toolu_first", "name": "first", "input": {}},
+            {"type": "tool_use", "id": "toolu_second", "name": "second", "input": {}}
+        ]);
+        for results in [
+            vec![("toolu_first", "Argument validation failed")],
+            vec![("toolu_second", "actual second result")],
+            vec![],
+        ] {
+            let messages = replay_partial_signed_turn(native.clone(), &results);
+            assert_eq!(messages[1]["content"], native);
+            let outcomes = messages[2]["content"].as_array().unwrap();
+            assert_eq!(outcomes.len(), 2);
+            for id in ["toolu_first", "toolu_second"] {
+                let matching: Vec<_> = outcomes.iter().filter(|block| block["tool_use_id"] == id).collect();
+                assert_eq!(matching.len(), 1);
+                let block = matching[0];
+                if let Some((_, actual)) = results.iter().find(|(recorded, _)| *recorded == id) {
+                    assert_eq!(block["content"], *actual);
+                    assert!(block.get("is_error").is_none());
+                } else {
+                    assert_eq!(block["is_error"], true);
+                    assert_eq!(block["content"], "No execution result is recorded for this tool call.");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn unusable_native_claude_tool_ids_are_not_replayed() {
+        for invalid in [
+            json!({"type": "tool_use", "name": "broken", "input": {}}),
+            json!({"type": "tool_use", "id": "", "name": "broken", "input": {}}),
+            json!({"type": "tool_use", "id": "broken", "name": "", "input": {}}),
+        ] {
+            let thinking = json!({"type": "thinking", "thinking": "", "signature": "signed"});
+            let valid = json!({"type": "tool_use", "id": "toolu_first", "name": "first", "input": {}});
+            let messages =
+                replay_partial_signed_turn(json!([thinking, invalid, valid]), &[("toolu_first", "actual result")]);
+            assert_eq!(messages[1]["content"], json!([thinking, valid]));
+            assert_eq!(
+                messages[2]["content"],
+                json!([{"type": "tool_result", "tool_use_id": "toolu_first", "content": "actual result"}])
+            );
+        }
+    }
 
     #[test]
     fn test_signed_parallel_prompt_history_round_trip() {

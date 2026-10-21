@@ -295,7 +295,8 @@ impl ModelCapabilitiesManager {
     fn get_shared_capabilities(model_type: &str) -> Vec<ModelCapability> {
         match model_type {
             model_type
-                if model_type.starts_with("qwen3.5")
+                if Self::is_verified_exo_qwen(model_type)
+                    || model_type.starts_with("qwen3.5")
                     || model_type.starts_with("qwen/qwen3.8-27b")
                     || model_type.starts_with("qwen/qwen3.6-27b") =>
             {
@@ -1003,6 +1004,7 @@ impl ModelCapabilitiesManager {
 
     fn get_max_tokens_for_model_type(model_type: &str) -> usize {
         match model_type {
+            model_type if Self::is_verified_exo_qwen(model_type) => 262_144,
             "qwen/qwen3.8-27b" => 131_042,
             "qwen/qwen3.6-27b" => 131_072,
             model_type if model_type.starts_with("qwen3.5") => 256_000,
@@ -1363,7 +1365,7 @@ impl ModelCapabilitiesManager {
         }
     }
 
-    fn exo_has_tool_capabilities(model_type: &str) -> bool {
+    fn is_verified_exo_qwen(model_type: &str) -> bool {
         // Exo accepts arbitrary Hugging Face IDs. Only advertise tools for verified
         // model builds; a compatible API alone does not establish model support.
         // https://github.com/exo-explore/exo/tree/main/resources/inference_model_cards
@@ -1489,7 +1491,7 @@ impl ModelCapabilitiesManager {
                     | "MiniMaxAI/MiniMax-M3"
                     | "Qwen/Qwen3.5-9B"
             ),
-            LLMProviderInterface::Exo(model) => Self::exo_has_tool_capabilities(&model.model_type),
+            LLMProviderInterface::Exo(model) => Self::is_verified_exo_qwen(&model.model_type),
             LLMProviderInterface::Claude(_) => true, // All Claude models support tool calling
             LLMProviderInterface::ShinkaiBackend(_) => true,
             LLMProviderInterface::Gemini(model) => Self::gemini_has_tool_capabilities(model.model_type.as_str()),
@@ -1505,6 +1507,11 @@ impl ModelCapabilitiesManager {
             || model_type.starts_with("o3")
             || model_type.starts_with("o4")
             || (model_type.starts_with("gpt-5") && model_type != "gpt-5-chat-latest")
+    }
+
+    pub(crate) fn grok_has_reasoning_capabilities(model_type: &str) -> bool {
+        (model_type.starts_with("grok-4") && !model_type.contains("non-reasoning"))
+            || model_type.starts_with("grok-3-mini")
     }
 
     /// Returns whether the given model has reasoning capabilities
@@ -1532,7 +1539,7 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::DeepSeek(deepseek) => {
                 Self::is_current_deepseek(&deepseek.model_type) || deepseek.model_type.starts_with("deepseek-reasoner")
             }
-            LLMProviderInterface::Grok(grok) => grok.model_type == "grok-4.7",
+            LLMProviderInterface::Grok(grok) => Self::grok_has_reasoning_capabilities(&grok.model_type),
             LLMProviderInterface::OpenRouter(model) => {
                 Self::current_openrouter_metadata(&model.model_type).is_some_and(|m| m.6)
                     || get_openrouter_model(&model.model_type).is_some_and(|m| {
@@ -1569,6 +1576,78 @@ impl ModelCapabilitiesManager {
                     || shinkai_backend.model_type().starts_with("PREMIUM_TEXT_INFERENCE")
             }
             _ => false,
+        }
+    }
+}
+
+#[cfg(test)]
+mod current_model_tests {
+    use super::*;
+    use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{Exo, Grok};
+
+    #[test]
+    fn grok_reasoning_capabilities_match_request_support() {
+        for model_type in [
+            "grok-3-mini",
+            "grok-3-mini-fast",
+            "grok-4",
+            "grok-4.1-fast-reasoning",
+            "grok-4.5",
+            "grok-4.6",
+            "grok-4.7",
+        ] {
+            let model = LLMProviderInterface::Grok(Grok {
+                model_type: model_type.into(),
+            });
+            assert!(
+                ModelCapabilitiesManager::has_reasoning_capabilities(&model),
+                "{model_type}"
+            );
+        }
+        for model_type in ["grok-2", "grok-3", "grok-4.1-fast-non-reasoning", "custom-model"] {
+            let model = LLMProviderInterface::Grok(Grok {
+                model_type: model_type.into(),
+            });
+            assert!(
+                !ModelCapabilitiesManager::has_reasoning_capabilities(&model),
+                "{model_type}"
+            );
+        }
+    }
+
+    #[test]
+    fn verified_exo_ids_have_context_images_and_tools() {
+        for model_type in [
+            "Qwen/Qwen3.5-9B",
+            "mlx-community/Qwen3.5-9B-4bit",
+            "mlx-community/Qwen3.5-9B-8bit",
+        ] {
+            let model = LLMProviderInterface::Exo(Exo {
+                model_type: model_type.into(),
+            });
+            assert_eq!(
+                ModelCapabilitiesManager::get_max_tokens(&model),
+                262_144,
+                "{model_type}"
+            );
+            assert!(
+                ModelCapabilitiesManager::get_llm_provider_capabilities(&model)
+                    .contains(&ModelCapability::ImageAnalysis),
+                "{model_type}"
+            );
+            assert!(
+                ModelCapabilitiesManager::has_tool_capabilities(&model, Some(true)),
+                "{model_type}"
+            );
+        }
+        for model_type in ["custom/model", "Qwen/Qwen3.5-9B-unverified"] {
+            let model = LLMProviderInterface::Exo(Exo {
+                model_type: model_type.into(),
+            });
+            assert_eq!(ModelCapabilitiesManager::get_max_tokens(&model), 4096);
+            assert!(!ModelCapabilitiesManager::get_llm_provider_capabilities(&model)
+                .contains(&ModelCapability::ImageAnalysis));
+            assert!(!ModelCapabilitiesManager::has_tool_capabilities(&model, Some(true)));
         }
     }
 }

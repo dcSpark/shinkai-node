@@ -47,8 +47,9 @@ pub fn truncate_image_url_in_payload(payload: &mut JsonValue) {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct PartialFunctionCall {
+    pub indexed_calls: std::collections::BTreeMap<u64, PartialFunctionCall>,
     pub name: Option<String>,
     pub arguments: String,
     pub is_accumulating: bool, // Track if we're currently accumulating a function call
@@ -239,6 +240,13 @@ fn finalize_function_call_sync(
     function_calls: &mut Vec<FunctionCall>,
     tools: &Option<Vec<JsonValue>>,
 ) {
+    for (index, mut pending) in std::mem::take(&mut partial_fc.indexed_calls) {
+        let before = function_calls.len();
+        finalize_function_call_sync(&mut pending, function_calls, tools);
+        if let Some(call) = function_calls.get_mut(before) {
+            call.index = index;
+        }
+    }
     if let Some(ref name) = partial_fc.name {
         if name.is_empty() {
             return;
@@ -289,8 +297,11 @@ fn finalize_function_call_sync(
         // Look up the optional tool_router_key
         let tool_router_key = tools.as_ref().and_then(|tools_array| {
             tools_array.iter().find_map(|tool| {
-                if tool.get("name")?.as_str()? == name {
-                    tool.get("tool_router_key")
+                let function = tool.get("function").unwrap_or(tool);
+                if function.get("name")?.as_str()? == name {
+                    function
+                        .get("tool_router_key")
+                        .or_else(|| tool.get("tool_router_key"))
                         .and_then(|key| key.as_str().map(|s| s.to_string()))
                 } else {
                     None
@@ -421,7 +432,7 @@ pub async fn parse_openai_stream_chunk(
             // If it is literally [DONE], skip
             if line == "[DONE]" {
                 // If we were accumulating a function call, finalize it
-                if partial_fc.is_accumulating && partial_fc.name.is_some() {
+                if !partial_fc.indexed_calls.is_empty() || partial_fc.is_accumulating && partial_fc.name.is_some() {
                     finalize_function_call_sync(partial_fc, function_calls, tools);
                 }
                 continue;
@@ -461,7 +472,7 @@ pub async fn parse_openai_stream_chunk(
         // If it's "[DONE]", send final update and skip
         if chunk.trim() == "[DONE]" {
             // If we were accumulating a function call, finalize it
-            if partial_fc.is_accumulating && partial_fc.name.is_some() {
+            if !partial_fc.indexed_calls.is_empty() || partial_fc.is_accumulating && partial_fc.name.is_some() {
                 finalize_function_call_sync(partial_fc, function_calls, tools);
             }
             if let Some(inbox_name) = inbox_name.as_ref() {
@@ -480,7 +491,19 @@ pub async fn parse_openai_stream_chunk(
         }
 
         // Extract any function call arguments before parsing JSON
-        let (maybe_args, cleaned_chunk) = extract_and_remove_arguments(chunk);
+        let is_indexed_delta = serde_json::from_str::<JsonValue>(chunk)
+            .ok()
+            .and_then(|value| {
+                value["choices"]
+                    .as_array()
+                    .map(|choices| choices.iter().any(|choice| choice["delta"]["tool_calls"].is_array()))
+            })
+            .unwrap_or(false);
+        let (maybe_args, cleaned_chunk) = if is_indexed_delta {
+            (None, chunk.to_string())
+        } else {
+            extract_and_remove_arguments(chunk)
+        };
 
         // If we extracted arguments and we're accumulating a function call, append them
         if let Some(args) = maybe_args {
@@ -619,70 +642,28 @@ pub async fn parse_openai_stream_chunk(
                                 }
                             }
 
-                            // Handle tool_calls (new format)
-                            if let Some(tool_calls) = delta.get("tool_calls") {
-                                if let Some(tool_calls_array) = tool_calls.as_array() {
-                                    // Process each tool call in the array instead of just the first one
-                                    for tool_call in tool_calls_array {
-                                        if let Some(function) = tool_call.get("function") {
-                                            if let Some(name) = function.get("name").and_then(|n| n.as_str()) {
-                                                let new_id = tool_call.get("id").and_then(|id| id.as_str());
-                                                let _index = tool_call.get("index").and_then(|i| i.as_u64());
-
-                                                // If partial_fc is in use, check both name and ID before continuing
-                                                if partial_fc.is_accumulating {
-                                                    let same_name = partial_fc.name.as_deref() == Some(name);
-                                                    let same_id = match (partial_fc.id.as_deref(), new_id) {
-                                                        (Some(old_id), Some(nid)) => old_id == nid,
-                                                        (None, None) => true,
-                                                        _ => false,
-                                                    };
-
-                                                    // Finalize if either name changed or ID changed
-                                                    if !(same_name && same_id) {
-                                                        finalize_function_call_sync(partial_fc, function_calls, tools);
-                                                    }
-                                                }
-
-                                                // Now start or continue a partial FC
-                                                partial_fc.name = Some(name.to_string());
-                                                partial_fc.is_accumulating = true;
-
-                                                // Set the ID of the current tool call
-                                                if let Some(id) = new_id {
-                                                    partial_fc.id = Some(id.to_string());
-                                                }
-
-                                                // Store call_type if present
-                                                if let Some(call_type) = tool_call.get("type").and_then(|t| t.as_str())
-                                                {
-                                                    partial_fc.call_type = Some(call_type.to_string());
-                                                }
-
-                                                // If this tool call has arguments, process them
-                                                if let Some(args) = function.get("arguments").and_then(|a| a.as_str()) {
-                                                    partial_fc.arguments.push_str(args);
-
-                                                    // Check if the accumulated arguments form a valid JSON object
-                                                    if partial_fc.arguments.starts_with('{')
-                                                        && partial_fc.arguments.ends_with('}')
-                                                    {
-                                                        match serde_json::from_str::<JsonValue>(&partial_fc.arguments) {
-                                                            Ok(_) => {
-                                                                finalize_function_call_sync(
-                                                                    partial_fc,
-                                                                    function_calls,
-                                                                    tools,
-                                                                );
-                                                            }
-                                                            Err(_e) => {
-                                                                // Continue accumulating
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
+                            // Indexed calls can be interleaved. Each index owns its fragments.
+                            if let Some(calls) = delta["tool_calls"].as_array() {
+                                for (position, call) in calls.iter().enumerate() {
+                                    let index = call["index"].as_u64().unwrap_or(position as u64);
+                                    let pending = partial_fc.indexed_calls.entry(index).or_default();
+                                    pending.is_accumulating = true;
+                                    for (field, target) in [
+                                        (call.get("id"), &mut pending.id),
+                                        (call.pointer("/function/name"), &mut pending.name),
+                                    ] {
+                                        if let Some(fragment) = field.and_then(|value| value.as_str()) {
+                                            let value = target.get_or_insert_with(String::new);
+                                            value.push_str(fragment);
                                         }
+                                    }
+                                    if let Some(kind) = call["type"].as_str() {
+                                        pending.call_type = Some(kind.into());
+                                    }
+                                    if let Some(arguments) =
+                                        call.pointer("/function/arguments").and_then(|value| value.as_str())
+                                    {
+                                        pending.arguments.push_str(arguments);
                                     }
                                 }
                             }
@@ -694,7 +675,7 @@ pub async fn parse_openai_stream_chunk(
                         } else if finish_reason == "stop" {
                             // If the user or model stops, we can finalize
                             // any function call that wasn't yet finished.
-                            if partial_fc.name.is_some() {
+                            if partial_fc.name.is_some() || !partial_fc.indexed_calls.is_empty() {
                                 finalize_function_call_sync(partial_fc, function_calls, tools);
                             }
 
@@ -891,6 +872,7 @@ pub async fn handle_streaming_response(
     let mut function_calls: Vec<FunctionCall> = Vec::new();
     let mut error_message: Option<String> = None;
     let mut partial_fc = PartialFunctionCall {
+        indexed_calls: Default::default(),
         name: None,
         arguments: String::new(),
         is_accumulating: false,
@@ -1012,7 +994,7 @@ pub async fn handle_streaming_response(
     }
 
     // If there's an unfinalized function call at the end, finalize it
-    if partial_fc.name.is_some() && !partial_fc.arguments.is_empty() {
+    if !partial_fc.indexed_calls.is_empty() || partial_fc.name.is_some() && !partial_fc.arguments.is_empty() {
         finalize_function_call_sync(&mut partial_fc, &mut function_calls, &tools);
     }
 
@@ -1358,11 +1340,81 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    async fn test_stream_interleaved_indexed_tool_calls() {
+        let mut buffer = String::new();
+        let mut text = String::new();
+        let mut reasoning = String::new();
+        let mut calls = Vec::new();
+        let mut partial = PartialFunctionCall::default();
+        let tools = Some(vec![
+            json!({"type": "function", "function": {"name": "weather", "tool_router_key": "weather-router"}}),
+        ]);
+        let deltas = [
+            json!({"tool_calls": [
+                {"index": 0, "id": "call_", "type": "function", "function": {"name": "wea", "arguments": "{\"city\":"}},
+                {"index": 1, "id": "other", "type": "function", "function": {"name": "time", "arguments": "{\"zone\":"}}
+            ]}),
+            json!({"tool_calls": [{"index": 1, "function": {"arguments": "\"UTC\"}"}}]}),
+            json!({"tool_calls": [{"index": 0, "id": "first", "function": {"name": "ther", "arguments": "\"Santiago\"}"}}]}),
+            // More deltas can follow a complete JSON value; do not finalize early.
+            json!({"tool_calls": [{"index": 0, "function": {"arguments": " "}}]}),
+        ];
+        for delta in deltas {
+            let event = format!("data: {}\n\n", json!({"choices": [{"index": 0, "delta": delta}]}));
+            // Split each SSE event across network chunks.
+            let split = event.len() / 2;
+            for fragment in [&event[..split], &event[split..]] {
+                buffer.push_str(fragment);
+                parse_openai_stream_chunk(
+                    &mut buffer,
+                    &mut text,
+                    &mut reasoning,
+                    &mut calls,
+                    &mut partial,
+                    &tools,
+                    &None,
+                    None,
+                    "test",
+                )
+                .await
+                .unwrap();
+            }
+        }
+        assert!(calls.is_empty());
+        buffer.push_str(
+            "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
+        );
+        parse_openai_stream_chunk(
+            &mut buffer,
+            &mut text,
+            &mut reasoning,
+            &mut calls,
+            &mut partial,
+            &tools,
+            &None,
+            None,
+            "test",
+        )
+        .await
+        .unwrap();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].index, 0);
+        assert_eq!(calls[0].id.as_deref(), Some("call_first"));
+        assert_eq!(calls[0].name, "weather");
+        assert_eq!(calls[0].arguments["city"], "Santiago");
+        assert_eq!(calls[0].tool_router_key.as_deref(), Some("weather-router"));
+        assert_eq!(calls[1].index, 1);
+        assert_eq!(calls[1].id.as_deref(), Some("other"));
+        assert_eq!(calls[1].arguments["zone"], "UTC");
+    }
+
+    #[tokio::test]
     async fn test_parse_openai_stream_chunk_basic_content() {
         let mut buffer = String::new();
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
         let mut partial_fc = PartialFunctionCall {
+            indexed_calls: Default::default(),
             name: None,
             arguments: String::new(),
             is_accumulating: false,
@@ -1414,6 +1466,7 @@ mod tests {
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
         let mut partial_fc = PartialFunctionCall {
+            indexed_calls: Default::default(),
             name: None,
             arguments: String::new(),
             is_accumulating: false,
@@ -1484,6 +1537,7 @@ mod tests {
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
         let mut partial_fc = PartialFunctionCall {
+            indexed_calls: Default::default(),
             name: None,
             arguments: String::new(),
             is_accumulating: false,
@@ -1575,6 +1629,7 @@ mod tests {
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
         let mut partial_fc = PartialFunctionCall {
+            indexed_calls: Default::default(),
             name: None,
             arguments: String::new(),
             is_accumulating: false,
@@ -1672,6 +1727,7 @@ mod tests {
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
         let mut partial_fc = PartialFunctionCall {
+            indexed_calls: Default::default(),
             name: None,
             arguments: String::new(),
             is_accumulating: false,
@@ -1815,6 +1871,7 @@ mod tests {
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
         let mut partial_fc = PartialFunctionCall {
+            indexed_calls: Default::default(),
             name: None,
             arguments: String::new(),
             is_accumulating: false,
@@ -1996,6 +2053,7 @@ mod tests {
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
         let mut partial_fc = PartialFunctionCall {
+            indexed_calls: Default::default(),
             name: None,
             arguments: String::new(),
             is_accumulating: false,
@@ -2048,6 +2106,7 @@ mod tests {
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
         let mut partial_fc = PartialFunctionCall {
+            indexed_calls: Default::default(),
             name: None,
             arguments: String::new(),
             is_accumulating: false,

@@ -617,51 +617,298 @@ fn process_streaming_chunk(
     new_content
 }
 
+// Exact catalog entries keep new preset rules from changing custom or legacy models.
+// Source: https://openrouter.ai/api/v1/models (2026-10-21).
+fn preset_options(model: &str) -> Option<(bool, &'static [&'static str], &'static [&'static str])> {
+    const EFFORTS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
+    const OPENAI: &[&str] = &["seed", "max_completion_tokens", "response_format", "verbosity"];
+    match model {
+        "openai/gpt-6-astra" | "openai/gpt-6.1-sol" => Some((true, EFFORTS, OPENAI)),
+        "openai/gpt-6-luna" | "openai/gpt-6-sol" => {
+            Some((false, &["none", "low", "medium", "high", "xhigh", "max"], OPENAI))
+        }
+        "anthropic/claude-sonnet-5.5" => Some((
+            true,
+            EFFORTS,
+            &["max_completion_tokens", "response_format", "stop", "verbosity"],
+        )),
+        "google/gemini-4-argon" => Some((
+            true,
+            &["low", "medium", "high"],
+            &["seed", "temperature", "top_p", "response_format", "stop"],
+        )),
+        "deepseek/deepseek-v4.1-flash-1017" => Some((
+            false,
+            &["none", "low", "high", "max"],
+            &[
+                "seed",
+                "temperature",
+                "top_p",
+                "max_completion_tokens",
+                "frequency_penalty",
+                "logit_bias",
+                "logprobs",
+                "top_logprobs",
+                "presence_penalty",
+                "response_format",
+                "stop",
+                "parallel_tool_calls",
+            ],
+        )),
+        _ => None,
+    }
+}
+
 fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobConfig>) {
-    // Helper function to read and parse environment variables
     fn read_env_var<T: std::str::FromStr>(key: &str) -> Option<T> {
         std::env::var(key).ok().and_then(|val| val.parse::<T>().ok())
     }
 
-    // Helper function to get value from env or config
     fn get_value<T: Clone + std::str::FromStr>(env_key: &str, config_value: Option<&T>) -> Option<T> {
         config_value.cloned().or_else(|| read_env_var::<T>(env_key))
     }
 
-    // Read options from environment variables or config and add them directly to the payload
-    if let Some(seed) = get_value("LLM_SEED", config.and_then(|c| c.seed.as_ref())) {
-        payload["seed"] = serde_json::json!(seed);
+    let options = payload
+        .get("model")
+        .and_then(|model| model.as_str())
+        .and_then(preset_options);
+    let supports = |key: &str| options.map_or(true, |(_, _, parameters)| parameters.contains(&key));
+    if supports("seed") {
+        if let Some(seed) = get_value("LLM_SEED", config.and_then(|c| c.seed.as_ref())) {
+            payload["seed"] = json!(seed);
+        }
     }
-    if let Some(temp) = get_value("LLM_TEMPERATURE", config.and_then(|c| c.temperature.as_ref())) {
-        payload["temperature"] = serde_json::json!(temp);
+    if supports("temperature") {
+        if let Some(temp) = get_value("LLM_TEMPERATURE", config.and_then(|c| c.temperature.as_ref())) {
+            payload["temperature"] = json!(temp);
+        }
     }
-    if let Some(top_p) = get_value("LLM_TOP_P", config.and_then(|c| c.top_p.as_ref())) {
-        payload["top_p"] = serde_json::json!(top_p);
+    if supports("top_p") {
+        if let Some(top_p) = get_value("LLM_TOP_P", config.and_then(|c| c.top_p.as_ref())) {
+            payload["top_p"] = json!(top_p);
+        }
     }
     if let Some(max_tokens) = get_value("LLM_MAX_TOKENS", config.and_then(|c| c.max_tokens.as_ref())) {
-        payload["max_completion_tokens"] = serde_json::json!(max_tokens);
+        let key = if supports("max_completion_tokens") {
+            "max_completion_tokens"
+        } else {
+            "max_tokens"
+        };
+        payload[key] = json!(max_tokens);
     }
 
-    // Handle other model params
-    if let Some(other_params) = config.and_then(|c| c.other_model_params.as_ref()) {
-        if let Some(obj) = other_params.as_object() {
-            for (key, value) in obj {
-                match key.as_str() {
-                    "frequency_penalty" => payload["frequency_penalty"] = value.clone(),
-                    "logit_bias" => payload["logit_bias"] = value.clone(),
-                    "logprobs" => payload["logprobs"] = value.clone(),
-                    "top_logprobs" => payload["top_logprobs"] = value.clone(),
-                    "max_completion_tokens" => payload["max_completion_tokens"] = value.clone(),
-                    "n" => payload["n"] = value.clone(),
-                    "presence_penalty" => payload["presence_penalty"] = value.clone(),
-                    "response_format" => payload["response_format"] = value.clone(),
-                    "service_tier" => payload["service_tier"] = value.clone(),
-                    "stop" => payload["stop"] = value.clone(),
-                    "stream_options" => payload["stream_options"] = value.clone(),
-                    "parallel_tool_calls" => payload["parallel_tool_calls"] = value.clone(),
-                    _ => (),
-                };
+    if let Some(obj) = config
+        .and_then(|c| c.other_model_params.as_ref())
+        .and_then(|params| params.as_object())
+    {
+        for (key, value) in obj {
+            match key.as_str() {
+                "frequency_penalty"
+                | "logit_bias"
+                | "logprobs"
+                | "top_logprobs"
+                | "max_completion_tokens"
+                | "n"
+                | "presence_penalty"
+                | "response_format"
+                | "service_tier"
+                | "stop"
+                | "stream_options"
+                | "parallel_tool_calls"
+                    if supports(key) =>
+                {
+                    payload[key] = value.clone()
+                }
+                // Keep the complete custom object, including provider-specific reasoning fields.
+                "reasoning" if value.is_object() => payload[key] = value.clone(),
+                _ => (),
             }
+        }
+    }
+
+    let thinking = config.and_then(|c| c.thinking);
+    let effort = config.and_then(|c| c.reasoning_effort.as_deref());
+    if thinking.is_none() && effort.is_none() && payload.get("reasoning").is_none() {
+        return;
+    }
+    if !payload.get("reasoning").is_some_and(JsonValue::is_object) {
+        payload["reasoning"] = json!({});
+    }
+    let reasoning = payload["reasoning"].as_object_mut().unwrap();
+    if let Some(enabled) = thinking {
+        reasoning.insert("enabled".into(), json!(enabled));
+    }
+    if let Some(effort) = effort {
+        // An explicit effort replaces a custom token budget. The API accepts one of these.
+        reasoning.remove("max_tokens");
+        reasoning.insert("effort".into(), json!(effort));
+    }
+    if let Some((mandatory, efforts, _)) = options {
+        if mandatory && reasoning.get("enabled") == Some(&json!(false)) {
+            reasoning.insert("enabled".into(), json!(true));
+        }
+        if reasoning
+            .get("effort")
+            .is_some_and(|effort| !effort.as_str().is_some_and(|effort| efforts.contains(&effort)))
+        {
+            reasoning.remove("effort");
+        }
+    }
+    if reasoning.get("enabled") == Some(&json!(false)) {
+        reasoning.remove("effort");
+        reasoning.remove("max_tokens");
+    } else if thinking == Some(true) && reasoning.get("effort") == Some(&json!("none")) {
+        reasoning.remove("effort");
+    }
+}
+
+#[cfg(test)]
+mod option_tests {
+    use super::*;
+
+    #[test]
+    fn typed_reasoning_options_use_openrouter_shape() {
+        for model in ["openai/gpt-6-astra", "openai/gpt-6.1-sol", "openai/gpt-6-luna"] {
+            for effort in ["low", "medium", "high", "xhigh", "max"] {
+                let mut payload = json!({"model": model});
+                let mut config = JobConfig::empty();
+                config.thinking = Some(true);
+                config.reasoning_effort = Some(effort.into());
+                add_options_to_payload(&mut payload, Some(&config));
+                assert_eq!(payload["reasoning"], json!({"enabled": true, "effort": effort}));
+                assert!(payload.get("thinking").is_none());
+                assert!(payload.get("reasoning_effort").is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn mandatory_presets_cannot_disable_reasoning() {
+        for model in [
+            "openai/gpt-6-astra",
+            "openai/gpt-6.1-sol",
+            "anthropic/claude-sonnet-5.5",
+            "google/gemini-4-argon",
+        ] {
+            let mut payload = json!({"model": model});
+            let mut config = JobConfig::empty();
+            config.thinking = Some(false);
+            config.reasoning_effort = Some("none".into());
+            add_options_to_payload(&mut payload, Some(&config));
+            assert_eq!(payload["reasoning"], json!({"enabled": true}));
+        }
+    }
+
+    #[test]
+    fn optional_reasoning_can_be_disabled_without_a_conflicting_effort() {
+        for model in [
+            "openai/gpt-6-luna",
+            "openai/gpt-6-sol",
+            "deepseek/deepseek-v4.1-flash-1017",
+        ] {
+            let mut payload = json!({"model": model});
+            let mut config = JobConfig::empty();
+            config.thinking = Some(false);
+            config.reasoning_effort = Some("high".into());
+            config.other_model_params = Some(json!({"reasoning": {"max_tokens": 2048, "exclude": true}}));
+            add_options_to_payload(&mut payload, Some(&config));
+            assert_eq!(payload["reasoning"], json!({"enabled": false, "exclude": true}));
+        }
+    }
+
+    #[test]
+    fn effort_validation_uses_each_preset_supported_values() {
+        for (model, effort, supported) in [
+            ("google/gemini-4-argon", "max", false),
+            ("google/gemini-4-argon", "high", true),
+            ("deepseek/deepseek-v4.1-flash-1017", "medium", false),
+            ("deepseek/deepseek-v4.1-flash-1017", "max", true),
+            ("openai/gpt-6-luna", "minimal", false),
+            ("openai/gpt-6-luna", "none", true),
+            ("openai/gpt-6-astra", "none", false),
+        ] {
+            let mut payload = json!({"model": model});
+            let mut config = JobConfig::empty();
+            config.reasoning_effort = Some(effort.into());
+            add_options_to_payload(&mut payload, Some(&config));
+            assert_eq!(
+                payload["reasoning"].get("effort").is_some(),
+                supported,
+                "{model}: {effort}"
+            );
+        }
+    }
+
+    #[test]
+    fn typed_reasoning_overrides_custom_fields_and_preserves_other_fields() {
+        let mut payload = json!({"model": "custom/reasoner"});
+        let mut config = JobConfig::empty();
+        config.thinking = Some(true);
+        config.reasoning_effort = Some("high".into());
+        config.other_model_params = Some(json!({"reasoning": {
+            "enabled": false, "effort": "low", "max_tokens": 2048, "exclude": true, "context": "all_turns"
+        }}));
+        add_options_to_payload(&mut payload, Some(&config));
+        assert_eq!(
+            payload["reasoning"],
+            json!({
+                "enabled": true, "effort": "high", "exclude": true, "context": "all_turns"
+            })
+        );
+    }
+
+    #[test]
+    fn custom_reasoning_and_legacy_options_remain_available() {
+        for model in ["custom/reasoner", "openai/gpt-4o", "openai/gpt-6-custom"] {
+            let mut payload = json!({"model": model});
+            let mut config = JobConfig::empty();
+            config.temperature = Some(0.4);
+            config.top_p = Some(0.8);
+            config.other_model_params = Some(json!({
+                "reasoning": {"max_tokens": 2048, "exclude": true}, "frequency_penalty": 0.2,
+                "model": "wrong/model", "messages": []
+            }));
+            add_options_to_payload(&mut payload, Some(&config));
+            assert_eq!(payload["reasoning"], json!({"max_tokens": 2048, "exclude": true}));
+            assert_eq!(payload["temperature"], 0.4);
+            assert_eq!(payload["top_p"], 0.8);
+            assert_eq!(payload["frequency_penalty"], 0.2);
+            assert_eq!(payload["model"], model);
+            assert!(payload.get("messages").is_none());
+        }
+    }
+
+    #[test]
+    fn presets_only_send_supported_sampling_and_token_options() {
+        for (model, sampling) in [
+            ("openai/gpt-6-astra", false),
+            ("openai/gpt-6.1-sol", false),
+            ("openai/gpt-6-luna", false),
+            ("anthropic/claude-sonnet-5.5", false),
+            ("google/gemini-4-argon", true),
+            ("deepseek/deepseek-v4.1-flash-1017", true),
+        ] {
+            let mut payload = json!({"model": model, "max_tokens": 4096});
+            let mut config = JobConfig::empty();
+            config.temperature = Some(0.4);
+            config.top_p = Some(0.8);
+            config.max_tokens = Some(1024);
+            config.other_model_params = Some(json!({"frequency_penalty": 0.2, "logprobs": true}));
+            add_options_to_payload(&mut payload, Some(&config));
+            assert_eq!(payload.get("temperature").is_some(), sampling, "{model}");
+            assert_eq!(payload.get("top_p").is_some(), sampling, "{model}");
+            assert_eq!(payload.get("logprobs").is_some(), model.starts_with("deepseek/"));
+            assert_eq!(
+                payload.get("frequency_penalty").is_some(),
+                model.starts_with("deepseek/")
+            );
+            if model == "google/gemini-4-argon" {
+                assert_eq!(payload["max_tokens"], 1024);
+                assert!(payload.get("max_completion_tokens").is_none());
+            } else {
+                assert_eq!(payload["max_completion_tokens"], 1024);
+            }
+            assert!(payload.get("reasoning").is_none());
         }
     }
 }

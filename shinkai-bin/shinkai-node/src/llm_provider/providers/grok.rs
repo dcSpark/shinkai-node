@@ -8,7 +8,7 @@ use super::shared::shared_model_logic::{send_tool_ws_update, send_ws_update};
 use super::LLMService;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
 use crate::llm_provider::llm_stopper::LLMStopper;
-use crate::managers::model_capabilities_manager::PromptResultEnum;
+use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
 use async_trait::async_trait;
 use futures::StreamExt;
 use reqwest::Client;
@@ -645,10 +645,6 @@ fn grok_chat_url(base_url: &str) -> String {
     }
 }
 
-fn grok_is_reasoning_model(model: &str) -> bool {
-    (model.starts_with("grok-4") && !model.contains("non-reasoning")) || model.starts_with("grok-3-mini")
-}
-
 fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobConfig>) {
     // Helper function to read and parse environment variables
     fn read_env_var<T: std::str::FromStr>(key: &str) -> Option<T> {
@@ -707,7 +703,7 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
         || ["grok-4.5", "grok-4.6", "grok-4.7"]
             .iter()
             .any(|prefix| model.starts_with(prefix));
-    let is_reasoning = grok_is_reasoning_model(model);
+    let is_reasoning = ModelCapabilitiesManager::grok_has_reasoning_capabilities(model);
     if !supports_effort {
         payload.as_object_mut().unwrap().remove("reasoning_effort");
     }

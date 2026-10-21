@@ -14,6 +14,7 @@ mod tests {
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
         let mut partial_fc = PartialFunctionCall {
+            indexed_calls: Default::default(),
             name: None,
             arguments: String::new(),
             is_accumulating: false,
@@ -86,6 +87,7 @@ data: [DONE]"#,
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
         let mut partial_fc = PartialFunctionCall {
+            indexed_calls: Default::default(),
             name: None,
             arguments: String::new(),
             is_accumulating: false,
@@ -185,6 +187,7 @@ data: {"id":"chatcmpl-BLGOkzXc864uH3CZxRW9stxqzlpOl","object":"chat.completion.c
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
         let mut partial_fc = PartialFunctionCall {
+            indexed_calls: Default::default(),
             name: None,
             arguments: String::new(),
             is_accumulating: false,
@@ -283,6 +286,7 @@ data: {"id":"chatcmpl-BLGOkzXc864uH3CZxRW9stxqzlpOl","object":"chat.completion.c
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
         let mut partial_fc = PartialFunctionCall {
+            indexed_calls: Default::default(),
             name: None,
             arguments: String::new(),
             is_accumulating: false,
@@ -407,6 +411,7 @@ data: [DONE]"#,
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
         let mut partial_fc = PartialFunctionCall {
+            indexed_calls: Default::default(),
             name: None,
             arguments: String::new(),
             is_accumulating: false,
@@ -559,6 +564,7 @@ data: [DONE]"#,
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
         let mut partial_fc = PartialFunctionCall {
+            indexed_calls: Default::default(),
             name: None,
             arguments: String::new(),
             is_accumulating: false,
