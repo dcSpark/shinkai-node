@@ -62,20 +62,13 @@ impl LLMService for Groq {
                 let original_tools = tools_json.clone(); // Keep original for matching
 
                 // Set up initial payload with appropriate token limit field based on model capabilities
-                let mut payload = if ModelCapabilitiesManager::has_reasoning_capabilities(&model) {
-                    json!({
-                        "model": self.model_type,
-                        "messages": messages_json,
-                        "max_completion_tokens": result.remaining_output_tokens,
-                        "stream": is_stream,
-                    })
-                } else {
-                    json!({
-                        "model": self.model_type,
-                        "messages": messages_json,
-                        "stream": is_stream,
-                    })
-                };
+                let mut payload = initial_groq_payload(
+                    &self.model_type,
+                    messages_json,
+                    result.remaining_output_tokens,
+                    is_stream,
+                    ModelCapabilitiesManager::has_reasoning_capabilities(&model),
+                );
 
                 // Add tools to payload if they exist, but remove tool_router_key
                 if !tools_json.is_empty() {
@@ -146,10 +139,8 @@ impl LLMService for Groq {
                             payload["reasoning_format"] = serde_json::json!("hidden");
                         }
                     }
-                    add_options_to_payload(&mut payload, config.as_ref(), true);
-                } else {
-                    add_options_to_payload(&mut payload, config.as_ref(), false);
                 }
+                add_options_to_payload(&mut payload, config.as_ref());
 
                 let payload_log = payload.clone();
                 shinkai_log(
@@ -685,7 +676,24 @@ async fn handle_non_streaming_response(
     }
 }
 
-fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobConfig>, is_reasoning_model: bool) {
+fn initial_groq_payload(
+    model: &str,
+    messages: JsonValue,
+    remaining_output_tokens: usize,
+    is_stream: bool,
+    is_reasoning_model: bool,
+) -> JsonValue {
+    let mut payload = json!({"model": model, "messages": messages, "stream": is_stream});
+    if is_reasoning_model {
+        payload["max_completion_tokens"] = json!(remaining_output_tokens);
+    }
+    payload
+}
+
+fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobConfig>) {
+    // Keep the prepared ceiling before config, environment, and custom options are applied.
+    let prepared_output_budget = payload["max_completion_tokens"].as_u64();
+
     // Helper function to read and parse environment variables
     fn read_env_var<T: std::str::FromStr>(key: &str) -> Option<T> {
         std::env::var(key).ok().and_then(|val| val.parse::<T>().ok())
@@ -707,10 +715,8 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
         payload["top_p"] = serde_json::json!(top_p);
     }
 
-    if !is_reasoning_model {
-        if let Some(max_tokens) = get_value("LLM_MAX_TOKENS", config.and_then(|c| c.max_tokens.as_ref())) {
-            payload["max_completion_tokens"] = serde_json::json!(max_tokens);
-        }
+    if let Some(max_tokens) = get_value("LLM_MAX_TOKENS", config.and_then(|c| c.max_tokens.as_ref())) {
+        payload["max_completion_tokens"] = serde_json::json!(max_tokens);
     }
 
     // Handle other model params
@@ -729,14 +735,116 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
                     "stop" => payload["stop"] = value.clone(),
                     "stream_options" => payload["stream_options"] = value.clone(),
                     "parallel_tool_calls" => payload["parallel_tool_calls"] = value.clone(),
-                    "max_completion_tokens" => {
-                        if !is_reasoning_model {
-                            payload["max_completion_tokens"] = value.clone();
-                        }
-                    }
+                    "max_completion_tokens" => payload["max_completion_tokens"] = value.clone(),
                     _ => (),
                 };
             }
+        }
+    }
+    if let Some(budget) = prepared_output_budget {
+        let requested_limit = payload["max_completion_tokens"]
+            .as_u64()
+            .filter(|limit| *limit > 0)
+            .unwrap_or(budget);
+        payload["max_completion_tokens"] = json!(requested_limit.min(budget));
+    }
+}
+
+#[cfg(test)]
+mod request_tests {
+    use super::*;
+    use shinkai_message_primitives::schemas::subprompts::{SubPrompt, SubPromptType};
+
+    fn prepared_request(id: &str) -> (JsonValue, u64) {
+        let model = LLMProviderInterface::Groq(Groq { model_type: id.into() });
+        assert!(ModelCapabilitiesManager::has_reasoning_capabilities(&model));
+        let mut prompt = Prompt::new();
+        prompt.add_sub_prompts(vec![SubPrompt::Content(SubPromptType::User, "Hello".into(), 100)]);
+        let prepared = groq_prepare_messages(&model, prompt).unwrap();
+        let budget = prepared.remaining_output_tokens as u64;
+        assert!(budget > 1024);
+        let PromptResultEnum::Value(messages) = prepared.messages else {
+            panic!("Expected prepared JSON messages");
+        };
+        let payload = initial_groq_payload(
+            id,
+            messages.clone(),
+            prepared.remaining_output_tokens,
+            false,
+            ModelCapabilitiesManager::has_reasoning_capabilities(&model),
+        );
+        assert_eq!(payload["max_completion_tokens"], budget);
+        assert_eq!(payload["messages"], messages);
+        assert_eq!(payload["model"], id);
+        assert_eq!(payload["stream"], false);
+        (payload, budget)
+    }
+
+    #[test]
+    fn groq_reasoning_requests_keep_lower_limits_within_prepared_budget() {
+        for id in ["qwen/qwen3.8-27b", "qwen/qwen3.6-27b", "openai/gpt-oss-120b"] {
+            let (mut initial, budget) = prepared_request(id);
+            // Options must not change the reasoning or sampling fields already selected by the request.
+            initial["reasoning_effort"] = json!("medium");
+            initial["temperature"] = json!(0.25);
+            let mut config = JobConfig::empty();
+            config.temperature = Some(0.25);
+            for (limit, expected) in [(1024, 1024), (budget + 1, budget), (0, budget)] {
+                config.max_tokens = Some(limit);
+                let mut payload = initial.clone();
+                add_options_to_payload(&mut payload, Some(&config));
+                assert_eq!(payload["max_completion_tokens"], expected, "{}", id);
+            }
+            config.max_tokens = Some(budget + 1);
+            for (limit, expected) in [
+                (json!(512), 512),
+                (json!(budget + 1), budget),
+                (json!(null), budget),
+                (json!(0), budget),
+                (json!(-1), budget),
+                (json!(1.5), budget),
+                (json!("invalid"), budget),
+            ] {
+                config.other_model_params = Some(json!({"max_completion_tokens": limit}));
+                let mut payload = initial.clone();
+                add_options_to_payload(&mut payload, Some(&config));
+                assert_eq!(payload["max_completion_tokens"], expected, "{}", id);
+                assert_eq!(payload["reasoning_effort"], initial["reasoning_effort"]);
+                assert_eq!(payload["temperature"], initial["temperature"]);
+                assert_eq!(payload["messages"], initial["messages"]);
+                assert_eq!(payload["model"], id);
+                assert_eq!(payload["stream"], false);
+                assert!(payload.get("max_tokens").is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn groq_environment_limit_keeps_prepared_budget() {
+        const CHILD_MARKER: &str = "SHINKAI_GROQ_LIMIT_TEST_CHILD";
+        if std::env::var_os(CHILD_MARKER).is_none() {
+            // A child process keeps environment changes out of the other provider tests.
+            for limit in [1024, u64::MAX] {
+                let output = std::process::Command::new(std::env::current_exe().unwrap())
+                    .arg("groq_environment_limit_keeps_prepared_budget")
+                    .env(CHILD_MARKER, "1")
+                    .env("LLM_MAX_TOKENS", limit.to_string())
+                    .output()
+                    .unwrap();
+                assert!(
+                    output.status.success(),
+                    "Groq environment limit test failed for {}",
+                    limit
+                );
+                assert!(String::from_utf8_lossy(&output.stdout).contains("1 passed"));
+            }
+            return;
+        }
+        let limit = std::env::var("LLM_MAX_TOKENS").unwrap().parse::<u64>().unwrap();
+        for id in ["qwen/qwen3.8-27b", "qwen/qwen3.6-27b", "openai/gpt-oss-120b"] {
+            let (mut payload, budget) = prepared_request(id);
+            add_options_to_payload(&mut payload, None);
+            assert_eq!(payload["max_completion_tokens"], limit.min(budget), "{}", id);
         }
     }
 }
