@@ -869,7 +869,7 @@ async fn handle_streaming_response_responses(
 
     // Completed native items contain the final arguments, call IDs, and encrypted reasoning.
     let native_calls = extract_native_function_calls(&native_output);
-    if !native_calls.is_empty() {
+    if native_output.iter().any(|item| item["type"] == "function_call") {
         function_calls = native_calls;
     }
 
@@ -886,26 +886,37 @@ async fn handle_streaming_response_responses(
         None,
     ))
 }
+fn native_function_identity(item: &JsonValue) -> Option<(&str, &str)> {
+    if item["type"] != "function_call" {
+        return None;
+    }
+    let name = item["name"].as_str().filter(|name| !name.is_empty())?;
+    let call_id = item["call_id"].as_str().filter(|id| !id.is_empty())?;
+    Some((name, call_id))
+}
+
 // Keep the native response together so parallel calls replay their shared reasoning once.
 fn extract_native_function_calls(output: &[JsonValue]) -> Vec<FunctionCall> {
     output
         .iter()
         .filter(|item| item["type"] == "function_call")
         .filter_map(|item| {
-            let name = item.get("name")?.as_str()?.to_string();
+            let (name, call_id) = native_function_identity(item)?;
             let arguments = match item.get("arguments") {
                 Some(JsonValue::String(args)) => serde_json::from_str::<JsonValue>(args).ok()?.as_object()?.clone(),
                 Some(JsonValue::Object(args)) => args.clone(),
                 _ => return None,
             };
             Some(FunctionCall {
-                name,
+                name: name.to_owned(),
                 arguments,
                 tool_router_key: None,
                 response: None,
                 index: 0,
-                id: item.get("call_id").and_then(JsonValue::as_str).map(str::to_owned),
+                id: Some(call_id.to_owned()),
                 call_type: Some("function".to_string()),
+                // Keep signed reasoning and every original call. Replay supplies an explicit
+                // error output for any call that has no recorded execution result.
                 provider_metadata: Some(json!({"openai_responses": {"output": output}})),
             })
         })
@@ -1034,6 +1045,17 @@ pub fn truncate_image_url_in_payload(payload: &mut JsonValue) {
     }
 }
 
+fn missing_tool_output(call_id: &str) -> JsonValue {
+    json!({
+        "type": "function_call_output",
+        "call_id": call_id,
+        "output": json!({"error": {
+            "type": "missing_tool_result",
+            "message": "No execution result is recorded for this tool call."
+        }}).to_string()
+    })
+}
+
 fn transform_input_messages_for_responses(messages_json: serde_json::Value) -> serde_json::Value {
     // Expected input: Array of chat-style messages: [{role, content, images?, tool_calls? ...}]
     // Output: Array of Responses messages: [{role, content: [ {type: 'input_text'|'input_image'|...} ] }]
@@ -1043,7 +1065,15 @@ fn transform_input_messages_for_responses(messages_json: serde_json::Value) -> s
     let mut call_map: HashMap<String, (String, String)> = HashMap::new(); // id -> (name, args)
     let mut emitted_call_ids: HashSet<String> = HashSet::new();
     let mut emitted_native_outputs: HashSet<String> = HashSet::new();
+    let mut missing_result_ids: HashSet<String> = HashSet::new();
     if let Some(arr) = messages_json.as_array() {
+        // Parallel call/result pairs can be separated in Prompt history. Check the
+        // whole history before deciding whether a native call has an execution result.
+        let recorded_outputs: HashSet<&str> = arr
+            .iter()
+            .filter(|message| message["role"] == "tool")
+            .filter_map(|message| message["tool_call_id"].as_str())
+            .collect();
         for msg in arr {
             let role = msg.get("role").and_then(|r| r.as_str()).unwrap_or("");
             if role == "assistant" {
@@ -1062,10 +1092,23 @@ fn transform_input_messages_for_responses(messages_json: serde_json::Value) -> s
                     }
                     // Metadata is repeated on each call, but the response is replayed only once.
                     for item in items {
-                        if let Some(id) = item.get("call_id").and_then(JsonValue::as_str) {
+                        if item["type"] == "function_call" {
+                            let Some((_, id)) = native_function_identity(item) else {
+                                continue;
+                            };
                             emitted_call_ids.insert(id.to_owned());
                         }
                         out.push(item.clone());
+                    }
+                    // Preserve opaque native reasoning and calls even when argument
+                    // validation or execution skipped a call. A missing result is an
+                    // error, not a successful tool execution or an orphaned call.
+                    for item in items {
+                        if let Some((_, id)) = native_function_identity(item) {
+                            if !recorded_outputs.contains(id) && missing_result_ids.insert(id.to_owned()) {
+                                out.push(missing_tool_output(id));
+                            }
+                        }
                     }
                     continue;
                 }
@@ -1251,6 +1294,100 @@ fn transform_input_messages_for_responses(messages_json: serde_json::Value) -> s
 mod tests {
     use super::JobConfig;
     use serde_json::json;
+
+    fn replay_recorded_native_calls(output: &serde_json::Value, executed: &[&str]) -> serde_json::Value {
+        let calls = super::extract_native_function_calls(output.as_array().unwrap());
+        let mut prompt = super::Prompt::new();
+        for call in calls {
+            prompt.add_function_call(
+                json!({
+                    "name": call.name, "arguments": call.arguments, "call_id": call.id,
+                    "provider_metadata": call.provider_metadata
+                }),
+                100,
+            );
+            if executed.contains(&call.id.as_deref().unwrap()) {
+                prompt.add_function_call_response(
+                    json!({
+                        "function_call": {"name": call.name, "id": call.id}, "response": "actual tool result"
+                    }),
+                    100,
+                );
+            }
+        }
+        let model = super::LLMProviderInterface::OpenAI(super::OpenAI {
+            model_type: "gpt-6.1-sol".into(),
+        });
+        // Exercise persisted metadata through the shared message converter as well.
+        let prompt = serde_json::from_str(&serde_json::to_string(&prompt).unwrap()).unwrap();
+        let prepared = super::openai_prepare_messages(&model, prompt).unwrap();
+        let super::PromptResultEnum::Value(messages) = prepared.messages else {
+            panic!("Expected messages")
+        };
+        super::transform_input_messages_for_responses(messages)
+    }
+
+    #[test]
+    fn native_calls_with_unusable_identity_are_not_replayed() {
+        for invalid in [
+            json!({"type": "function_call", "name": "lookup", "arguments": "{}"}),
+            json!({"type": "function_call", "call_id": "", "name": "lookup", "arguments": "{}"}),
+            json!({"type": "function_call", "call_id": "bad", "arguments": "{}"}),
+            json!({"type": "function_call", "call_id": "bad", "name": "", "arguments": "{}"}),
+        ] {
+            let reasoning = json!({"type": "reasoning", "id": "rs_1", "summary": [], "encrypted_content": "opaque"});
+            let valid = json!({"type": "function_call", "id": "fc_good", "call_id": "good", "name": "lookup", "arguments": "{}"});
+            let output = json!([reasoning, invalid, valid]);
+            let replay = replay_recorded_native_calls(&output, &["good"]);
+            assert_eq!(
+                replay,
+                json!([
+                    reasoning, valid,
+                    {"type": "function_call_output", "call_id": "good", "output": "actual tool result"}
+                ])
+            );
+        }
+    }
+
+    #[test]
+    fn malformed_parallel_call_arguments_replay_as_explicit_missing_results() {
+        for invalid_arguments in ["{not-json", "[]"] {
+            let output = json!([
+                {"type": "reasoning", "id": "rs_1", "summary": [], "encrypted_content": "signed-opaque"},
+                {"type": "function_call", "id": "fc_bad", "call_id": "bad", "name": "lookup", "arguments": invalid_arguments},
+                {"type": "function_call", "id": "fc_good", "call_id": "good", "name": "lookup", "arguments": "{}"}
+            ]);
+            let calls = super::extract_native_function_calls(output.as_array().unwrap());
+            assert_eq!(calls.len(), 1);
+            assert_eq!(calls[0].id.as_deref(), Some("good"));
+            let replay = replay_recorded_native_calls(&output, &["good"]);
+            let replay = replay.as_array().unwrap();
+            assert_eq!(&replay[..3], output.as_array().unwrap().as_slice());
+            assert_eq!(replay.len(), 5);
+            assert_eq!(replay[3], super::missing_tool_output("bad"));
+            assert_eq!(replay[4]["call_id"], "good");
+            assert_eq!(replay[4]["output"], "actual tool result");
+        }
+    }
+
+    #[test]
+    fn native_parallel_calls_with_partial_execution_have_error_outputs() {
+        let output = json!([
+            {"type": "reasoning", "id": "rs_1", "summary": [], "encrypted_content": "signed-opaque"},
+            {"type": "function_call", "id": "fc_a", "call_id": "a", "name": "lookup", "arguments": "{}"},
+            {"type": "function_call", "id": "fc_b", "call_id": "b", "name": "lookup", "arguments": "{}"}
+        ]);
+        for executed in [vec!["a"], vec!["b"]] {
+            let replay = replay_recorded_native_calls(&output, &executed);
+            let replay = replay.as_array().unwrap();
+            assert_eq!(&replay[..3], output.as_array().unwrap().as_slice());
+            assert_eq!(replay.len(), 5);
+            let missing = if executed[0] == "a" { "b" } else { "a" };
+            assert_eq!(replay[3], super::missing_tool_output(missing));
+            assert_eq!(replay[4]["call_id"], executed[0]);
+            assert_eq!(replay[4]["output"], "actual tool result");
+        }
+    }
 
     #[test]
     fn encrypted_reasoning_is_requested_only_for_reasoning_models() {
