@@ -175,6 +175,24 @@ impl LLMService for OpenAI {
     }
 }
 
+fn validate_response_completion(response: &JsonValue) -> Result<(), LLMProviderError> {
+    let error = response.get("error").filter(|value| !value.is_null());
+    let incomplete = response.get("incomplete_details").filter(|value| !value.is_null());
+    let status = response.get("status").and_then(JsonValue::as_str);
+    if error.is_some() || incomplete.is_some() || status.is_some_and(|status| status != "completed") {
+        let details = error
+            .or(incomplete)
+            .map(ToString::to_string)
+            .unwrap_or_else(|| "Response did not complete successfully".into());
+        return Err(LLMProviderError::APIError(format!(
+            "OpenAI Responses {}: {}",
+            status.unwrap_or("error"),
+            details
+        )));
+    }
+    Ok(())
+}
+
 async fn handle_non_streaming_response_responses(
     client: &Client,
     url: String,
@@ -210,6 +228,7 @@ async fn handle_non_streaming_response_responses(
     }
 
     let response_json: serde_json::Value = res.json().await?;
+    validate_response_completion(&response_json)?;
 
     // Only extract from output.content[].text where type="output_text" - no fallbacks
     // 1) Text content
@@ -741,8 +760,13 @@ async fn handle_streaming_response_responses(
                         // Completion end
                         "response.completed" => {
                             if let Ok(v) = serde_json::from_str::<JsonValue>(&data_buf) {
+                                if let Some(response) = v.get("response") {
+                                    validate_response_completion(response)?;
+                                }
                                 if let Some(output) = v.pointer("/response/output").and_then(JsonValue::as_array) {
-                                    native_output = output.clone();
+                                    if !output.is_empty() {
+                                        native_output = output.clone();
+                                    }
                                 }
                             }
                             // finalize any remaining tool calls
@@ -1368,6 +1392,131 @@ mod tests {
             panic!("Expected messages")
         };
         super::transform_input_messages_for_responses(messages)
+    }
+
+    #[tokio::test]
+    async fn responses_http_terminal_status_is_checked_before_returning_output() {
+        for (status, error, incomplete, expected) in [
+            (
+                "failed",
+                json!({"message":"provider failed"}),
+                json!(null),
+                Some("provider failed"),
+            ),
+            (
+                "incomplete",
+                json!(null),
+                json!({"reason":"max_output_tokens"}),
+                Some("max_output_tokens"),
+            ),
+            (
+                "completed",
+                json!({"message":"provider error"}),
+                json!(null),
+                Some("provider error"),
+            ),
+            ("completed", json!(null), json!(null), None),
+        ] {
+            let mut server = mockito::Server::new_async().await;
+            let mock = server
+                .mock("POST", "/responses")
+                .with_header("content-type", "application/json")
+                .with_body(
+                    json!({"status":status,"error":error,"incomplete_details":incomplete,
+                    "output":[{"type":"message","content":[{"type":"output_text","text":"answer"}]}]})
+                    .to_string(),
+                )
+                .create_async()
+                .await;
+            let result = super::handle_non_streaming_response_responses(
+                &reqwest::Client::new(),
+                format!("{}/responses", server.url()),
+                json!({}),
+                "test-key".into(),
+                None,
+                None,
+                "test".into(),
+            )
+            .await;
+            mock.assert_async().await;
+            if let Some(expected) = expected {
+                let error = result.unwrap_err().to_string();
+                assert!(error.contains(expected), "{error}");
+            } else {
+                assert_eq!(result.unwrap().response_string, "answer");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn responses_http_failure_without_details_omits_native_output_from_error() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/responses")
+            .with_header("content-type", "application/json")
+            .with_body(
+                json!({"status":"failed", "error":null, "incomplete_details":null,
+                "output":[{"type":"reasoning", "encrypted_content":"private-native-output"}]})
+                .to_string(),
+            )
+            .create_async()
+            .await;
+        let error = super::handle_non_streaming_response_responses(
+            &reqwest::Client::new(),
+            format!("{}/responses", server.url()),
+            json!({}),
+            "test-key".into(),
+            None,
+            None,
+            "test".into(),
+        )
+        .await
+        .unwrap_err()
+        .to_string();
+        mock.assert_async().await;
+        assert!(error.contains("failed"));
+        assert!(error.contains("did not complete successfully"));
+        assert!(!error.contains("private-native-output"));
+        assert!(!error.contains("encrypted_content"));
+        assert!(!error.contains("reasoning"));
+    }
+
+    #[tokio::test]
+    async fn responses_sse_empty_completed_output_preserves_finished_native_items() {
+        let mut server = mockito::Server::new_async().await;
+        let reasoning = json!({"type":"reasoning","id":"rs_1","summary":[],"encrypted_content":"signed-opaque"});
+        let call = json!({"type":"function_call","id":"fc_1","call_id":"call_1","name":"lookup","arguments":"{\"city\":\"Santiago\"}","status":"completed"});
+        let body = format!(
+            "event: response.output_item.done\ndata: {}\n\nevent: response.output_item.done\ndata: {}\n\nevent: response.completed\ndata: {}\n\n",
+            json!({"item":reasoning}), json!({"item":call}),
+            json!({"response":{"status":"completed","output":[]}}),
+        );
+        let mock = server
+            .mock("POST", "/responses")
+            .with_header("content-type", "text/event-stream")
+            .with_body(body)
+            .create_async()
+            .await;
+        let response = super::handle_streaming_response_responses(
+            &reqwest::Client::new(),
+            format!("{}/responses", server.url()),
+            json!({}),
+            "test-key".into(),
+            None,
+            None,
+            std::sync::Arc::new(super::LLMStopper::new()),
+            "test".into(),
+        )
+        .await
+        .unwrap();
+        mock.assert_async().await;
+        assert_eq!(response.function_calls.len(), 1);
+        assert_eq!(response.function_calls[0].id.as_deref(), Some("call_1"));
+        assert_eq!(response.function_calls[0].arguments["city"], "Santiago");
+        assert_eq!(
+            response.function_calls[0].provider_metadata.as_ref().unwrap()["openai_responses"]["output"],
+            json!([reasoning, call])
+        );
     }
 
     #[tokio::test]

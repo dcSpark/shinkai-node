@@ -59,6 +59,8 @@ pub enum ToolIdentityMode {
 pub struct PartialFunctionCall {
     pub identity_mode: ToolIdentityMode,
     pub indexed_calls: std::collections::BTreeMap<u64, PartialFunctionCall>,
+    pub unindexed_calls: Vec<PartialFunctionCall>,
+    pub argument_error: Option<String>,
     pub name: Option<String>,
     pub arguments: String,
     pub is_accumulating: bool, // Track if we're currently accumulating a function call
@@ -250,12 +252,26 @@ fn finalize_function_call_sync(
     tools: &Option<Vec<JsonValue>>,
     completed: bool,
 ) {
+    let reserved_indices: std::collections::HashSet<_> = partial_fc.indexed_calls.keys().copied().collect();
     for (index, mut pending) in std::mem::take(&mut partial_fc.indexed_calls) {
         let before = function_calls.len();
+        let index_in_use = function_calls.iter().any(|call| call.index == index);
         finalize_function_call_sync(&mut pending, function_calls, tools, completed);
+        let output_index = if index_in_use {
+            (0u64..)
+                .find(|candidate| {
+                    !reserved_indices.contains(candidate) && !function_calls.iter().any(|call| call.index == *candidate)
+                })
+                .unwrap()
+        } else {
+            index
+        };
         if let Some(call) = function_calls.get_mut(before) {
-            call.index = index;
+            call.index = output_index;
         }
+    }
+    for mut pending in std::mem::take(&mut partial_fc.unindexed_calls) {
+        finalize_function_call_sync(&mut pending, function_calls, tools, completed);
     }
     if let Some(ref name) = partial_fc.name {
         if name.is_empty() {
@@ -297,6 +313,7 @@ fn finalize_function_call_sync(
                     .cloned()
                     .ok_or_else(|| "Tool arguments must be a JSON object".to_string())
             });
+        let parsed_arguments = partial_fc.argument_error.take().map_or(parsed_arguments, Err);
         let (fc_arguments, provider_metadata) = match parsed_arguments {
             Ok(arguments) => (arguments, None),
             Err(error) => (Default::default(), Some(json!({"function_argument_error": error}))),
@@ -330,7 +347,9 @@ fn finalize_function_call_sync(
             arguments: fc_arguments,
             tool_router_key,
             response: None,
-            index: function_calls.len() as u64,
+            index: (0u64..)
+                .find(|index| !function_calls.iter().any(|call| call.index == *index))
+                .unwrap(),
             id: Some(id),
             call_type: partial_fc.call_type.clone(),
         };
@@ -343,6 +362,60 @@ fn finalize_function_call_sync(
     partial_fc.is_accumulating = false;
     partial_fc.id = None;
     partial_fc.call_type = None;
+}
+
+// A missing index is not a standard delta. Retain calls by full ID when possible;
+// never assign an identity-free fragment to a chunk-local array position.
+fn unindexed_tool_delta<'a>(
+    state: &'a mut PartialFunctionCall,
+    delta: &JsonValue,
+) -> Option<&'a mut PartialFunctionCall> {
+    let id = delta["id"].as_str().filter(|id| !id.is_empty());
+    let name = delta
+        .pointer("/function/name")
+        .and_then(JsonValue::as_str)
+        .filter(|name| !name.is_empty());
+    if let Some(id) = id {
+        if let Some(index) = state
+            .indexed_calls
+            .iter()
+            .find_map(|(index, call)| (call.id.as_deref() == Some(id)).then_some(*index))
+        {
+            return state.indexed_calls.get_mut(&index);
+        }
+        if let Some(position) = state
+            .unindexed_calls
+            .iter()
+            .position(|call| call.id.as_deref() == Some(id))
+        {
+            return state.unindexed_calls.get_mut(position);
+        }
+    }
+    let count = state.indexed_calls.len() + state.unindexed_calls.len();
+    // Fragment-mode identities cannot prove a new call without an index,
+    // even when a provider repeats type:function with those fragments.
+    let new_header = id.is_some() && matches!(state.identity_mode, ToolIdentityMode::Complete);
+    if count == 0 || new_header {
+        state.unindexed_calls.push(PartialFunctionCall::default());
+        return state.unindexed_calls.last_mut();
+    }
+    if count == 1 && id.is_none() {
+        let pending = state
+            .indexed_calls
+            .values_mut()
+            .next()
+            .or_else(|| state.unindexed_calls.first_mut())
+            .unwrap();
+        if name.is_none() || pending.name.as_deref() == name {
+            return Some(pending);
+        }
+        pending.argument_error = Some("Tool call delta has no index and its identity is ambiguous".into());
+        return None;
+    }
+    for call in state.indexed_calls.values_mut().chain(state.unindexed_calls.iter_mut()) {
+        call.argument_error = Some("Tool call delta has no index and cannot be assigned to one call".into());
+    }
+    None
 }
 
 pub async fn parse_openai_stream_chunk(
@@ -442,7 +515,9 @@ pub async fn parse_openai_stream_chunk(
             // If it is literally [DONE], skip
             if line == "[DONE]" {
                 // If we were accumulating a function call, finalize it
-                if !partial_fc.indexed_calls.is_empty() || partial_fc.is_accumulating && partial_fc.name.is_some() {
+                if (!partial_fc.indexed_calls.is_empty() || !partial_fc.unindexed_calls.is_empty())
+                    || partial_fc.is_accumulating && partial_fc.name.is_some()
+                {
                     finalize_function_call_sync(partial_fc, function_calls, tools, true);
                 }
                 continue;
@@ -482,7 +557,9 @@ pub async fn parse_openai_stream_chunk(
         // If it's "[DONE]", send final update and skip
         if chunk.trim() == "[DONE]" {
             // If we were accumulating a function call, finalize it
-            if !partial_fc.indexed_calls.is_empty() || partial_fc.is_accumulating && partial_fc.name.is_some() {
+            if (!partial_fc.indexed_calls.is_empty() || !partial_fc.unindexed_calls.is_empty())
+                || partial_fc.is_accumulating && partial_fc.name.is_some()
+            {
                 finalize_function_call_sync(partial_fc, function_calls, tools, true);
             }
             if let Some(inbox_name) = inbox_name.as_ref() {
@@ -674,16 +751,62 @@ pub async fn parse_openai_stream_chunk(
 
                             // Indexed calls can be interleaved. Each index owns its fragments.
                             if let Some(calls) = delta["tool_calls"].as_array() {
-                                for (position, call) in calls.iter().enumerate() {
-                                    let index = call["index"].as_u64().unwrap_or(position as u64);
+                                for call in calls {
                                     let mode = partial_fc.identity_mode;
-                                    let pending = partial_fc.indexed_calls.entry(index).or_default();
+                                    let indexed = call["index"].as_u64();
+                                    let mut promoted = false;
+                                    let pending = if let Some(index) = indexed {
+                                        if !partial_fc.indexed_calls.contains_key(&index) {
+                                            let id = call["id"].as_str().filter(|id| !id.is_empty());
+                                            let candidate = if let Some(id) = id {
+                                                partial_fc
+                                                    .unindexed_calls
+                                                    .iter()
+                                                    .position(|pending| pending.id.as_deref() == Some(id))
+                                            } else if partial_fc.unindexed_calls.len() == 1
+                                                && call
+                                                    .pointer("/function/name")
+                                                    .and_then(JsonValue::as_str)
+                                                    .filter(|name| !name.is_empty())
+                                                    .is_none_or(|name| {
+                                                        partial_fc.unindexed_calls[0].name.as_deref() == Some(name)
+                                                    })
+                                            {
+                                                Some(0)
+                                            } else {
+                                                None
+                                            };
+                                            if let Some(position) = candidate {
+                                                let pending = partial_fc.unindexed_calls.remove(position);
+                                                partial_fc.indexed_calls.insert(index, pending);
+                                                promoted = true;
+                                            } else if id.is_none() && !partial_fc.unindexed_calls.is_empty() {
+                                                // An index alone cannot identify one of several earlier calls.
+                                                for pending in &mut partial_fc.unindexed_calls {
+                                                    pending.argument_error = Some(
+                                                        "Indexed delta cannot identify its earlier unindexed call"
+                                                            .into(),
+                                                    );
+                                                }
+                                                continue;
+                                            }
+                                        }
+                                        partial_fc.indexed_calls.entry(index).or_default()
+                                    } else if let Some(pending) = unindexed_tool_delta(partial_fc, call) {
+                                        pending
+                                    } else {
+                                        continue;
+                                    };
                                     pending.is_accumulating = true;
                                     for (field, target) in [
                                         (call.get("id"), &mut pending.id),
                                         (call.pointer("/function/name"), &mut pending.name),
                                     ] {
                                         if let Some(fragment) = field.and_then(|value| value.as_str()) {
+                                            // No-index routing recognizes full identities, not fragments.
+                                            if (indexed.is_none() || promoted) && target.as_deref() == Some(fragment) {
+                                                continue;
+                                            }
                                             match mode {
                                                 ToolIdentityMode::Fragments => {
                                                     target.get_or_insert_with(String::new).push_str(fragment)
@@ -717,7 +840,9 @@ pub async fn parse_openai_stream_chunk(
                         } else if finish_reason == "stop" {
                             // If the user or model stops, we can finalize
                             // any function call that wasn't yet finished.
-                            if partial_fc.name.is_some() || !partial_fc.indexed_calls.is_empty() {
+                            if partial_fc.name.is_some()
+                                || (!partial_fc.indexed_calls.is_empty() || !partial_fc.unindexed_calls.is_empty())
+                            {
                                 finalize_function_call_sync(partial_fc, function_calls, tools, true);
                             }
 
@@ -946,6 +1071,8 @@ pub async fn handle_streaming_response_with_identity_mode(
     let mut partial_fc = PartialFunctionCall {
         identity_mode,
         indexed_calls: Default::default(),
+        unindexed_calls: Default::default(),
+        argument_error: None,
         name: None,
         arguments: String::new(),
         is_accumulating: false,
@@ -1067,7 +1194,7 @@ pub async fn handle_streaming_response_with_identity_mode(
     }
 
     // If there's an unfinalized function call at the end, finalize it
-    if !partial_fc.indexed_calls.is_empty() || partial_fc.name.is_some() {
+    if (!partial_fc.indexed_calls.is_empty() || !partial_fc.unindexed_calls.is_empty()) || partial_fc.name.is_some() {
         finalize_function_call_sync(&mut partial_fc, &mut function_calls, &tools, false);
     }
 
@@ -1642,6 +1769,8 @@ mod tests {
         let mut partial_fc = PartialFunctionCall {
             identity_mode: ToolIdentityMode::default(),
             indexed_calls: Default::default(),
+            unindexed_calls: Default::default(),
+            argument_error: None,
             name: None,
             arguments: String::new(),
             is_accumulating: false,
@@ -1695,6 +1824,8 @@ mod tests {
         let mut partial_fc = PartialFunctionCall {
             identity_mode: ToolIdentityMode::default(),
             indexed_calls: Default::default(),
+            unindexed_calls: Default::default(),
+            argument_error: None,
             name: None,
             arguments: String::new(),
             is_accumulating: false,
@@ -1767,6 +1898,8 @@ mod tests {
         let mut partial_fc = PartialFunctionCall {
             identity_mode: ToolIdentityMode::default(),
             indexed_calls: Default::default(),
+            unindexed_calls: Default::default(),
+            argument_error: None,
             name: None,
             arguments: String::new(),
             is_accumulating: false,
@@ -1860,6 +1993,8 @@ mod tests {
         let mut partial_fc = PartialFunctionCall {
             identity_mode: ToolIdentityMode::default(),
             indexed_calls: Default::default(),
+            unindexed_calls: Default::default(),
+            argument_error: None,
             name: None,
             arguments: String::new(),
             is_accumulating: false,
@@ -1959,6 +2094,8 @@ mod tests {
         let mut partial_fc = PartialFunctionCall {
             identity_mode: ToolIdentityMode::default(),
             indexed_calls: Default::default(),
+            unindexed_calls: Default::default(),
+            argument_error: None,
             name: None,
             arguments: String::new(),
             is_accumulating: false,
@@ -2104,6 +2241,8 @@ mod tests {
         let mut partial_fc = PartialFunctionCall {
             identity_mode: ToolIdentityMode::default(),
             indexed_calls: Default::default(),
+            unindexed_calls: Default::default(),
+            argument_error: None,
             name: None,
             arguments: String::new(),
             is_accumulating: false,
@@ -2287,6 +2426,8 @@ mod tests {
         let mut partial_fc = PartialFunctionCall {
             identity_mode: ToolIdentityMode::default(),
             indexed_calls: Default::default(),
+            unindexed_calls: Default::default(),
+            argument_error: None,
             name: None,
             arguments: String::new(),
             is_accumulating: false,
@@ -2341,6 +2482,8 @@ mod tests {
         let mut partial_fc = PartialFunctionCall {
             identity_mode: ToolIdentityMode::default(),
             indexed_calls: Default::default(),
+            unindexed_calls: Default::default(),
+            argument_error: None,
             name: None,
             arguments: String::new(),
             is_accumulating: false,
@@ -2428,6 +2571,301 @@ mod tests {
             ]
         });
         assert_eq!(serde_json::to_value(&fc.arguments).unwrap(), expected_args);
+    }
+
+    async fn parse_test_tool_events(deltas: Vec<JsonValue>, mode: ToolIdentityMode) -> Vec<FunctionCall> {
+        let mut buffer = String::new();
+        let mut text = String::new();
+        let mut reasoning = String::new();
+        let mut calls = Vec::new();
+        let mut partial = PartialFunctionCall {
+            identity_mode: mode,
+            ..Default::default()
+        };
+        for delta in deltas {
+            buffer.push_str(&format!("data: {}\n\n", json!({"choices":[{"index":0,"delta":delta}]})));
+            parse_openai_stream_chunk(
+                &mut buffer,
+                &mut text,
+                &mut reasoning,
+                &mut calls,
+                &mut partial,
+                &None,
+                &None,
+                None,
+                "test",
+            )
+            .await
+            .unwrap();
+        }
+        buffer.push_str("data: [DONE]\n\n");
+        parse_openai_stream_chunk(
+            &mut buffer,
+            &mut text,
+            &mut reasoning,
+            &mut calls,
+            &mut partial,
+            &None,
+            &None,
+            None,
+            "test",
+        )
+        .await
+        .unwrap();
+        calls
+    }
+
+    #[tokio::test]
+    async fn late_index_promotes_unindexed_arguments_without_duplicating_identity() {
+        for mode in [ToolIdentityMode::Fragments, ToolIdentityMode::Complete] {
+            for repeat_identity in [false, true] {
+                let mut continuation = json!({"index":0,"function":{"arguments":"\"Paris\"}"}});
+                if repeat_identity {
+                    continuation["id"] = json!("A");
+                    continuation["function"]["name"] = json!("weather");
+                }
+                let calls = parse_test_tool_events(vec![
+                    json!({"tool_calls":[{"id":"A","type":"function","function":{"name":"weather","arguments":"{\"city\":"}}]}),
+                    json!({"tool_calls":[continuation]})
+                ],mode).await;
+                assert_eq!(calls.len(), 1);
+                assert_eq!(calls[0].id.as_deref(), Some("A"));
+                assert_eq!(calls[0].name, "weather");
+                assert_eq!(calls[0].index, 0);
+                assert_eq!(calls[0].arguments["city"], "Paris");
+                assert!(calls[0].provider_metadata.is_none());
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn late_index_without_identity_does_not_promote_a_different_named_call() {
+        for mode in [ToolIdentityMode::Fragments, ToolIdentityMode::Complete] {
+            let calls = parse_test_tool_events(
+                vec![
+                    json!({"tool_calls":[{"id":"A","type":"function","function":{"name":"first","arguments":""}}]}),
+                    json!({"tool_calls":[{"index":0,"function":{"name":"different","arguments":"{}"}}]}),
+                ],
+                mode,
+            )
+            .await;
+            assert_eq!(calls.len(), 1);
+            assert_eq!(calls[0].id.as_deref(), Some("A"));
+            assert_eq!(calls[0].name, "first");
+            assert!(calls[0].provider_metadata.as_ref().unwrap()["function_argument_error"].is_string());
+        }
+    }
+
+    #[tokio::test]
+    async fn implicit_final_indices_do_not_collide_with_explicit_indices() {
+        let calls = parse_test_tool_events(vec![
+            json!({"tool_calls":[{"index":1,"id":"A","type":"function","function":{"name":"first","arguments":"{}"}}]}),
+            json!({"tool_calls":[{"id":"B","type":"function","function":{"name":"second","arguments":"{}"}}]})
+        ],ToolIdentityMode::Complete).await;
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].index, 1);
+        assert_eq!(calls[0].id.as_deref(), Some("A"));
+        assert_eq!(calls[1].id.as_deref(), Some("B"));
+        assert_ne!(calls[0].index, calls[1].index);
+        assert!(calls.iter().all(|call| call.provider_metadata.is_none()));
+    }
+
+    #[test]
+    fn completed_indices_do_not_consume_reserved_pending_indices() {
+        let mut completed = vec![FunctionCall {
+            provider_metadata: None,
+            name: "earlier".into(),
+            arguments: Default::default(),
+            tool_router_key: None,
+            response: None,
+            index: 0,
+            id: Some("earlier".into()),
+            call_type: Some("function".into()),
+        }];
+        let pending = |name: &str| PartialFunctionCall {
+            id: Some(name.into()),
+            name: Some(name.into()),
+            arguments: "{}".into(),
+            ..Default::default()
+        };
+        let mut state = PartialFunctionCall::default();
+        state.indexed_calls.insert(0, pending("reused"));
+        state.indexed_calls.insert(1, pending("explicit-one"));
+        state.unindexed_calls.push(pending("implicit"));
+        finalize_function_call_sync(&mut state, &mut completed, &None, true);
+        let unique: std::collections::HashSet<_> = completed.iter().map(|call| call.index).collect();
+        assert_eq!(unique.len(), completed.len());
+        assert_eq!(
+            completed.iter().find(|call| call.name == "explicit-one").unwrap().index,
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn repeated_function_type_does_not_make_unindexed_fragments_executable() {
+        use crate::llm_provider::execution::chains::generic_chain::generic_inference_chain::execute_valid_function_call;
+        use crate::managers::tool_router::ToolCallFunctionResponse;
+        let calls = parse_test_tool_events(
+            vec![
+                json!({"tool_calls":[{"id":"call_","type":"function","function":{"name":"clear","arguments":""}}]}),
+                json!({"tool_calls":[{"id":"123","type":"function","function":{"name":"_cache","arguments":"{}"}}]}),
+            ],
+            ToolIdentityMode::Fragments,
+        )
+        .await;
+        assert_eq!(calls.len(), 1);
+        let call = &calls[0];
+        assert_eq!(call.id.as_deref(), Some("call_"));
+        assert!(call.provider_metadata.as_ref().unwrap()["function_argument_error"].is_string());
+        let mut executed = false;
+        let execution_call = call.clone();
+        let result = execute_valid_function_call(call, async {
+            executed = true;
+            Ok(ToolCallFunctionResponse {
+                function_call: execution_call,
+                response: "must not execute".into(),
+            })
+        })
+        .await;
+        assert!(result.is_err());
+        assert!(!executed);
+    }
+
+    #[tokio::test]
+    async fn unindexed_parallel_calls_keep_stable_ids_across_chunks() {
+        for mode in [ToolIdentityMode::Complete] {
+            let mut buffer = String::new();
+            let mut text = String::new();
+            let mut reasoning = String::new();
+            let mut calls = Vec::new();
+            let mut partial = PartialFunctionCall {
+                identity_mode: mode,
+                ..Default::default()
+            };
+            let deltas = [
+                json!({"tool_calls":[{"id":"A","type":"function","function":{"name":"weather","arguments":"{\"city\":"}}]}),
+                json!({"tool_calls":[{"id":"B","type":"function","function":{"name":"time","arguments":"{\"zone\":"}}]}),
+                json!({"tool_calls":[{"id":"B","function":{"arguments":"\"UTC\"}"}}]}),
+                json!({"tool_calls":[{"id":"A","function":{"arguments":"\"Paris\"}"}}]}),
+            ];
+            for delta in deltas {
+                buffer.push_str(&format!("data: {}\n\n", json!({"choices":[{"index":0,"delta":delta}]})));
+                parse_openai_stream_chunk(
+                    &mut buffer,
+                    &mut text,
+                    &mut reasoning,
+                    &mut calls,
+                    &mut partial,
+                    &None,
+                    &None,
+                    None,
+                    "test",
+                )
+                .await
+                .unwrap();
+            }
+            assert!(calls.is_empty());
+            buffer.push_str("data: [DONE]\n\n");
+            parse_openai_stream_chunk(
+                &mut buffer,
+                &mut text,
+                &mut reasoning,
+                &mut calls,
+                &mut partial,
+                &None,
+                &None,
+                None,
+                "test",
+            )
+            .await
+            .unwrap();
+            assert_eq!(calls.len(), 2);
+            assert_eq!(calls[0].id.as_deref(), Some("A"));
+            assert_eq!(calls[0].name, "weather");
+            assert_eq!(calls[0].arguments["city"], "Paris");
+            assert_eq!(calls[1].id.as_deref(), Some("B"));
+            assert_eq!(calls[1].name, "time");
+            assert_eq!(calls[1].arguments["zone"], "UTC");
+            assert!(calls.iter().all(|call| call.provider_metadata.is_none()));
+        }
+    }
+
+    #[tokio::test]
+    async fn ambiguous_unindexed_fragments_remain_blocked_from_execution() {
+        use crate::llm_provider::execution::chains::generic_chain::generic_inference_chain::execute_valid_function_call;
+        use crate::managers::tool_router::ToolCallFunctionResponse;
+        for ambiguous in [
+            json!({"function":{"arguments":" "}}),
+            json!({"id":"fragment","function":{"name":"fragment","arguments":"{}"}}),
+        ] {
+            let mut buffer = String::new();
+            let mut text = String::new();
+            let mut reasoning = String::new();
+            let mut calls = Vec::new();
+            let mode = if ambiguous.get("id").is_some() {
+                ToolIdentityMode::Fragments
+            } else {
+                ToolIdentityMode::Complete
+            };
+            let expected_calls = if ambiguous.get("id").is_some() { 1 } else { 2 };
+            let mut partial = PartialFunctionCall {
+                identity_mode: mode,
+                ..Default::default()
+            };
+            for delta in [
+                json!({"tool_calls":[{"id":"A","type":"function","function":{"name":"first","arguments":"{}"}}]}),
+                json!({"tool_calls":[{"id":"B","type":"function","function":{"name":"second","arguments":"{}"}}]}),
+                json!({"tool_calls":[ambiguous]}),
+            ] {
+                buffer.push_str(&format!("data: {}\n\n", json!({"choices":[{"index":0,"delta":delta}]})));
+                parse_openai_stream_chunk(
+                    &mut buffer,
+                    &mut text,
+                    &mut reasoning,
+                    &mut calls,
+                    &mut partial,
+                    &None,
+                    &None,
+                    None,
+                    "test",
+                )
+                .await
+                .unwrap();
+            }
+            buffer.push_str("data: [DONE]\n\n");
+            parse_openai_stream_chunk(
+                &mut buffer,
+                &mut text,
+                &mut reasoning,
+                &mut calls,
+                &mut partial,
+                &None,
+                &None,
+                None,
+                "test",
+            )
+            .await
+            .unwrap();
+            assert_eq!(calls.len(), expected_calls);
+            for call in calls {
+                assert!(call.provider_metadata.as_ref().unwrap()["function_argument_error"]
+                    .as_str()
+                    .unwrap()
+                    .contains("no index"));
+                let mut executed = false;
+                let execution_call = call.clone();
+                let result = execute_valid_function_call(&call, async {
+                    executed = true;
+                    Ok(ToolCallFunctionResponse {
+                        function_call: execution_call,
+                        response: "must not run".into(),
+                    })
+                })
+                .await;
+                assert!(result.is_err());
+                assert!(!executed);
+            }
+        }
     }
 
     #[tokio::test]

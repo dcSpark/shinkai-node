@@ -566,12 +566,20 @@ impl OpenRouterResponseState {
             .map(|call| {
                 let mut function = json!({"name": call.name});
                 let raw_arguments = self.arguments.get(&call.index);
-                if self.arguments_complete == Some(true)
-                    && raw_arguments.map_or(true, |arguments| {
-                        arguments.as_str().is_some_and(|arguments| arguments.trim().is_empty())
-                    })
+                let argument_error = call
+                    .provider_metadata
+                    .as_ref()
+                    .and_then(|metadata| metadata.get("function_argument_error"))
+                    .and_then(JsonValue::as_str)
+                    .is_some();
+                if argument_error
+                    || self.arguments_complete == Some(true)
+                        && raw_arguments.map_or(true, |arguments| {
+                            arguments.as_str().is_some_and(|arguments| arguments.trim().is_empty())
+                        })
                 {
-                    // Replay completed zero-parameter calls using the required argument-string shape.
+                    // Keep retry requests valid without removing the local execution guard.
+                    // Only guarded arguments and completed empty arguments need normalization.
                     function["arguments"] = json!("{}");
                 } else if let Some(arguments) = raw_arguments {
                     function["arguments"] = arguments.clone();
@@ -1209,9 +1217,8 @@ mod argument_tests {
                 let native_function =
                     &call.provider_metadata.as_ref().unwrap()["openrouter_assistant"]["tool_calls"][0]["function"];
                 let mut expected_function = function.clone();
-                if blank && finish == Some("tool_calls") {
-                    expected_function["arguments"] = json!("{}");
-                }
+                // Guarded calls and completed empty calls both need valid replay arguments.
+                expected_function["arguments"] = json!("{}");
                 assert_eq!(native_function, &expected_function);
             }
         }
@@ -1275,7 +1282,105 @@ mod argument_tests {
     }
 
     #[tokio::test]
-    async fn invalid_nonstreaming_arguments_cannot_execute_or_change_signed_native_data() {
+    async fn guarded_malformed_calls_prepare_valid_retry_arguments_and_actual_error_feedback() {
+        use crate::llm_provider::execution::chains::generic_chain::generic_inference_chain::execute_valid_function_call;
+        use crate::managers::tool_router::ToolCallFunctionResponse;
+        for (arguments, finish, valid) in [
+            (None, None, false),
+            (Some(json!("")), None, false),
+            (Some(json!("{bad")), Some("tool_calls"), false),
+            (Some(json!("{\"city\":")), None, false),
+            (Some(json!("{} trailing")), None, false),
+            (Some(json!("[]")), Some("tool_calls"), false),
+            (Some(json!("null")), Some("tool_calls"), false),
+            (Some(json!({})), Some("tool_calls"), false),
+            (Some(json!(null)), Some("tool_calls"), false),
+            (Some(json!("{  \"city\" : \"Paris\" }")), Some("tool_calls"), true),
+            (Some(json!("{}")), Some("tool_calls"), true),
+        ] {
+            let mut function = json!({"name": "lookup"});
+            if let Some(arguments) = arguments {
+                function["arguments"] = arguments;
+            }
+            let mut assistant = json!({
+                "role": "assistant", "content": "I will check.",
+                "reasoning_details": [{"type": "reasoning.encrypted", "data": "signed-opaque", "index": 0}],
+                "tool_calls": [{"id": "native-call", "type": "function", "function": function}]
+            });
+            let mut calls = Vec::new();
+            let mut state = OpenRouterResponseState::default();
+            process_streaming_chunk(
+                &json!({"choices": [{"index": 0, "message": assistant, "finish_reason": finish}]}),
+                &mut String::new(),
+                &mut calls,
+                &None,
+                &mut state,
+            );
+            state.attach_reasoning(&mut calls);
+            let call = &calls[0];
+            let mut executed = false;
+            let outcome = execute_valid_function_call(call, async {
+                executed = true;
+                Ok(ToolCallFunctionResponse {
+                    function_call: call.clone(),
+                    response: "actual result".into(),
+                })
+            })
+            .await;
+            assert_eq!(executed, valid);
+            let feedback = match outcome {
+                Ok(result) => result.response,
+                Err(error) => {
+                    let guard = call.provider_metadata.as_ref().unwrap()["function_argument_error"]
+                        .as_str()
+                        .unwrap();
+                    let feedback = error.to_string();
+                    assert!(feedback.contains("Invalid function arguments"));
+                    assert!(feedback.contains(guard));
+                    assert!(call.arguments.is_empty());
+                    assistant["tool_calls"][0]["function"]["arguments"] = json!("{}");
+                    feedback
+                }
+            };
+            let mut prompt = Prompt::new();
+            prompt.add_function_call(json!({
+                "name": call.name, "call_id": call.id, "arguments": call.arguments, "provider_metadata": call.provider_metadata
+            }), 100);
+            prompt.add_function_call_response(
+                json!({
+                    "function_call": {"name": call.name, "id": call.id}, "response": feedback
+                }),
+                100,
+            );
+            let prompt = serde_json::from_str(&serde_json::to_string(&prompt).unwrap()).unwrap();
+            let provider = LLMProviderInterface::OpenRouter(OpenRouter {
+                model_type: "anthropic/claude-opus-5.5".into(),
+            });
+            let prepared = openai_prepare_messages(&provider, prompt).unwrap();
+            let PromptResultEnum::Value(messages) = prepared.messages else {
+                panic!("Expected messages");
+            };
+            let request = json!({"model": "anthropic/claude-opus-5.5", "messages": messages});
+            assert_eq!(request["messages"][0], assistant);
+            let replay_arguments = request["messages"][0]["tool_calls"][0]["function"]["arguments"]
+                .as_str()
+                .unwrap();
+            assert!(serde_json::from_str::<JsonValue>(replay_arguments).unwrap().is_object());
+            assert_eq!(
+                request["messages"][1],
+                json!({"role": "tool", "tool_call_id": "native-call", "content": feedback})
+            );
+            if !valid {
+                assert!(request["messages"][1]["content"]
+                    .as_str()
+                    .unwrap()
+                    .contains("Invalid function arguments"));
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn invalid_nonstreaming_arguments_are_guarded_and_keep_signed_reasoning() {
         for (arguments, valid) in [
             (None, false),
             (Some(json!(null)), false),
@@ -1314,7 +1419,11 @@ mod argument_tests {
             assert_eq!(call.id.as_deref(), Some("native-call"));
             assert_eq!(call.name, "zero_arg_tool");
             let metadata = call.provider_metadata.as_ref().unwrap();
-            assert_eq!(metadata["openrouter_assistant"], assistant);
+            let mut expected_assistant = assistant.clone();
+            if !valid {
+                expected_assistant["tool_calls"][0]["function"]["arguments"] = json!("{}");
+            }
+            assert_eq!(metadata["openrouter_assistant"], expected_assistant);
             assert_eq!(metadata["reasoning_details"], assistant["reasoning_details"]);
             assert_eq!(metadata["other_data"], "keep");
             assert_eq!(metadata.get("function_argument_error").is_none(), valid);
@@ -1378,7 +1487,11 @@ mod argument_tests {
             let metadata = call.provider_metadata.as_ref().unwrap();
             assert_eq!(
                 metadata["openrouter_assistant"]["tool_calls"][0]["function"]["arguments"],
-                format!("{{\"city\":\"Paris\"}}{suffix}")
+                if suffix.is_empty() {
+                    "{\"city\":\"Paris\"}"
+                } else {
+                    "{}"
+                }
             );
             assert_eq!(metadata["reasoning_details"], details);
             assert_eq!(metadata.get("function_argument_error").is_none(), suffix.is_empty());
