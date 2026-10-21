@@ -61,11 +61,22 @@ fn chat_payload(model: &str, messages: Value, tools: &[Value], max_tokens: usize
         if let Some(value) = config.seed {
             payload["seed"] = json!(value);
         }
-        if let Some(value) = config.thinking {
-            payload["reasoning"] = json!({"enabled": value});
-        }
-        if let Some(value) = &config.reasoning_effort {
-            payload["reasoning_effort"] = json!(value);
+        // Shared UI settings apply only to verified models. Explicit custom parameters
+        // below remain available for other Together endpoints.
+        if matches!(
+            model,
+            "moonshotai/Kimi-K3"
+                | "MiniMaxAI/MiniMax-M3"
+                | "Qwen/Qwen3.5-9B"
+                | "deepseek-ai/DeepSeek-V4-Pro-0813"
+                | "deepseek-ai/DeepSeek-V4.1-Flash-1017"
+        ) {
+            if let Some(value) = config.thinking {
+                payload["reasoning"] = json!({"enabled": value});
+            }
+            if let Some(value) = &config.reasoning_effort {
+                payload["reasoning_effort"] = json!(value);
+            }
         }
         if let Some(params) = config.other_model_params.as_ref().and_then(Value::as_object) {
             for key in [
@@ -96,6 +107,22 @@ fn chat_payload(model: &str, messages: Value, tools: &[Value], max_tokens: usize
             Some("medium" | "high") => Some("high"),
             Some("max") => Some("max"),
             _ => None,
+        };
+        if let Some(effort) = effort.filter(|_| payload["reasoning"]["enabled"] != false) {
+            payload["reasoning_effort"] = json!(effort);
+        } else {
+            payload.as_object_mut().unwrap().remove("reasoning_effort");
+        }
+    } else if model == "deepseek-ai/DeepSeek-V4.1-Flash-1017" {
+        // Together requires top-level integer effort; DeepSeek defines these named budgets.
+        // https://www.together.ai/models/deepseek-v4-1-flash-1017
+        let effort = match payload["reasoning_effort"].as_str() {
+            Some("low") => Some(50),
+            Some("high") => Some(75),
+            Some("max") => Some(100),
+            _ => payload["reasoning_effort"]
+                .as_u64()
+                .filter(|value| (1..=100).contains(value)),
         };
         if let Some(effort) = effort.filter(|_| payload["reasoning"]["enabled"] != false) {
             payload["reasoning_effort"] = json!(effort);
@@ -219,6 +246,92 @@ mod tests {
             assert_eq!(payload["reasoning"]["enabled"], false);
             assert!(payload.get("reasoning_effort").is_none());
         }
+    }
+
+    #[test]
+    fn together_shared_reasoning_settings_require_verified_model() {
+        let mut config = JobConfig::empty();
+        config.thinking = Some(true);
+        config.reasoning_effort = Some("high".into());
+        config.temperature = Some(0.3);
+        for model in ["togethercomputer/llama-2-70b-chat", "Qwen/Qwen3.5-9B-unknown"] {
+            let payload = chat_payload(model, json!([]), &[], 4096, Some(&config));
+            assert!(payload.get("reasoning").is_none(), "{model}");
+            assert!(payload.get("reasoning_effort").is_none(), "{model}");
+            assert_eq!(payload["temperature"], 0.3);
+        }
+        for (model, effort) in [
+            ("moonshotai/Kimi-K3", json!("high")),
+            ("MiniMaxAI/MiniMax-M3", Value::Null),
+            ("Qwen/Qwen3.5-9B", json!("high")),
+            ("deepseek-ai/DeepSeek-V4-Pro-0813", json!("high")),
+            ("deepseek-ai/DeepSeek-V4.1-Flash-1017", json!(75)),
+        ] {
+            let payload = chat_payload(model, json!([]), &[], 4096, Some(&config));
+            assert_eq!(payload["reasoning"], json!({"enabled": true}), "{model}");
+            assert_eq!(payload["reasoning_effort"], effort, "{model}");
+        }
+        config.other_model_params = Some(json!({"reasoning": {"enabled": false}, "reasoning_effort": 42}));
+        let payload = chat_payload("custom/model", json!([]), &[], 4096, Some(&config));
+        assert_eq!(payload["reasoning"], json!({"enabled": false}));
+        assert_eq!(payload["reasoning_effort"], 42);
+    }
+
+    #[test]
+    fn together_deepseek_flash_uses_numeric_effort() {
+        let model = "deepseek-ai/DeepSeek-V4.1-Flash-1017";
+        let mut config = JobConfig::empty();
+        config.thinking = Some(true);
+        for (name, expected) in [("low", 50), ("high", 75), ("max", 100)] {
+            config.reasoning_effort = Some(name.into());
+            let payload = chat_payload(model, json!([]), &[], 4096, Some(&config));
+            assert_eq!(payload["reasoning_effort"], expected);
+            assert_eq!(payload["reasoning"], json!({"enabled": true}));
+        }
+        config.reasoning_effort = None;
+        for value in [json!(1), json!(42), json!(100)] {
+            config.other_model_params = Some(json!({"reasoning_effort": value}));
+            let payload = chat_payload(model, json!([]), &[], 4096, Some(&config));
+            assert_eq!(payload["reasoning_effort"], value);
+        }
+        for value in [
+            json!(0),
+            json!(101),
+            json!(-1),
+            json!(1.5),
+            json!(true),
+            json!("50"),
+            json!("medium"),
+            json!("none"),
+        ] {
+            config.other_model_params = Some(json!({"reasoning_effort": value}));
+            let payload = chat_payload(model, json!([]), &[], 4096, Some(&config));
+            assert!(payload.get("reasoning_effort").is_none(), "{value}");
+        }
+        config.other_model_params = Some(json!({"reasoning_effort": 75}));
+        config.thinking = Some(false);
+        let payload = chat_payload(model, json!([]), &[], 4096, Some(&config));
+        assert_eq!(payload["reasoning"], json!({"enabled": false}));
+        assert!(payload.get("reasoning_effort").is_none());
+        config.thinking = Some(true);
+        config.other_model_params = Some(json!({"reasoning": {"enabled": false}, "reasoning_effort": 75}));
+        let payload = chat_payload(model, json!([]), &[], 4096, Some(&config));
+        assert!(payload.get("reasoning_effort").is_none());
+        config.other_model_params = None;
+        config.reasoning_effort = Some("high".into());
+        for other in [
+            "deepseek-ai/DeepSeek-V4-Pro-0813",
+            "deepseek-ai/DeepSeek-V4.1-Flash-1017-unknown",
+        ] {
+            let payload = chat_payload(other, json!([]), &[], 4096, Some(&config));
+            if other == "deepseek-ai/DeepSeek-V4-Pro-0813" {
+                assert_eq!(payload["reasoning_effort"], "high");
+            } else {
+                assert!(payload.get("reasoning_effort").is_none());
+            }
+        }
+        let payload = chat_payload(model, json!([]), &[], 4096, None);
+        assert!(payload.get("reasoning_effort").is_none());
     }
 
     #[test]

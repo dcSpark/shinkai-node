@@ -499,6 +499,17 @@ pub async fn parse_openai_stream_chunk(
             continue;
         }
 
+        // Choices are alternative completions, not parts of one response. Select
+        // before extracting legacy argument fragments as well as indexed deltas.
+        let selected_chunk = serde_json::from_str::<JsonValue>(chunk).ok().map(|mut value| {
+            if let Some(choices) = value.get_mut("choices").and_then(|value| value.as_array_mut()) {
+                // Missing indices remain accepted for legacy compatible streams.
+                choices.retain(|choice| choice["index"].as_u64().unwrap_or(0) == 0);
+            }
+            value.to_string()
+        });
+        let chunk = selected_chunk.as_deref().unwrap_or(chunk);
+
         // Extract any function call arguments before parsing JSON
         let is_indexed_delta = serde_json::from_str::<JsonValue>(chunk)
             .ok()
@@ -1386,6 +1397,58 @@ pub fn extract_and_remove_arguments(json_str: &str) -> (Option<String>, String) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn test_stream_multiple_choices_only_accumulates_choice_zero() {
+        let mut buffer = String::new();
+        let mut text = String::new();
+        let mut reasoning = String::new();
+        let mut calls = Vec::new();
+        let mut partial = PartialFunctionCall::default();
+        let chunks = [
+            json!({"choices":[
+                {"index":1,"delta":{"content":"ignored", "reasoning_content":"ignored reasoning", "tool_calls":[
+                    {"index":0,"id":"other","function":{"name":"other","arguments":"{\"wrong\":"}}
+                ]}},
+                {"index":0,"delta":{"content":"selected", "reasoning_content":"selected reasoning", "tool_calls":[
+                    {"index":0,"id":"native","function":{"name":"weather","arguments":"{\"city\":"}}
+                ]}}
+            ]}),
+            json!({"choices":[
+                {"index":1,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"wrong\"}"}}]},"finish_reason":"tool_calls"},
+                {"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"Santiago\"}"}}]}}
+            ]}),
+            json!({"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}),
+        ];
+        for (index, chunk) in chunks.into_iter().enumerate() {
+            buffer.push_str(&format!("data: {chunk}\n\n"));
+            parse_openai_stream_chunk(
+                &mut buffer,
+                &mut text,
+                &mut reasoning,
+                &mut calls,
+                &mut partial,
+                &None,
+                &None,
+                None,
+                "test",
+            )
+            .await
+            .unwrap();
+            if index < 2 {
+                assert!(calls.is_empty(), "alternative finish must not finalize choice zero");
+            }
+        }
+        assert_eq!(text, "selected");
+        assert_eq!(reasoning, "selected reasoning");
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].id.as_deref(), Some("native"));
+        assert_eq!(calls[0].name, "weather");
+        assert_eq!(
+            calls[0].arguments,
+            json!({"city":"Santiago"}).as_object().unwrap().clone()
+        );
+    }
 
     #[tokio::test]
     async fn test_stream_complete_identities_keep_repeated_headers_and_argument_fragments() {

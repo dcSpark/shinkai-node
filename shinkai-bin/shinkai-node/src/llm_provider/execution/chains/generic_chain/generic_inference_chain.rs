@@ -1,6 +1,6 @@
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::inference_chain_trait::{
-    InferenceChain, InferenceChainContext, InferenceChainContextTrait, InferenceChainResult,
+    FunctionCall, InferenceChain, InferenceChainContext, InferenceChainContextTrait, InferenceChainResult,
 };
 use crate::llm_provider::execution::prompts::general_prompts::JobPromptGenerator;
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
@@ -41,6 +41,23 @@ use std::result::Result::Ok;
 use std::time::Instant;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
+
+pub(crate) async fn execute_valid_function_call(
+    function_call: &FunctionCall,
+    execution: impl std::future::Future<Output = Result<ToolCallFunctionResponse, LLMProviderError>>,
+) -> Result<ToolCallFunctionResponse, LLMProviderError> {
+    if let Some(error) = function_call
+        .provider_metadata
+        .as_ref()
+        .and_then(|metadata| metadata.get("function_argument_error"))
+        .and_then(|error| error.as_str())
+    {
+        return Err(LLMProviderError::ToolRouterError(format!(
+            "Invalid function arguments: {error}"
+        )));
+    }
+    execution.await
+}
 
 #[derive(Clone)]
 pub struct GenericInferenceChain {
@@ -1179,7 +1196,6 @@ impl GenericInferenceChain {
             // 5) Check response if it requires a function call
             if !response.is_function_calls_empty() {
                 let mut iteration_function_responses = Vec::new();
-                let mut should_retry = false;
 
                 for function_call in response.function_calls {
                     let parsed_message = ParsedUserMessage::new(user_message.clone());
@@ -1287,11 +1303,16 @@ impl GenericInferenceChain {
 
                     // Note: here we can add logic to handle the case that we have network tools
                     // TODO: if shinkai_tool is None we need to retry with the LLM (hallucination)
-                    let mut function_response = match tool_router
-                        .as_ref()
-                        .unwrap()
-                        .call_function(function_call.clone(), &context, &shinkai_tool, user_profile.clone())
-                        .await
+                    let mut function_response = match execute_valid_function_call(
+                        &function_call,
+                        tool_router.as_ref().unwrap().call_function(
+                            function_call.clone(),
+                            &context,
+                            &shinkai_tool,
+                            user_profile.clone(),
+                        ),
+                    )
+                    .await
                     {
                         Ok(response) => response,
                         Err(e) => {
@@ -1327,35 +1348,8 @@ impl GenericInferenceChain {
                                         response: error_msg.clone(),
                                     });
 
-                                    // Update prompt with error information for retry
-                                    filled_prompt = JobPromptGenerator::generic_inference_prompt(
-                                        db.clone(),
-                                        custom_system_prompt.clone(),
-                                        custom_prompt.clone(),
-                                        user_message.clone(),
-                                        image_files.clone(),
-                                        video_files.clone(),
-                                        audio_files.clone(),
-                                        ret_nodes.clone(),
-                                        None,
-                                        Some(full_job.step_history.clone()),
-                                        tools.clone(),
-                                        // Pass all function responses (including the error) to keep context
-                                        Some(
-                                            all_function_responses
-                                                .iter()
-                                                .chain(iteration_function_responses.iter())
-                                                .cloned()
-                                                .collect(),
-                                        ),
-                                        full_job.job_id.clone(),
-                                        additional_files.clone(),
-                                    )
-                                    .await;
-
-                                    // Set flag to retry and break out of the function calls loop
-                                    iteration_count += 1;
-                                    should_retry = true;
+                                    // Stop execution after a validation error. The common prompt
+                                    // update retains this error and any earlier results for retry.
                                     break;
                                 }
                                 LLMProviderError::ToolRouterError(ref error_msg)
@@ -1473,11 +1467,6 @@ impl GenericInferenceChain {
                     merged_fs_files_paths.clone(),
                     merged_fs_folder_paths.clone(),
                 )?;
-
-                // If we need to retry, continue the outer loop
-                if should_retry {
-                    continue;
-                }
 
                 // Add this iteration's responses to our cumulative collection
                 all_function_responses.extend(iteration_function_responses);

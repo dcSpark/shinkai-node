@@ -230,10 +230,14 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
                                 "arguments": function_call["arguments"]
                             }
                         });
-                        if matches!(
-                            model,
-                            LLMProviderInterface::OpenAI(_) | LLMProviderInterface::OpenAILegacy(_)
-                        ) {
+                        let uses_responses = match model {
+                            LLMProviderInterface::OpenAI(_) => true,
+                            LLMProviderInterface::OpenAILegacy(provider) => {
+                                ModelCapabilitiesManager::is_gpt6(&provider.model_type)
+                            }
+                            _ => false,
+                        };
+                        if uses_responses {
                             if let Some(output) = metadata.and_then(|m| m.get("openai_responses")) {
                                 tool_call["provider_metadata"] = serde_json::json!({"openai_responses": output});
                             }
@@ -258,6 +262,11 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
 
     // Only adjacent fragments can belong to the same assistant tool turn.
     let merged_messages = merge_adjacent_tool_calls(messages_vec);
+    let merged_messages = if matches!(model, LLMProviderInterface::OpenRouter(_)) {
+        complete_openrouter_tool_results(merged_messages)
+    } else {
+        merged_messages
+    };
 
     // Flatten the tools array to extract functions directly
     let tools_vec = match tools_json {
@@ -322,6 +331,45 @@ fn restore_assistant_reasoning(
     }
 }
 
+// Native assistant turns can include calls skipped after an earlier validation error.
+// Keep the signed assistant data and all recorded results unchanged. Supply a result
+// for each missing call before the next conversational turn.
+fn complete_openrouter_tool_results(messages: Vec<serde_json::Value>) -> Vec<serde_json::Value> {
+    let mut completed = Vec::new();
+    let mut pending = Vec::<String>::new();
+    fn append_missing(completed: &mut Vec<serde_json::Value>, pending: &mut Vec<String>) {
+        for id in pending.drain(..) {
+            completed.push(serde_json::json!({
+                "role": "tool", "tool_call_id": id,
+                "content": "Tool execution did not produce a result. The call was skipped after an earlier tool error."
+            }));
+        }
+    }
+    for message in messages {
+        if message["role"] == "tool" {
+            if let Some(id) = message["tool_call_id"].as_str() {
+                pending.retain(|pending_id| pending_id != id);
+            }
+        } else {
+            append_missing(&mut completed, &mut pending);
+            if message["role"] == "assistant" {
+                if let Some(calls) = message["tool_calls"].as_array() {
+                    for call in calls {
+                        if let Some(id) = call["id"].as_str().filter(|id| !id.is_empty()) {
+                            if !pending.iter().any(|pending_id| pending_id == id) {
+                                pending.push(id.into());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        completed.push(message);
+    }
+    append_missing(&mut completed, &mut pending);
+    completed
+}
+
 fn merge_adjacent_tool_calls(messages: Vec<serde_json::Value>) -> Vec<serde_json::Value> {
     let mut merged: Vec<serde_json::Value> = Vec::with_capacity(messages.len());
     for message in messages {
@@ -355,6 +403,116 @@ mod tests {
     use serde_json::json;
     use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
     use shinkai_message_primitives::schemas::subprompts::{SubPrompt, SubPromptAssetType, SubPromptType};
+
+    #[test]
+    fn responses_metadata_only_reaches_actual_responses_routes() {
+        use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{OpenAI, OpenAILegacy};
+        let metadata = json!({"openai_responses": {"output": [{"type":"reasoning","encrypted_content":"signed"}]}});
+        for (model, expected) in [
+            (
+                LLMProviderInterface::OpenAI(OpenAI {
+                    model_type: "gpt-4o".into(),
+                }),
+                true,
+            ),
+            (
+                LLMProviderInterface::OpenAILegacy(OpenAILegacy {
+                    model_type: "gpt-6.1-sol".into(),
+                }),
+                true,
+            ),
+            (
+                LLMProviderInterface::OpenAILegacy(OpenAILegacy {
+                    model_type: "gpt-4o".into(),
+                }),
+                false,
+            ),
+            (
+                LLMProviderInterface::OpenAILegacy(OpenAILegacy {
+                    model_type: "gpt-6-custom".into(),
+                }),
+                false,
+            ),
+        ] {
+            let mut prompt = Prompt::new();
+            prompt.add_function_call(
+                json!({"name":"weather", "call_id":"call-1", "arguments":{}, "provider_metadata":metadata}),
+                100,
+            );
+            let result = openai_prepare_messages(&model, prompt).unwrap();
+            let PromptResultEnum::Value(messages) = result.messages else {
+                panic!("expected messages")
+            };
+            assert_eq!(
+                messages[0]["tool_calls"][0].get("provider_metadata").is_some(),
+                expected
+            );
+            assert!(messages[0]["tool_calls"][0]["function"]
+                .get("provider_metadata")
+                .is_none());
+        }
+    }
+
+    #[test]
+    fn openrouter_native_turns_keep_signatures_and_complete_missing_results() {
+        use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::OpenRouter;
+        let native = json!({"role":"assistant", "content":null,
+        "reasoning_details":[{"type":"reasoning.encrypted", "data":"signed"}],
+        "tool_calls":[
+            {"id":"A", "type":"function", "function":{"name":"first", "arguments":"{}"}},
+            {"id":"B", "type":"function", "function":{"name":"second", "arguments":"{}"}}
+        ]});
+        let model = LLMProviderInterface::OpenRouter(OpenRouter {
+            model_type: "anthropic/claude-opus-5.5".into(),
+        });
+        for complete in [false, true] {
+            let mut prompt = Prompt::new();
+            for (name, id) in [("first", "A"), ("second", "B")]
+                .into_iter()
+                .take(if complete { 2 } else { 1 })
+            {
+                prompt.add_function_call(json!({"name":name,"call_id":id,"arguments":{},"provider_metadata":{"openrouter_assistant":native}}),100);
+                prompt.add_function_call_response(
+                    json!({"function_call":{"name":name,"id":id},"response":format!("valid {id}")}),
+                    100,
+                );
+            }
+            let prepared = openai_prepare_messages(&model, prompt).unwrap();
+            let PromptResultEnum::Value(messages) = prepared.messages else {
+                panic!("expected messages")
+            };
+            assert_eq!(messages[0], native);
+            assert_eq!(
+                messages[1],
+                json!({"role":"tool","tool_call_id":"A","content":"valid A"})
+            );
+            assert_eq!(messages[2]["tool_call_id"], "B");
+            if complete {
+                assert_eq!(messages[2]["content"], "valid B");
+            } else {
+                assert!(messages[2]["content"].as_str().unwrap().contains("skipped"));
+            }
+            assert_eq!(messages.as_array().unwrap().len(), 3);
+        }
+    }
+
+    #[test]
+    fn missing_openrouter_results_are_inserted_before_the_next_turn() {
+        let first = json!({"role":"assistant", "reasoning_details":[{"signature":"signed-first"}],
+            "tool_calls":[{"id":"A"},{"id":"B"}]});
+        let later = json!({"role":"assistant", "reasoning_details":[{"signature":"signed-later"}],
+            "tool_calls":[{"id":"C"}]});
+        let valid_a = json!({"role":"tool","tool_call_id":"A","content":"validation failed"});
+        let valid_c = json!({"role":"tool","tool_call_id":"C","content":"success"});
+        let completed =
+            complete_openrouter_tool_results(vec![first.clone(), valid_a.clone(), later.clone(), valid_c.clone()]);
+        assert_eq!(completed.len(), 5);
+        assert_eq!(completed[0], first);
+        assert_eq!(completed[1], valid_a);
+        assert_eq!(completed[2]["tool_call_id"], "B");
+        assert_eq!(completed[3], later);
+        assert_eq!(completed[4], valid_c);
+    }
 
     #[test]
     fn tool_history_restores_provider_reasoning_without_function_metadata() {

@@ -255,7 +255,6 @@ async fn handle_streaming_response(
     let mut stream = res.bytes_stream();
     let mut response_text = String::new();
     let mut thinking_text = String::new();
-    let mut processed_tool: Option<ProcessedTool> = None;
     let mut function_calls = Vec::new();
     let mut buffer = String::new();
     let mut native_content = ClaudeContentCollector::default();
@@ -309,62 +308,12 @@ async fn handle_streaming_response(
                             response_text.push_str(&processed_chunk.partial_text);
                             thinking_text.push_str(&processed_chunk.thinking_text);
 
-                            // Handle tool use
-                            if let Some(tool_use) = processed_chunk.tool_use {
-                                match processed_tool {
-                                    Some(ref mut tool) => {
-                                        if !tool_use.tool_name.is_empty() {
-                                            tool.tool_name = tool_use.tool_name;
-                                        }
-                                        tool.partial_tool_arguments.push_str(&tool_use.partial_tool_arguments);
-                                    }
-                                    None => {
-                                        processed_tool = Some(tool_use);
-                                    }
-                                }
-                            }
-
-                            // Handle function calls when tool is complete
-                            if processed_chunk.is_done && processed_tool.is_some() {
-                                let name = processed_tool.as_ref().unwrap().tool_name.clone();
-                                let arguments = serde_json::from_str::<JsonValue>(
-                                    &processed_tool.as_ref().unwrap().partial_tool_arguments,
-                                )
-                                .ok()
-                                .and_then(|args_value| args_value.as_object().cloned())
-                                .unwrap_or_else(|| serde_json::Map::new());
-                                let tool_router_key = tools.as_ref().and_then(|tools_array| {
-                                    tools_array.iter().find_map(|tool| {
-                                        if tool.get("name")?.as_str()? == name {
-                                            tool.get("tool_router_key")
-                                                .and_then(|key| key.as_str().map(|s| s.to_string()))
-                                        } else {
-                                            None
-                                        }
-                                    })
-                                });
-
-                                let function_call = FunctionCall {
-                                    name,
-                                    arguments,
-                                    tool_router_key,
-                                    response: None,
-                                    index: function_calls.len() as u64,
-                                    id: None,
-                                    provider_metadata: None,
-                                    call_type: Some("function".to_string()),
-                                };
-
-                                function_calls.push(function_call.clone());
-
-                                eprintln!("Function Call: {:?}", function_call);
-
-                                // Reset processed_tool to prevent duplicate function calls
-                                // since is_done can be set true multiple times (message_delta + message_stop)
-                                processed_tool = None;
-
+                            // A completed block owns its name, arguments, and ID. Message-level
+                            // stop events must not merge independent tool blocks.
+                            for function_call in native_content.take_completed_tools(&tools) {
                                 let _ =
                                     send_tool_ws_update(&ws_manager_trait, inbox_name.clone(), &function_call).await;
+                                function_calls.push(function_call);
                             }
 
                             // Send WS update
@@ -416,12 +365,7 @@ async fn handle_streaming_response(
         }
     }
 
-    let content = native_content.content();
-    let native_tools: Vec<_> = content.iter().filter(|block| block["type"] == "tool_use").collect();
-    for (call, block) in function_calls.iter_mut().zip(native_tools) {
-        call.id = block["id"].as_str().map(str::to_owned);
-        call.provider_metadata = Some(json!({"claude_content": content.clone()}));
-    }
+    native_content.attach_metadata(&mut function_calls);
 
     Ok(LLMInferenceResponse::new(
         response_text,
@@ -727,6 +671,8 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
 struct ClaudeContentCollector {
     blocks: std::collections::BTreeMap<u64, JsonValue>,
     inputs: std::collections::HashMap<u64, String>,
+    stopped: std::collections::HashSet<u64>,
+    completed_tools: Vec<(u64, JsonValue, Option<String>)>,
 }
 
 impl ClaudeContentCollector {
@@ -764,13 +710,74 @@ impl ClaudeContentCollector {
                 }
             }
             Some("content_block_stop") => {
-                if let (Some(input), Some(block)) = (self.inputs.remove(&index), self.blocks.get_mut(&index)) {
-                    if let Ok(input) = serde_json::from_str::<JsonValue>(&input) {
-                        block["input"] = input;
+                if let Some(block) = self.blocks.get_mut(&index) {
+                    if block["type"] == "tool_use" && self.stopped.insert(index) {
+                        let input = match self.inputs.remove(&index) {
+                            Some(input) => serde_json::from_str::<JsonValue>(&input)
+                                .map_err(|error| format!("Tool arguments are not valid JSON: {error}")),
+                            None => Ok(block["input"].clone()),
+                        }
+                        .and_then(|input| {
+                            input
+                                .as_object()
+                                .cloned()
+                                .ok_or_else(|| "Tool arguments must be a JSON object".to_string())
+                        });
+                        let argument_error = match input {
+                            Ok(input) => {
+                                block["input"] = json!(input);
+                                None
+                            }
+                            Err(error) => {
+                                // Keep a valid native input shape, but retain the error so
+                                // the chain cannot execute an invalid zero-argument call.
+                                block["input"] = json!({});
+                                Some(error)
+                            }
+                        };
+                        self.completed_tools.push((index, block.clone(), argument_error));
                     }
                 }
             }
             _ => (),
+        }
+    }
+
+    fn take_completed_tools(&mut self, tools: &Option<Vec<JsonValue>>) -> Vec<FunctionCall> {
+        std::mem::take(&mut self.completed_tools)
+            .into_iter()
+            .filter_map(|(index, block, argument_error)| {
+                let name = block["name"].as_str().filter(|name| !name.is_empty())?.to_owned();
+                let id = block["id"].as_str().filter(|id| !id.is_empty())?.to_owned();
+                let arguments = block["input"].as_object()?.clone();
+                let tool_router_key = tools.as_ref().and_then(|tools| {
+                    tools.iter().find_map(|tool| {
+                        if tool["name"] == name {
+                            tool["tool_router_key"].as_str().map(str::to_owned)
+                        } else {
+                            None
+                        }
+                    })
+                });
+                Some(FunctionCall {
+                    name,
+                    arguments,
+                    tool_router_key,
+                    response: None,
+                    index,
+                    id: Some(id),
+                    provider_metadata: argument_error.map(|error| json!({"function_argument_error": error})),
+                    call_type: Some("function".into()),
+                })
+            })
+            .collect()
+    }
+
+    fn attach_metadata(&self, calls: &mut [FunctionCall]) {
+        let content = self.content();
+        for call in calls {
+            let metadata = call.provider_metadata.get_or_insert_with(|| json!({}));
+            metadata["claude_content"] = json!(content.clone());
         }
     }
 
@@ -1017,6 +1024,191 @@ fn process_chunk(chunk: &[u8]) -> Result<ProcessedChunk, LLMProviderError> {
 
 #[cfg(test)]
 mod tests {
+    fn claude_sse(event: JsonValue) -> String {
+        format!("event: {}\ndata: {}\n\n", event["type"].as_str().unwrap(), event)
+    }
+
+    #[tokio::test]
+    async fn streamed_parallel_claude_calls_keep_each_completed_block_and_signed_turn() {
+        use std::io::Write;
+        let events = vec![
+            json!({"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}}),
+            json!({"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"opaque reasoning"}}),
+            json!({"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"signed-"}}),
+            json!({"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"thinking"}}),
+            json!({"type":"content_block_stop","index":0}),
+            json!({"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_weather","name":"weather","input":{}}}),
+            json!({"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"city\":"}}),
+            json!({"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"\"Santiago\"}"}}),
+            json!({"type":"content_block_stop","index":1}),
+            json!({"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"toolu_clock","name":"clock","input":{}}}),
+            json!({"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"{\"zone\":"}}),
+            json!({"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"\"America/Santiago\"}"}}),
+            json!({"type":"content_block_stop","index":2}),
+            json!({"type":"message_delta","delta":{"stop_reason":"tool_use"}}),
+            json!({"type":"message_stop"}),
+        ];
+        let body = events.into_iter().map(claude_sse).collect::<String>();
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/messages")
+            .with_header("content-type", "text/event-stream")
+            .with_chunked_body(move |writer| {
+                // Split JSON tokens and SSE frame boundaries across transport chunks.
+                for chunk in body.as_bytes().chunks(17) {
+                    writer.write_all(chunk)?;
+                    writer.flush()?;
+                }
+                Ok(())
+            })
+            .create_async()
+            .await;
+        let tools = Some(vec![
+            json!({"name":"weather","tool_router_key":"weather-route"}),
+            json!({"name":"clock","tool_router_key":"clock-route"}),
+        ]);
+        let response = handle_streaming_response(
+            &Client::new(),
+            format!("{}/messages", server.url()),
+            json!({}),
+            "test-key".into(),
+            None,
+            None,
+            Arc::new(LLMStopper::new()),
+            "test-session".into(),
+            tools,
+        )
+        .await
+        .unwrap();
+        mock.assert_async().await;
+        let calls = response.function_calls;
+        assert_eq!(calls.len(), 2);
+        assert_eq!(
+            (calls[0].name.as_str(), calls[0].id.as_deref(), calls[0].index),
+            ("weather", Some("toolu_weather"), 1)
+        );
+        assert_eq!(
+            (calls[1].name.as_str(), calls[1].id.as_deref(), calls[1].index),
+            ("clock", Some("toolu_clock"), 2)
+        );
+        assert_eq!(
+            calls[0].arguments,
+            json!({"city":"Santiago"}).as_object().unwrap().clone()
+        );
+        assert_eq!(
+            calls[1].arguments,
+            json!({"zone":"America/Santiago"}).as_object().unwrap().clone()
+        );
+        assert_eq!(calls[0].tool_router_key.as_deref(), Some("weather-route"));
+        assert_eq!(calls[1].tool_router_key.as_deref(), Some("clock-route"));
+        let native = json!([
+            {"type":"thinking","thinking":"opaque reasoning","signature":"signed-thinking"},
+            {"type":"tool_use","id":"toolu_weather","name":"weather","input":{"city":"Santiago"}},
+            {"type":"tool_use","id":"toolu_clock","name":"clock","input":{"zone":"America/Santiago"}}
+        ]);
+        let mut prompt = Prompt::new();
+        for call in calls {
+            assert_eq!(call.provider_metadata.as_ref().unwrap()["claude_content"], native);
+            prompt.add_function_call(json!({"name":call.name,"call_id":call.id,"arguments":call.arguments,"provider_metadata":call.provider_metadata}),100);
+            prompt.add_function_call_response(
+                json!({"function_call":{"name":call.name,"id":call.id},"response":"actual result"}),
+                100,
+            );
+        }
+        let prompt = serde_json::from_str(&serde_json::to_string(&prompt).unwrap()).unwrap();
+        let model = LLMProviderInterface::Claude(Claude {
+            model_type: "claude-opus-5-5".into(),
+        });
+        let (prepared, _) = claude_prepare_messages(&model, prompt).unwrap();
+        let PromptResultEnum::Value(messages) = prepared.messages else {
+            panic!("Expected messages")
+        };
+        assert_eq!(messages[0]["content"], native);
+        assert_eq!(
+            messages[1]["content"],
+            json!([
+                {"type":"tool_result","tool_use_id":"toolu_weather","content":"actual result"},
+                {"type":"tool_result","tool_use_id":"toolu_clock","content":"actual result"}
+            ])
+        );
+    }
+
+    #[tokio::test]
+    async fn malformed_claude_arguments_reach_guard_without_execution() {
+        use crate::llm_provider::execution::chains::generic_chain::generic_inference_chain::execute_valid_function_call;
+        for input in ["{invalid", "[]"] {
+            let mut collector = ClaudeContentCollector::default();
+            for event in [
+                json!({"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"opaque","signature":"signed"}}),
+                json!({"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"invalid-call","name":"zero_arg_tool","input":{}}}),
+                json!({"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":input}}),
+                json!({"type":"content_block_stop","index":1}),
+            ] {
+                collector.push_event(&claude_sse(event));
+            }
+            let mut calls = collector.take_completed_tools(&None);
+            assert_eq!(calls.len(), 1, "Invalid input must reach the retry guard");
+            collector.attach_metadata(&mut calls);
+            let call = &calls[0];
+            assert_eq!(call.id.as_deref(), Some("invalid-call"));
+            assert_eq!(call.name, "zero_arg_tool");
+            assert!(call.arguments.is_empty());
+            let metadata = call.provider_metadata.as_ref().unwrap();
+            assert!(metadata["function_argument_error"].is_string());
+            assert_eq!(
+                metadata["claude_content"][0],
+                json!({"type":"thinking","thinking":"opaque","signature":"signed"})
+            );
+            assert_eq!(metadata["claude_content"][1]["input"], json!({}));
+            let executed = std::cell::Cell::new(false);
+            let result = execute_valid_function_call(call, async {
+                executed.set(true);
+                panic!("Invalid arguments must not execute a tool");
+            })
+            .await;
+            assert!(result.is_err());
+            assert!(!executed.get());
+        }
+    }
+
+    #[test]
+    fn collector_keeps_independent_block_fragments_and_emits_once_at_stop() {
+        let mut collector = ClaudeContentCollector::default();
+        let mut calls = Vec::new();
+        let events = [
+            json!({"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"first-id","name":"first","input":{}}}),
+            json!({"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"second-id","name":"second","input":{}}}),
+            json!({"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"a\":"}}),
+            json!({"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"{\"b\":2}"}}),
+            json!({"type":"content_block_stop","index":2}),
+            json!({"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"1}"}}),
+            json!({"type":"content_block_stop","index":1}),
+            json!({"type":"content_block_stop","index":1}),
+            json!({"type":"message_delta","delta":{"stop_reason":"tool_use"}}),
+            json!({"type":"message_stop"}),
+        ];
+        for (position, event) in events.into_iter().enumerate() {
+            collector.push_event(&claude_sse(event));
+            calls.extend(collector.take_completed_tools(&None));
+            assert_eq!(
+                calls.len(),
+                if position < 4 {
+                    0
+                } else if position < 6 {
+                    1
+                } else {
+                    2
+                }
+            );
+        }
+        assert_eq!(calls[0].id.as_deref(), Some("second-id"));
+        assert_eq!(calls[0].arguments, json!({"b":2}).as_object().unwrap().clone());
+        assert_eq!(calls[1].id.as_deref(), Some("first-id"));
+        assert_eq!(calls[1].arguments, json!({"a":1}).as_object().unwrap().clone());
+        assert_eq!(collector.content()[0]["id"], "first-id");
+        assert_eq!(collector.content()[1]["id"], "second-id");
+    }
+
     #[test]
     fn test_signed_content_stream_collection() {
         let events = [

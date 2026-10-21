@@ -620,6 +620,7 @@ fn process_streaming_chunk(
 // Exact catalog entries keep new preset rules from changing custom or legacy models.
 // Source: https://openrouter.ai/api/v1/models (2026-10-21).
 fn preset_options(model: &str) -> Option<(bool, &'static [&'static str], &'static [&'static str])> {
+    let model = model.strip_suffix(":batch").unwrap_or(model);
     const EFFORTS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
     const OPENAI: &[&str] = &["seed", "max_completion_tokens", "response_format", "verbosity"];
     match model {
@@ -672,7 +673,12 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
         .get("model")
         .and_then(|model| model.as_str())
         .and_then(preset_options);
-    let supports = |key: &str| options.map_or(true, |(_, _, parameters)| parameters.contains(&key));
+    let is_batch = payload["model"].as_str().is_some_and(|model| model.ends_with(":batch"));
+    let supports = |key: &str| {
+        options.map_or(true, |(_, _, parameters)| {
+            parameters.contains(&key) && !(is_batch && key == "max_completion_tokens")
+        })
+    };
     if supports("seed") {
         if let Some(seed) = get_value("LLM_SEED", config.and_then(|c| c.seed.as_ref())) {
             payload["seed"] = json!(seed);
@@ -855,6 +861,67 @@ mod option_tests {
                 "enabled": true, "effort": "high", "exclude": true, "context": "all_turns"
             })
         );
+    }
+
+    #[test]
+    fn batch_presets_use_supported_reasoning_sampling_and_token_options() {
+        for model in [
+            "openai/gpt-6.1-sol:batch",
+            "anthropic/claude-sonnet-5.5:batch",
+            "google/gemini-4-argon:batch",
+        ] {
+            for thinking in [false, true] {
+                let mut payload = json!({"model": model, "max_tokens": 4096});
+                let mut config = JobConfig::empty();
+                config.thinking = Some(thinking);
+                config.reasoning_effort = Some(if thinking { "max" } else { "none" }.into());
+                config.temperature = Some(0.4);
+                config.top_p = Some(0.8);
+                config.max_tokens = Some(1024);
+                config.other_model_params = Some(json!({
+                    "frequency_penalty": 0.2, "logprobs": true, "max_completion_tokens": 2048
+                }));
+                add_options_to_payload(&mut payload, Some(&config));
+                assert_eq!(payload["model"], model);
+                assert_eq!(payload["reasoning"]["enabled"], true);
+                let gemini = model.starts_with("google/");
+                if thinking && !gemini {
+                    assert_eq!(payload["reasoning"]["effort"], "max");
+                } else {
+                    assert!(payload["reasoning"].get("effort").is_none());
+                }
+                assert_eq!(payload.get("temperature").is_some(), gemini);
+                assert_eq!(payload.get("top_p").is_some(), gemini);
+                assert!(payload.get("frequency_penalty").is_none());
+                assert!(payload.get("logprobs").is_none());
+                assert!(payload.get("max_completion_tokens").is_none());
+                assert_eq!(payload["max_tokens"], 1024);
+            }
+        }
+    }
+
+    #[test]
+    fn other_variants_and_custom_batch_models_keep_custom_options() {
+        for model in [
+            "openai/gpt-6.1-sol:free",
+            "anthropic/claude-sonnet-5.5:nitro",
+            "google/gemini-4-argon:custom",
+            "custom/reasoner:batch",
+            "openai/gpt-6.1-sol:free:batch",
+        ] {
+            let mut payload = json!({"model": model});
+            let mut config = JobConfig::empty();
+            config.thinking = Some(false);
+            config.temperature = Some(0.4);
+            config.top_p = Some(0.8);
+            config.max_tokens = Some(1024);
+            add_options_to_payload(&mut payload, Some(&config));
+            assert_eq!(payload["model"], model);
+            assert_eq!(payload["reasoning"], json!({"enabled": false}));
+            assert_eq!(payload["temperature"], 0.4);
+            assert_eq!(payload["top_p"], 0.8);
+            assert_eq!(payload["max_completion_tokens"], 1024);
+        }
     }
 
     #[test]

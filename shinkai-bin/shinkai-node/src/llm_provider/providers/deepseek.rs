@@ -8,7 +8,7 @@ use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::llm_provider::providers::openai::{
     handle_non_streaming_response, handle_streaming_response, truncate_image_url_in_payload,
 };
-use crate::managers::model_capabilities_manager::PromptResultEnum;
+use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::json;
@@ -151,10 +151,7 @@ impl LLMService for DeepSeek {
 // request fields such as max_completion_tokens, seed, or service_tier.
 fn add_deepseek_options(payload: &mut serde_json::Value, config: Option<&JobConfig>, model: &str) {
     // Current documented IDs and the accepted V4 Flash compatibility aliases.
-    let supports_thinking_options = matches!(
-        model,
-        "deepseek-flash" | "deepseek-v4-pro" | "deepseek-v4-flash" | "deepseek-v4-flash-vision-exp"
-    );
+    let supports_thinking_options = ModelCapabilitiesManager::is_current_deepseek(model);
     if let Some(value) = config
         .and_then(|c| c.temperature)
         .or_else(|| std::env::var("LLM_TEMPERATURE").ok()?.parse::<f64>().ok())

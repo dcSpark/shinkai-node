@@ -122,8 +122,16 @@ impl ModelCapabilitiesManager {
         matches!(model, "gemini-4-argon" | "gemini-3.8-flash" | "gemini-3.5-flash-lite")
     }
 
-    fn is_current_deepseek(model: &str) -> bool {
-        matches!(model, "deepseek-flash" | "deepseek-v4-pro")
+    // DeepSeek serves these accepted legacy aliases with its current Flash model.
+    fn is_current_deepseek_flash(model: &str) -> bool {
+        matches!(
+            model,
+            "deepseek-flash" | "deepseek-v4-flash" | "deepseek-v4-flash-vision-exp"
+        )
+    }
+
+    pub(crate) fn is_current_deepseek(model: &str) -> bool {
+        Self::is_current_deepseek_flash(model) || model == "deepseek-v4-pro"
     }
 
     // Snapshot of current routes from https://openrouter.ai/api/v1/models (October 2026).
@@ -245,10 +253,13 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::OpenAI(openai) => Self::get_openai_capabilities(&openai.model_type),
             LLMProviderInterface::OpenAILegacy(openai) => Self::get_openai_capabilities(&openai.model_type),
             LLMProviderInterface::TogetherAI(togetherai) => match togetherai.model_type.as_str() {
-                "moonshotai/Kimi-K3" | "MiniMaxAI/MiniMax-M3" | "Qwen/Qwen3.5-9B" => {
+                "moonshotai/Kimi-K3"
+                | "MiniMaxAI/MiniMax-M3"
+                | "Qwen/Qwen3.5-9B"
+                | "deepseek-ai/DeepSeek-V4.1-Flash-1017" => {
                     vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
                 }
-                "deepseek-ai/DeepSeek-V4-Pro-0813" | "deepseek-ai/DeepSeek-V4.1-Flash-1017" => {
+                "deepseek-ai/DeepSeek-V4-Pro-0813" => {
                     vec![ModelCapability::TextInference]
                 }
                 "togethercomputer/llama-2-70b-chat" => vec![ModelCapability::TextInference],
@@ -284,7 +295,7 @@ impl ModelCapabilitiesManager {
                 }
             }
             LLMProviderInterface::Claude(_) => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
-            LLMProviderInterface::DeepSeek(model) if model.model_type == "deepseek-flash" => {
+            LLMProviderInterface::DeepSeek(model) if Self::is_current_deepseek_flash(&model.model_type) => {
                 vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
             }
             LLMProviderInterface::DeepSeek(_) => vec![ModelCapability::TextInference],
@@ -1310,7 +1321,8 @@ impl ModelCapabilitiesManager {
         // Apply the buffer to estimate the total token count
         let buffered_token_count = ((estimated_tokens as f64) * (1.0 - buffer_percentage)).floor() as usize;
 
-        (buffered_token_count as f64 * 2.6).floor() as usize
+        let generic_tokens = (buffered_token_count as f64 * 2.6).floor() as usize;
+        generic_tokens.saturating_add(Prompt::count_native_replay_tokens(messages))
     }
 
     /// Counts the number of tokens from the list of messages for llama3 model,
@@ -1521,7 +1533,11 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::OpenAILegacy(openai) => Self::openai_has_reasoning_capabilities(&openai.model_type),
             LLMProviderInterface::TogetherAI(model) => matches!(
                 model.model_type.as_str(),
-                "moonshotai/Kimi-K3" | "MiniMaxAI/MiniMax-M3" | "Qwen/Qwen3.5-9B"
+                "moonshotai/Kimi-K3"
+                    | "MiniMaxAI/MiniMax-M3"
+                    | "Qwen/Qwen3.5-9B"
+                    | "deepseek-ai/DeepSeek-V4-Pro-0813"
+                    | "deepseek-ai/DeepSeek-V4.1-Flash-1017"
             ),
             LLMProviderInterface::Ollama(ollama) => {
                 ollama.model_type.starts_with("deepseek-r1")
@@ -1584,6 +1600,116 @@ impl ModelCapabilitiesManager {
 mod current_model_tests {
     use super::*;
     use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{Exo, Grok};
+
+    #[test]
+    fn native_history_reduces_output_budget_without_parallel_double_charge() {
+        use serde_json::json;
+        use shinkai_message_primitives::schemas::{
+            llm_providers::serialized_llm_provider::OpenAI,
+            subprompts::{SubPrompt, SubPromptType},
+        };
+        let model = LLMProviderInterface::OpenAI(OpenAI {
+            model_type: "gpt-5-mini".into(),
+        });
+        let length = ModelCapabilitiesManager::get_max_input_tokens(&model) - 4096;
+        let payload = json!([
+            {"type":"reasoning", "encrypted_content":"x".repeat(length)},
+            {"type":"function_call", "call_id":"a", "name":"tool", "arguments":"{}"},
+            {"type":"function_call", "call_id":"b", "name":"tool", "arguments":"{}"}
+        ]);
+        let mut prompt = Prompt::new();
+        prompt.add_content("Keep this request".into(), SubPromptType::UserLastMessage, 100);
+        for id in ["a", "b"] {
+            prompt.add_function_call(
+                json!({
+                    "name":"tool", "call_id":id, "arguments":{},
+                    "provider_metadata":{"inference_turn_id":"one", "openai_responses":{"output":payload}}
+                }),
+                100,
+            );
+        }
+        for id in ["a", "b"] {
+            prompt.add_function_call_response(json!({"function_call":{"name":"tool","id":id}, "response":"done"}), 100);
+        }
+        let mut generic = prompt.clone();
+        for item in &mut generic.sub_prompts {
+            if let SubPrompt::FunctionCall(_, call, _) = item {
+                call.as_object_mut().unwrap().remove("provider_metadata");
+            }
+        }
+        let baseline = openai_prepare_messages(&model, generic.clone()).unwrap();
+        let result = openai_prepare_messages(&model, prompt.clone()).unwrap();
+        assert_eq!(result.tokens_used - baseline.tokens_used, payload.to_string().len());
+        assert!(result.remaining_output_tokens < baseline.remaining_output_tokens);
+        assert!(
+            result.tokens_used + result.remaining_output_tokens <= ModelCapabilitiesManager::get_max_tokens(&model)
+        );
+
+        // A metadata-aware counter must not charge native payloads both on each
+        // individual call and again on the grouped assistant turn.
+        let (_, count) =
+            prompt.generate_chat_completion_messages(None, &ModelCapabilitiesManager::num_tokens_from_messages);
+        let (_, baseline_count) =
+            generic.generate_chat_completion_messages(None, &ModelCapabilitiesManager::num_tokens_from_messages);
+        assert_eq!(count - baseline_count, payload.to_string().len());
+    }
+
+    #[test]
+    fn verified_together_flash_and_pro_capabilities() {
+        use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::TogetherAI;
+        for (id, context, images) in [
+            ("deepseek-ai/DeepSeek-V4.1-Flash-1017", 1_000_000, true),
+            ("deepseek-ai/DeepSeek-V4-Pro-0813", 1_048_576, false),
+        ] {
+            let model = LLMProviderInterface::TogetherAI(TogetherAI { model_type: id.into() });
+            assert!(ModelCapabilitiesManager::has_reasoning_capabilities(&model), "{id}");
+            assert_eq!(ModelCapabilitiesManager::get_max_tokens(&model), context);
+            assert_eq!(
+                ModelCapabilitiesManager::get_llm_provider_capabilities(&model)
+                    .contains(&ModelCapability::ImageAnalysis),
+                images,
+                "{id}"
+            );
+        }
+        let unknown = LLMProviderInterface::TogetherAI(TogetherAI {
+            model_type: "deepseek-ai/DeepSeek-V4.1-Flash-1017-custom".into(),
+        });
+        assert!(!ModelCapabilitiesManager::has_reasoning_capabilities(&unknown));
+        assert!(!ModelCapabilitiesManager::get_llm_provider_capabilities(&unknown)
+            .contains(&ModelCapability::ImageAnalysis));
+    }
+
+    #[test]
+    fn current_deepseek_aliases_share_limits_and_capabilities() {
+        use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::DeepSeek;
+
+        for id in [
+            "deepseek-flash",
+            "deepseek-v4-flash",
+            "deepseek-v4-flash-vision-exp",
+            "deepseek-v4-pro",
+        ] {
+            let model = LLMProviderInterface::DeepSeek(DeepSeek { model_type: id.into() });
+            assert_eq!(ModelCapabilitiesManager::get_max_tokens(&model), 1_000_000, "{id}");
+            assert_eq!(ModelCapabilitiesManager::get_max_output_tokens(&model), 393_216, "{id}");
+            assert!(ModelCapabilitiesManager::has_reasoning_capabilities(&model), "{id}");
+            assert!(ModelCapabilitiesManager::has_tool_capabilities(&model, None), "{id}");
+            assert_eq!(
+                ModelCapabilitiesManager::get_llm_provider_capabilities(&model)
+                    .contains(&ModelCapability::ImageAnalysis),
+                id != "deepseek-v4-pro",
+                "{id}"
+            );
+        }
+        let unknown = LLMProviderInterface::DeepSeek(DeepSeek {
+            model_type: "deepseek-v4-flash-unverified".into(),
+        });
+        assert_eq!(ModelCapabilitiesManager::get_max_tokens(&unknown), 64_000);
+        assert_eq!(ModelCapabilitiesManager::get_max_output_tokens(&unknown), 8192);
+        assert!(!ModelCapabilitiesManager::has_reasoning_capabilities(&unknown));
+        assert!(!ModelCapabilitiesManager::get_llm_provider_capabilities(&unknown)
+            .contains(&ModelCapability::ImageAnalysis));
+    }
 
     #[test]
     fn grok_reasoning_capabilities_match_request_support() {

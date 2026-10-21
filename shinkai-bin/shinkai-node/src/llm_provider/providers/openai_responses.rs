@@ -903,9 +903,25 @@ fn extract_native_function_calls(output: &[JsonValue]) -> Vec<FunctionCall> {
         .filter_map(|item| {
             let (name, call_id) = native_function_identity(item)?;
             let arguments = match item.get("arguments") {
-                Some(JsonValue::String(args)) => serde_json::from_str::<JsonValue>(args).ok()?.as_object()?.clone(),
-                Some(JsonValue::Object(args)) => args.clone(),
-                _ => return None,
+                Some(JsonValue::String(args)) => serde_json::from_str::<JsonValue>(args)
+                    .map_err(|error| format!("Tool arguments are not valid JSON: {error}")),
+                Some(args) => Ok(args.clone()),
+                None => Err("Tool arguments are missing".to_string()),
+            }
+            .and_then(|args| {
+                args.as_object()
+                    .cloned()
+                    .ok_or_else(|| "Tool arguments must be a JSON object".to_string())
+            });
+            let mut provider_metadata = json!({"openai_responses": {"output": output}});
+            let arguments = match arguments {
+                Ok(arguments) => arguments,
+                Err(error) => {
+                    // Retain the call for validation feedback, but prevent an empty map
+                    // from executing a tool whose schema has no required arguments.
+                    provider_metadata["function_argument_error"] = JsonValue::String(error);
+                    Default::default()
+                }
             };
             Some(FunctionCall {
                 name: name.to_owned(),
@@ -917,7 +933,7 @@ fn extract_native_function_calls(output: &[JsonValue]) -> Vec<FunctionCall> {
                 call_type: Some("function".to_string()),
                 // Keep signed reasoning and every original call. Replay supplies an explicit
                 // error output for any call that has no recorded execution result.
-                provider_metadata: Some(json!({"openai_responses": {"output": output}})),
+                provider_metadata: Some(provider_metadata),
             })
         })
         .enumerate()
@@ -1301,6 +1317,14 @@ mod tests {
     use serde_json::json;
 
     fn replay_recorded_native_calls(output: &serde_json::Value, executed: &[&str]) -> serde_json::Value {
+        let results = executed
+            .iter()
+            .map(|id| (*id, "actual tool result".to_string()))
+            .collect::<Vec<_>>();
+        replay_native_calls_with_results(output, &results)
+    }
+
+    fn replay_native_calls_with_results(output: &serde_json::Value, results: &[(&str, String)]) -> serde_json::Value {
         let calls = super::extract_native_function_calls(output.as_array().unwrap());
         let mut prompt = super::Prompt::new();
         for call in calls {
@@ -1311,10 +1335,10 @@ mod tests {
                 }),
                 100,
             );
-            if executed.contains(&call.id.as_deref().unwrap()) {
+            if let Some((_, result)) = results.iter().find(|(id, _)| Some(*id) == call.id.as_deref()) {
                 prompt.add_function_call_response(
                     json!({
-                        "function_call": {"name": call.name, "id": call.id}, "response": "actual tool result"
+                        "function_call": {"name": call.name, "id": call.id}, "response": result
                     }),
                     100,
                 );
@@ -1363,8 +1387,10 @@ mod tests {
                 {"type": "function_call", "id": "fc_good", "call_id": "good", "name": "lookup", "arguments": "{}"}
             ]);
             let calls = super::extract_native_function_calls(output.as_array().unwrap());
-            assert_eq!(calls.len(), 1);
-            assert_eq!(calls[0].id.as_deref(), Some("good"));
+            assert_eq!(calls.len(), 2);
+            assert_eq!(calls[0].id.as_deref(), Some("bad"));
+            assert!(calls[0].provider_metadata.as_ref().unwrap()["function_argument_error"].is_string());
+            assert_eq!(calls[1].id.as_deref(), Some("good"));
             let replay = replay_recorded_native_calls(&output, &["good"]);
             let replay = replay.as_array().unwrap();
             assert_eq!(&replay[..3], output.as_array().unwrap().as_slice());
@@ -1373,6 +1399,101 @@ mod tests {
             assert_eq!(replay[4]["call_id"], "good");
             assert_eq!(replay[4]["output"], "actual tool result");
         }
+    }
+
+    #[tokio::test]
+    async fn invalid_native_arguments_remain_calls_and_cannot_execute_zero_argument_tools() {
+        use crate::llm_provider::execution::chains::generic_chain::generic_inference_chain::execute_valid_function_call;
+        use crate::managers::tool_router::ToolCallFunctionResponse;
+
+        for arguments in [json!("{not-json"), json!("[]"), json!([]), json!(null), json!("")] {
+            let output = json!([
+                {"type": "reasoning", "id": "rs_1", "summary": [], "encrypted_content": "signed-opaque"},
+                {"type": "function_call", "id": "fc_bad", "call_id": "bad", "name": "zero_arguments", "arguments": arguments}
+            ]);
+            let calls = super::extract_native_function_calls(output.as_array().unwrap());
+            let response = super::LLMInferenceResponse::new(String::new(), None, json!({}), calls, vec![], None);
+            assert!(!response.is_function_calls_empty());
+            let call = &response.function_calls[0];
+            assert_eq!(call.name, "zero_arguments");
+            assert_eq!(call.id.as_deref(), Some("bad"));
+            assert!(call.arguments.is_empty());
+            // The marker survives storage without changing the FunctionCall schema.
+            let call = serde_json::from_value::<super::FunctionCall>(serde_json::to_value(call).unwrap()).unwrap();
+            let executed = std::cell::Cell::new(false);
+            let result = execute_valid_function_call(&call, async {
+                // A zero-argument tool would accept the empty map if this future ran.
+                executed.set(true);
+                Ok(ToolCallFunctionResponse {
+                    function_call: call.clone(),
+                    response: "must not run".into(),
+                })
+            })
+            .await;
+            assert!(!executed.get());
+            let Err(super::LLMProviderError::ToolRouterError(error)) = result else {
+                panic!("Invalid arguments must enter the tool validation retry path");
+            };
+            assert!(error.starts_with("Invalid function arguments:"));
+            let replay = replay_native_calls_with_results(&output, &[("bad", error.clone())]);
+            assert_eq!(
+                replay,
+                json!([
+                    output[0], output[1],
+                    {"type": "function_call_output", "call_id": "bad", "output": error}
+                ])
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn native_argument_retry_retains_earlier_parallel_result_and_later_unexecuted_call() {
+        use crate::llm_provider::execution::chains::generic_chain::generic_inference_chain::execute_valid_function_call;
+        use crate::managers::tool_router::ToolCallFunctionResponse;
+
+        let output = json!([
+            {"type": "reasoning", "id": "rs_1", "summary": [], "encrypted_content": "signed-opaque"},
+            {"type": "function_call", "id": "fc_good", "call_id": "good", "name": "zero_arguments", "arguments": "{}"},
+            {"type": "function_call", "id": "fc_bad", "call_id": "bad", "name": "zero_arguments", "arguments": "[]"},
+            {"type": "function_call", "id": "fc_later", "call_id": "later", "name": "zero_arguments", "arguments": "{}"}
+        ]);
+        let calls = super::extract_native_function_calls(output.as_array().unwrap());
+        assert_eq!(calls.len(), 3);
+        let executed = std::cell::Cell::new(0);
+        let result = execute_valid_function_call(&calls[0], async {
+            executed.set(executed.get() + 1);
+            Ok(ToolCallFunctionResponse {
+                function_call: calls[0].clone(),
+                response: "actual tool result".into(),
+            })
+        })
+        .await
+        .unwrap();
+        let error = execute_valid_function_call(&calls[1], async {
+            executed.set(executed.get() + 1);
+            Ok(ToolCallFunctionResponse {
+                function_call: calls[1].clone(),
+                response: "must not run".into(),
+            })
+        })
+        .await;
+        assert_eq!(executed.get(), 1);
+        let Err(super::LLMProviderError::ToolRouterError(error)) = error else {
+            panic!("Invalid arguments must enter the tool validation retry path");
+        };
+        let replay = replay_native_calls_with_results(&output, &[("good", result.response), ("bad", error.clone())]);
+        let replay = replay.as_array().unwrap();
+        assert_eq!(&replay[..4], output.as_array().unwrap().as_slice());
+        assert_eq!(replay.len(), 7);
+        assert_eq!(replay[4], super::missing_tool_output("later"));
+        assert_eq!(
+            replay[5],
+            json!({"type": "function_call_output", "call_id": "good", "output": "actual tool result"})
+        );
+        assert_eq!(
+            replay[6],
+            json!({"type": "function_call_output", "call_id": "bad", "output": error})
+        );
     }
 
     #[test]
