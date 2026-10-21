@@ -642,7 +642,11 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
         || model.starts_with("claude-fable-5");
     let haiku_5_5 = model == "claude-haiku-5-5";
     let fixed_sampling = adaptive && !model.starts_with("claude-opus-4-6") && !model.starts_with("claude-sonnet-4-6");
-    if adaptive && (always_thinking || payload["thinking"]["type"] == "enabled") {
+    // Adaptive Haiku history may contain tool turns without thinking blocks.
+    // The legacy manual-budget guard above must not disable an explicit request.
+    let haiku_thinking_enabled =
+        haiku_5_5 && get_value("LLM_THINKING", config.and_then(|c| c.thinking.as_ref())) == Some(true);
+    if adaptive && (always_thinking || haiku_thinking_enabled || payload["thinking"]["type"] == "enabled") {
         payload["thinking"] = serde_json::json!({"type": "adaptive"});
         if let Some(effort) = get_value("LLM_REASONING_EFFORT", config.and_then(|c| c.reasoning_effort.as_ref())) {
             if matches!(effort.as_str(), "low" | "medium" | "high" | "xhigh" | "max") {
@@ -1272,6 +1276,69 @@ mod tests {
                 json!({"type": "tool_use", "id": "toolu_a", "name": "tool", "input": {"query": "test"}}),
             ]
         );
+    }
+
+    #[test]
+    fn haiku_adaptive_tool_history_does_not_require_thinking_blocks() {
+        for signed in [false, true] {
+            let mut native = vec![];
+            if signed {
+                native.push(json!({"type": "thinking", "thinking": "opaque", "signature": "signed-native"}));
+            }
+            native.push(json!({"type": "tool_use", "id": "toolu_a", "name": "lookup", "input": {}}));
+            let mut prompt = Prompt::new();
+            let mut call = json!({"name": "lookup", "call_id": "toolu_a", "arguments": {}});
+            if signed {
+                call["provider_metadata"] = json!({"claude_content": native});
+            }
+            prompt.add_function_call(call, 100);
+            prompt.add_function_call_response(
+                json!({"function_call": {"name": "lookup", "id": "toolu_a"}, "response": "result"}),
+                100,
+            );
+            let model = LLMProviderInterface::Claude(Claude {
+                model_type: "claude-haiku-5-5".into(),
+            });
+            let (prepared, _) = claude_prepare_messages(&model, prompt).unwrap();
+            let PromptResultEnum::Value(messages) = prepared.messages else {
+                panic!("Expected messages")
+            };
+            assert!(has_tool_calls_in_messages(&messages));
+            if signed {
+                assert_eq!(messages[0]["content"], json!(native));
+            } else {
+                assert!(messages
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .filter(|m| m["role"] == "assistant")
+                    .all(|m| m["content"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .all(|block| block["type"] != "thinking")));
+            }
+            for effort in ["xhigh", "max"] {
+                let mut config = JobConfig::empty();
+                config.thinking = Some(true);
+                config.reasoning_effort = Some(effort.into());
+                let mut payload = json!({"model": "claude-haiku-5-5", "max_tokens": 8192, "messages": messages});
+                add_options_to_payload(&mut payload, Some(&config)).unwrap();
+                assert_eq!(payload["thinking"], json!({"type": "adaptive"}));
+                assert_eq!(payload["output_config"]["effort"], effort);
+                assert_eq!(payload["messages"], messages);
+                if !signed {
+                    let mut legacy = json!({"model": "claude-3-7-sonnet", "max_tokens": 8192, "messages": messages});
+                    add_options_to_payload(&mut legacy, Some(&config)).unwrap();
+                    assert_eq!(legacy["thinking"]["type"], "disabled");
+                }
+                for thinking in [None, Some(false)] {
+                    config.thinking = thinking;
+                    let mut payload = json!({"model": "claude-haiku-5-5", "max_tokens": 8192, "messages": messages});
+                    assert!(add_options_to_payload(&mut payload, Some(&config)).is_err());
+                }
+            }
+        }
     }
 
     #[test]
