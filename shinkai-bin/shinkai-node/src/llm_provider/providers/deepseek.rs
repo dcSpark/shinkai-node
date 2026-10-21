@@ -146,7 +146,8 @@ impl LLMService for DeepSeek {
 fn capture_reasoning_for_replay(response: &mut LLMInferenceResponse) {
     if let Some(reasoning) = response.reasoning_content.as_ref() {
         for call in &mut response.function_calls {
-            call.provider_metadata = Some(json!({"deepseek_reasoning_content": reasoning}));
+            let metadata = call.provider_metadata.get_or_insert_with(|| json!({}));
+            metadata["deepseek_reasoning_content"] = json!(reasoning);
         }
     }
 }
@@ -211,6 +212,25 @@ mod tests {
     use super::*;
     use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
     use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+
+    #[test]
+    fn deepseek_reasoning_capture_keeps_argument_error_guard() {
+        let call = serde_json::from_value(json!({"name":"lookup", "arguments":{}, "index":0,
+            "provider_metadata":{"function_argument_error":"invalid JSON"}}))
+        .unwrap();
+        let mut response = LLMInferenceResponse::new(
+            String::new(),
+            Some("native reasoning".into()),
+            json!({}),
+            vec![call],
+            vec![],
+            None,
+        );
+        capture_reasoning_for_replay(&mut response);
+        let metadata = response.function_calls[0].provider_metadata.as_ref().unwrap();
+        assert_eq!(metadata["function_argument_error"], "invalid JSON");
+        assert_eq!(metadata["deepseek_reasoning_content"], "native reasoning");
+    }
 
     #[test]
     fn deepseek_tool_history_keeps_replayable_reasoning() {

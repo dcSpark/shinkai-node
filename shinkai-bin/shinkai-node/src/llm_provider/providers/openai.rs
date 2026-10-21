@@ -274,31 +274,26 @@ fn finalize_function_call_sync(
             wrapped_args = format!("\"{}\"", raw_args);
         }
 
-        // Now do the first parse
-        let parsed_once = serde_json::from_str::<serde_json::Value>(&wrapped_args);
-        let fc_arguments = match parsed_once {
-            Ok(json_value) => {
-                // If the top-level is a JSON string, parse again
-                if let Some(json_str) = json_value.as_str() {
-                    match serde_json::from_str::<serde_json::Value>(json_str) {
-                        Ok(inner_value) => inner_value.as_object().cloned().unwrap_or_default(),
-                        Err(e) => {
-                            eprintln!("[ERROR] Inner parse failed: {:?}. Returning empty object.", e);
-                            serde_json::Map::new()
-                        }
-                    }
+        let parsed_arguments = serde_json::from_str::<JsonValue>(&wrapped_args)
+            .map_err(|error| format!("Tool arguments are not valid JSON: {error}"))
+            .and_then(|value| {
+                // Preserve the existing compatible double-encoded object format.
+                if let Some(encoded) = value.as_str() {
+                    serde_json::from_str::<JsonValue>(encoded)
+                        .map_err(|error| format!("Tool arguments are not valid JSON: {error}"))
                 } else {
-                    // Already an object or array
-                    json_value.as_object().cloned().unwrap_or_default()
+                    Ok(value)
                 }
-            }
-            Err(e) => {
-                eprintln!(
-                    "[ERROR] Failed to parse raw_args even once: {:?}. Returning empty object.",
-                    e
-                );
-                serde_json::Map::new()
-            }
+            })
+            .and_then(|value| {
+                value
+                    .as_object()
+                    .cloned()
+                    .ok_or_else(|| "Tool arguments must be a JSON object".to_string())
+            });
+        let (fc_arguments, provider_metadata) = match parsed_arguments {
+            Ok(arguments) => (arguments, None),
+            Err(error) => (Default::default(), Some(json!({"function_argument_error": error}))),
         };
 
         eprintln!("[DEBUG] Final function call JSON object: {:#?}", fc_arguments);
@@ -324,7 +319,7 @@ fn finalize_function_call_sync(
             .clone()
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let new_function_call = FunctionCall {
-            provider_metadata: None,
+            provider_metadata,
             name: name.clone(),
             arguments: fc_arguments,
             tool_router_key,
@@ -581,7 +576,12 @@ pub async fn parse_openai_stream_chunk(
 
                         if let Some(delta) = choice.get("delta") {
                             // Handle reasoning_content
-                            if let Some(reasoning) = delta.get("reasoning_content").and_then(|c| c.as_str()) {
+                            if let Some(reasoning) = delta
+                                .get("reasoning_content")
+                                .and_then(|value| value.as_str())
+                                .filter(|value| !value.is_empty())
+                                .or_else(|| delta.get("reasoning").and_then(|value| value.as_str()))
+                            {
                                 // First reasoning delta, set reasoning_started to true
                                 if !partial_fc.reasoning_started {
                                     partial_fc.reasoning_started = true;
@@ -1200,7 +1200,8 @@ pub async fn handle_non_streaming_response(
                 match data_resp {
                     Ok(value) => {
                         let selected_message = value.pointer("/choices/0/message").cloned().unwrap_or_default();
-                        let reasoning_concat = selected_message["reasoning_content"].as_str().unwrap_or_default().to_string();
+                        let reasoning_concat = selected_message["reasoning_content"].as_str().filter(|value| !value.is_empty())
+                            .or_else(|| selected_message["reasoning"].as_str()).unwrap_or_default().to_string();
                         // Provider adapters attach only the native data they can replay.
                         // Generic Chat callers must not store unused reasoning metadata.
 
@@ -1233,8 +1234,14 @@ pub async fn handle_non_streaming_response(
                         let function_calls: Vec<FunctionCall> = selected
                             .and_then(|choice| choice.message.tool_calls.as_ref())
                             .into_iter().flatten().enumerate().map(|(index, tool_call)| {
-                                let arguments = serde_json::from_str::<JsonValue>(&tool_call.function.arguments)
-                                    .ok().and_then(|value| value.as_object().cloned()).unwrap_or_default();
+                                let parsed_arguments = serde_json::from_str::<JsonValue>(&tool_call.function.arguments)
+                                    .map_err(|error| format!("Tool arguments are not valid JSON: {error}"))
+                                    .and_then(|value| value.as_object().cloned()
+                                        .ok_or_else(|| "Tool arguments must be a JSON object".to_string()));
+                                let (arguments, provider_metadata) = match parsed_arguments {
+                                    Ok(arguments) => (arguments, None),
+                                    Err(error) => (Default::default(), Some(json!({"function_argument_error": error}))),
+                                };
                                 let tool_router_key = tools.as_ref().and_then(|definitions| {
                                     definitions.iter().find_map(|tool| {
                                         let function = tool.get("function").unwrap_or(tool);
@@ -1245,7 +1252,7 @@ pub async fn handle_non_streaming_response(
                                     })
                                 });
                                 FunctionCall {
-                                    provider_metadata: None,
+                                    provider_metadata,
                                     name: tool_call.function.name.clone(), arguments, tool_router_key,
                                     response: None, index: index as u64, id: Some(tool_call.id.clone()),
                                     call_type: Some(tool_call.call_type.clone()),
@@ -1392,6 +1399,35 @@ pub fn extract_and_remove_arguments(json_str: &str) -> (Option<String>, String) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn stream_reasoning_alias_falls_back_without_duplicating_canonical_reasoning() {
+        let mut buffer = String::new();
+        let mut text = String::new();
+        let mut reasoning = String::new();
+        let mut calls = Vec::new();
+        let mut partial = PartialFunctionCall::default();
+        for delta in [
+            json!({"reasoning_content":"", "reasoning":"alias "}),
+            json!({"reasoning_content":"canonical", "reasoning":"must not repeat"}),
+        ] {
+            buffer.push_str(&format!("data: {}\n\n", json!({"choices":[{"index":0,"delta":delta}]})));
+            parse_openai_stream_chunk(
+                &mut buffer,
+                &mut text,
+                &mut reasoning,
+                &mut calls,
+                &mut partial,
+                &None,
+                &None,
+                None,
+                "test",
+            )
+            .await
+            .unwrap();
+        }
+        assert_eq!(reasoning, "alias canonical");
+    }
 
     #[tokio::test]
     async fn test_stream_multiple_choices_only_accumulates_choice_zero() {
@@ -2375,6 +2411,120 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn malformed_streaming_arguments_cannot_execute_an_empty_schema_tool() {
+        use crate::llm_provider::execution::chains::generic_chain::generic_inference_chain::execute_valid_function_call;
+        use crate::managers::tool_router::ToolCallFunctionResponse;
+        for (arguments, valid) in [("{not-json", false), ("[]", false), ("null", false), ("{}", true)] {
+            let mut buffer = format!(
+                "data: {}\n\ndata: {}\n\n",
+                json!({"choices":[{"index":0,"delta":{"tool_calls":[{
+                    "index":0,"id":"native-call","type":"function","function":{"name":"zero_arg_tool","arguments":arguments}
+                }]}}]}),
+                json!({"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]})
+            );
+            let mut text = String::new();
+            let mut reasoning = String::new();
+            let mut calls = Vec::new();
+            let mut partial = PartialFunctionCall::default();
+            parse_openai_stream_chunk(
+                &mut buffer,
+                &mut text,
+                &mut reasoning,
+                &mut calls,
+                &mut partial,
+                &None,
+                &None,
+                None,
+                "test",
+            )
+            .await
+            .unwrap();
+            assert_eq!(calls.len(), 1);
+            let call = &calls[0];
+            assert_eq!(call.id.as_deref(), Some("native-call"));
+            assert_eq!(call.name, "zero_arg_tool");
+            let mut executed = false;
+            let execution_call = call.clone();
+            let result = execute_valid_function_call(call, async {
+                executed = true;
+                Ok(ToolCallFunctionResponse {
+                    function_call: execution_call,
+                    response: "executed".into(),
+                })
+            })
+            .await;
+            assert_eq!(executed, valid);
+            assert_eq!(result.is_ok(), valid);
+            if !valid {
+                assert!(call.provider_metadata.as_ref().unwrap()["function_argument_error"].is_string());
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn malformed_non_streaming_arguments_cannot_execute_an_empty_schema_tool() {
+        use crate::llm_provider::execution::chains::generic_chain::generic_inference_chain::execute_valid_function_call;
+        use crate::managers::tool_router::ToolCallFunctionResponse;
+        for (arguments, valid, expected_error) in [
+            ("{not-json", false, "not valid JSON"),
+            ("[]", false, "must be a JSON object"),
+            ("null", false, "must be a JSON object"),
+            ("{}", true, ""),
+        ] {
+            let mut server = mockito::Server::new_async().await;
+            let mock = server.mock("POST","/chat/completions")
+                .with_header("content-type","application/json")
+                .with_body(json!({"id":"response","object":"chat.completion","created":1,
+                    "usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2},
+                    "choices":[{"index":0,"message":{"role":"assistant","content":null,
+                        "reasoning_content":"not replayed", "tool_calls":[{"id":"native-call","type":"function",
+                            "function":{"name":"zero_arg_tool","arguments":arguments}}]},"finish_reason":"tool_calls"}]
+                }).to_string()).create_async().await;
+            let response = handle_non_streaming_response(
+                &Client::new(),
+                format!("{}/chat/completions", server.url()),
+                json!({"stream":false}),
+                "test-key".into(),
+                None,
+                Arc::new(LLMStopper::new()),
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+            mock.assert_async().await;
+            let call = &response.function_calls[0];
+            assert_eq!(call.id.as_deref(), Some("native-call"));
+            assert_eq!(call.name, "zero_arg_tool");
+            assert!(call.arguments.is_empty());
+            let mut executed = false;
+            let execution_call = call.clone();
+            let result = execute_valid_function_call(call, async {
+                executed = true;
+                Ok(ToolCallFunctionResponse {
+                    function_call: execution_call,
+                    response: "executed".into(),
+                })
+            })
+            .await;
+            assert_eq!(executed, valid);
+            if valid {
+                assert!(result.is_ok());
+                assert!(call.provider_metadata.is_none());
+            } else {
+                assert!(result.unwrap_err().to_string().contains(expected_error));
+                let metadata = call.provider_metadata.as_ref().unwrap();
+                assert_eq!(metadata.as_object().unwrap().len(), 1);
+                assert!(metadata["function_argument_error"]
+                    .as_str()
+                    .unwrap()
+                    .contains(expected_error));
+            }
+        }
+    }
+
+    #[tokio::test]
     async fn generic_chat_does_not_store_unused_together_or_groq_reasoning() {
         let mut server = mockito::Server::new_async().await;
         let mock = server.mock("POST","/chat/completions").expect(2)
@@ -2382,7 +2532,7 @@ mod tests {
             .with_body(json!({"id":"response","object":"chat.completion","created":1,
                 "usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2},
                 "choices":[{"index":0,"message":{"role":"assistant","content":null,
-                    "reasoning_content":"unused provider reasoning", "reasoning_details":[{"data":"unused encrypted data"}],
+                    "reasoning_content":"", "reasoning":"unused provider reasoning", "reasoning_details":[{"data":"unused encrypted data"}],
                     "tool_calls":[{"id":"native","type":"function","function":{"name":"lookup","arguments":"{}"}}]
                 },"finish_reason":"tool_calls"}]
             }).to_string()).create_async().await;

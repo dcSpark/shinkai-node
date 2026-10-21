@@ -515,25 +515,71 @@ async fn handle_non_streaming_response(
 struct OpenRouterResponseState {
     reasoning_details: Vec<JsonValue>,
     content: String,
-    arguments: std::collections::HashMap<u64, String>,
+    arguments: std::collections::HashMap<u64, JsonValue>,
 }
 
 impl OpenRouterResponseState {
+    fn update_call_arguments(&self, call: &mut FunctionCall) {
+        let arguments = match self.arguments.get(&call.index) {
+            Some(JsonValue::String(arguments)) => serde_json::from_str::<JsonValue>(arguments)
+                .map_err(|error| format!("Tool arguments are not valid JSON: {error}")),
+            Some(_) => Err("Tool arguments must be a JSON-encoded object string".to_string()),
+            None => Err("Tool arguments are missing".to_string()),
+        }
+        .and_then(|arguments| {
+            arguments
+                .as_object()
+                .cloned()
+                .ok_or_else(|| "Tool arguments must be a JSON object".to_string())
+        });
+        let mut metadata = call
+            .provider_metadata
+            .take()
+            .and_then(|value| value.as_object().cloned())
+            .unwrap_or_default();
+        match arguments {
+            Ok(arguments) => {
+                call.arguments = arguments;
+                metadata.remove("function_argument_error");
+            }
+            Err(error) => {
+                // A valid prefix must not remain executable after a corrupt suffix.
+                call.arguments.clear();
+                metadata.insert("function_argument_error".into(), json!(error));
+            }
+        }
+        call.provider_metadata = if metadata.is_empty() {
+            None
+        } else {
+            Some(JsonValue::Object(metadata))
+        };
+    }
+
     fn attach_reasoning(&self, calls: &mut [FunctionCall]) {
         if calls.is_empty() {
             return;
         }
-        let native_calls: Vec<_> = calls.iter().map(|call| json!({
-            "id": call.id, "type": call.call_type.as_deref().unwrap_or("function"),
-            "function": {"name": call.name, "arguments": self.arguments.get(&call.index).cloned().unwrap_or_else(|| serde_json::to_string(&call.arguments).unwrap_or_default())}
-        })).collect();
+        for call in calls.iter_mut() {
+            self.update_call_arguments(call);
+        }
+        let native_calls: Vec<_> = calls
+            .iter()
+            .map(|call| {
+                let mut function = json!({"name": call.name});
+                if let Some(arguments) = self.arguments.get(&call.index) {
+                    function["arguments"] = arguments.clone();
+                }
+                json!({"id": call.id, "type": call.call_type.as_deref().unwrap_or("function"), "function": function})
+            })
+            .collect();
         let mut assistant = json!({"role":"assistant", "content": if self.content.is_empty() { JsonValue::Null } else { json!(self.content) }, "tool_calls": native_calls});
         if !self.reasoning_details.is_empty() {
             assistant["reasoning_details"] = json!(self.reasoning_details);
         }
         for call in calls {
-            call.provider_metadata =
-                Some(json!({"reasoning_details":self.reasoning_details, "openrouter_assistant":assistant}));
+            let metadata = call.provider_metadata.get_or_insert_with(|| json!({}));
+            metadata["reasoning_details"] = json!(self.reasoning_details);
+            metadata["openrouter_assistant"] = assistant.clone();
         }
     }
 }
@@ -603,13 +649,18 @@ fn process_streaming_chunk(
                             })
                         });
                     }
-                    if let Some(arguments) = function.and_then(|f| f.get("arguments")).and_then(|a| a.as_str()) {
-                        let buffer = state.arguments.entry(index).or_default();
-                        buffer.push_str(arguments);
-                        if let Ok(JsonValue::Object(arguments)) = serde_json::from_str(buffer) {
-                            call.arguments = arguments;
+                    if let Some(arguments) = function.and_then(|f| f.get("arguments")) {
+                        if let Some(fragment) = arguments.as_str() {
+                            let buffer = state.arguments.entry(index).or_insert_with(|| json!(""));
+                            // A non-string chunk is invalid, even if a later string is valid JSON.
+                            if let JsonValue::String(buffer) = buffer {
+                                buffer.push_str(fragment);
+                            }
+                        } else {
+                            state.arguments.insert(index, arguments.clone());
                         }
                     }
+                    state.update_call_arguments(call);
                 }
             }
         }
@@ -624,8 +675,10 @@ fn preset_options(model: &str) -> Option<(bool, &'static [&'static str], &'stati
     const EFFORTS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
     const OPENAI: &[&str] = &["seed", "max_completion_tokens", "response_format", "verbosity"];
     match model {
-        "openai/gpt-6-astra" | "openai/gpt-6.1-sol" => Some((true, EFFORTS, OPENAI)),
-        "openai/gpt-6-luna" | "openai/gpt-6-sol" => {
+        "openai/gpt-6-astra" | "openai/gpt-6-astra-pro" | "openai/gpt-6.1-sol" | "openai/gpt-6.1-sol-pro" => {
+            Some((true, EFFORTS, OPENAI))
+        }
+        "openai/gpt-6-luna" | "openai/gpt-6-luna-pro" | "openai/gpt-6-sol" | "openai/gpt-6-sol-pro" => {
             Some((false, &["none", "low", "medium", "high", "xhigh", "max"], OPENAI))
         }
         "anthropic/claude-sonnet-5.5" => Some((
@@ -901,6 +954,72 @@ mod option_tests {
     }
 
     #[test]
+    fn pro_routes_use_exact_catalog_reasoning_sampling_and_token_options() {
+        for (base, mandatory) in [
+            ("openai/gpt-6.1-sol-pro", true),
+            ("openai/gpt-6-astra-pro", true),
+            ("openai/gpt-6-luna-pro", false),
+            ("openai/gpt-6-sol-pro", false),
+        ] {
+            for suffix in ["", ":batch"] {
+                let model = format!("{base}{suffix}");
+                for effort in ["none", "low", "medium", "high", "xhigh", "max", "minimal", "invalid"] {
+                    let mut payload = json!({"model": model});
+                    let mut config = JobConfig::empty();
+                    config.reasoning_effort = Some(effort.into());
+                    config.temperature = Some(0.4);
+                    config.top_p = Some(0.8);
+                    config.seed = Some(42);
+                    config.max_tokens = Some(1024);
+                    config.other_model_params = Some(json!({
+                        "frequency_penalty": 0.2, "logprobs": true, "response_format": {"type": "json_object"}
+                    }));
+                    add_options_to_payload(&mut payload, Some(&config));
+                    assert_eq!(payload["model"], model);
+                    let supported = matches!(effort, "low" | "medium" | "high" | "xhigh" | "max")
+                        || (!mandatory && effort == "none");
+                    assert_eq!(
+                        payload["reasoning"].get("effort").is_some(),
+                        supported,
+                        "{model}: {effort}"
+                    );
+                    if supported {
+                        assert_eq!(payload["reasoning"]["effort"], effort);
+                    }
+                    for key in ["temperature", "top_p", "frequency_penalty", "logprobs"] {
+                        assert!(payload.get(key).is_none(), "{model}: {key}");
+                    }
+                    assert_eq!(payload["seed"], 42);
+                    assert_eq!(payload["response_format"], json!({"type": "json_object"}));
+                    if suffix.is_empty() {
+                        assert_eq!(payload["max_completion_tokens"], 1024);
+                    } else {
+                        assert_eq!(payload["max_tokens"], 1024);
+                        assert!(payload.get("max_completion_tokens").is_none());
+                    }
+                }
+                for custom in [false, true] {
+                    let mut payload = json!({"model": model});
+                    let mut config = JobConfig::empty();
+                    if custom {
+                        config.other_model_params =
+                            Some(json!({"reasoning": {"enabled": false, "effort": "none", "exclude": true}}));
+                    } else {
+                        config.thinking = Some(false);
+                        config.reasoning_effort = Some("none".into());
+                    }
+                    add_options_to_payload(&mut payload, Some(&config));
+                    assert_eq!(payload["reasoning"]["enabled"], mandatory, "{model}");
+                    assert!(payload["reasoning"].get("effort").is_none());
+                    if custom {
+                        assert_eq!(payload["reasoning"]["exclude"], true);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn other_variants_and_custom_batch_models_keep_custom_options() {
         for model in [
             "openai/gpt-6.1-sol:free",
@@ -908,6 +1027,10 @@ mod option_tests {
             "google/gemini-4-argon:custom",
             "custom/reasoner:batch",
             "openai/gpt-6.1-sol:free:batch",
+            "openai/gpt-6.1-sol-pro-custom",
+            "custom/gpt-6-astra-pro",
+            "openai/gpt-6-astra-pro:free",
+            "openai/gpt-6-sol-pro-preview:batch",
         ] {
             let mut payload = json!({"model": model});
             let mut config = JobConfig::empty();
@@ -976,6 +1099,142 @@ mod option_tests {
                 assert_eq!(payload["max_completion_tokens"], 1024);
             }
             assert!(payload.get("reasoning").is_none());
+        }
+    }
+}
+
+#[cfg(test)]
+mod argument_tests {
+    use super::*;
+    use crate::llm_provider::execution::chains::generic_chain::generic_inference_chain::execute_valid_function_call;
+    use crate::managers::tool_router::ToolCallFunctionResponse;
+
+    async fn assert_execution_allowed(call: &FunctionCall, allowed: bool) {
+        let mut executed = false;
+        let result = execute_valid_function_call(call, async {
+            executed = true;
+            Ok(ToolCallFunctionResponse {
+                function_call: call.clone(),
+                response: "executed".into(),
+            })
+        })
+        .await;
+        assert_eq!(executed, allowed);
+        assert_eq!(result.is_ok(), allowed);
+        if !allowed {
+            assert!(result.unwrap_err().to_string().contains("Invalid function arguments"));
+        }
+    }
+
+    #[tokio::test]
+    async fn invalid_nonstreaming_arguments_cannot_execute_or_change_signed_native_data() {
+        for (arguments, valid) in [
+            (None, false),
+            (Some(json!(null)), false),
+            (Some(json!({})), false),
+            (Some(json!([])), false),
+            (Some(json!(42)), false),
+            (Some(json!("")), false),
+            (Some(json!("{not-json")), false),
+            (Some(json!("[]")), false),
+            (Some(json!("null")), false),
+            (Some(json!("{}")), true),
+            (Some(json!("{\"city\":\"Paris\"}")), true),
+        ] {
+            let mut function = json!({"name": "zero_arg_tool"});
+            if let Some(arguments) = arguments {
+                function["arguments"] = arguments;
+            }
+            let assistant = json!({
+                "role": "assistant", "content": null,
+                "reasoning_details": [{"type": "reasoning.encrypted", "data": "signed-opaque", "index": 0}],
+                "tool_calls": [{"id": "native-call", "type": "function", "function": function}]
+            });
+            let mut calls = Vec::new();
+            let mut state = OpenRouterResponseState::default();
+            process_streaming_chunk(
+                &json!({"choices": [{"message": assistant}]}),
+                &mut String::new(),
+                &mut calls,
+                &None,
+                &mut state,
+            );
+            assert_eq!(calls.len(), 1);
+            calls[0].provider_metadata.get_or_insert_with(|| json!({}))["other_data"] = json!("keep");
+            state.attach_reasoning(&mut calls);
+            let call = &calls[0];
+            assert_eq!(call.id.as_deref(), Some("native-call"));
+            assert_eq!(call.name, "zero_arg_tool");
+            let metadata = call.provider_metadata.as_ref().unwrap();
+            assert_eq!(metadata["openrouter_assistant"], assistant);
+            assert_eq!(metadata["reasoning_details"], assistant["reasoning_details"]);
+            assert_eq!(metadata["other_data"], "keep");
+            assert_eq!(metadata.get("function_argument_error").is_none(), valid);
+            if !valid {
+                assert!(call.arguments.is_empty());
+            }
+            assert_execution_allowed(call, valid).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn streamed_arguments_clear_partial_errors_and_reject_a_corrupt_suffix() {
+        for suffix in ["", " trailing", "{}"] {
+            let details = json!([{ "type": "reasoning.encrypted", "data": "signed-opaque", "index": 0 }]);
+            let mut calls = Vec::new();
+            let mut state = OpenRouterResponseState::default();
+            process_streaming_chunk(
+                &json!({"choices": [{"delta": {
+                    "reasoning_details": details,
+                    "tool_calls": [{"index": 0, "id": "native-call", "type": "function", "function": {
+                        "name": "lookup", "arguments": "{\"city\":"
+                    }}]
+                }}]}),
+                &mut String::new(),
+                &mut calls,
+                &None,
+                &mut state,
+            );
+            assert!(calls[0].provider_metadata.as_ref().unwrap()["function_argument_error"].is_string());
+            process_streaming_chunk(
+                &json!({"choices": [{"delta": {"tool_calls": [{
+                    "index": 0, "function": {"arguments": "\"Paris\"}"}
+                }]}}]}),
+                &mut String::new(),
+                &mut calls,
+                &None,
+                &mut state,
+            );
+            assert_eq!(calls[0].arguments["city"], "Paris");
+            assert!(calls[0]
+                .provider_metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("function_argument_error"))
+                .is_none());
+            if !suffix.is_empty() {
+                process_streaming_chunk(
+                    &json!({"choices": [{"delta": {"tool_calls": [{
+                        "index": 0, "function": {"arguments": suffix}
+                    }]}}]}),
+                    &mut String::new(),
+                    &mut calls,
+                    &None,
+                    &mut state,
+                );
+                assert!(calls[0].arguments.is_empty());
+            }
+            state.attach_reasoning(&mut calls);
+            let call = &calls[0];
+            assert_eq!(call.id.as_deref(), Some("native-call"));
+            assert_eq!(call.name, "lookup");
+            let metadata = call.provider_metadata.as_ref().unwrap();
+            assert_eq!(
+                metadata["openrouter_assistant"]["tool_calls"][0]["function"]["arguments"],
+                format!("{{\"city\":\"Paris\"}}{suffix}")
+            );
+            assert_eq!(metadata["reasoning_details"], details);
+            assert_eq!(metadata.get("function_argument_error").is_none(), suffix.is_empty());
+            assert_execution_allowed(call, suffix.is_empty()).await;
         }
     }
 }

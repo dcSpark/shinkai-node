@@ -536,7 +536,8 @@ async fn process_gemini_response(
     // Keep every native part, including empty signature parts, in its original
     // order. Each parallel call carries the same complete assistant turn.
     for call in function_calls {
-        call.provider_metadata = Some(json!({"gemini_parts": native_parts}));
+        let metadata = call.provider_metadata.get_or_insert_with(|| json!({}));
+        metadata["gemini_parts"] = json!(native_parts);
     }
     Ok(())
 }
@@ -557,7 +558,8 @@ async fn process_function_call(
         response: None,
         index: function_calls.len() as u64,
         id: function_call.id.clone(),
-        provider_metadata: None,
+        provider_metadata: (!function_call.args.is_object())
+            .then(|| json!({"function_argument_error": "Function arguments must be a JSON object"})),
         call_type: Some("function".to_string()),
     };
     function_calls.push(fc.clone());
@@ -575,6 +577,66 @@ mod tests {
     use std::sync::Arc;
     use tempfile::NamedTempFile;
     use tokio::sync::Mutex;
+
+    #[tokio::test]
+    async fn gemini_invalid_arguments_cannot_execute_an_empty_schema_tool() {
+        use crate::llm_provider::execution::chains::generic_chain::generic_inference_chain::execute_valid_function_call;
+        use crate::managers::tool_router::ToolCallFunctionResponse;
+        let db = setup_test_db().await;
+        for args in [
+            json!([]),
+            json!("bad"),
+            json!(3),
+            json!(true),
+            JsonValue::Null,
+            json!({}),
+        ] {
+            let valid = args.is_object();
+            let parts = json!([{
+                "functionCall": {"name": "zero_arg_tool", "id": "native-call", "args": args},
+                "thoughtSignature": "signed-native-part"
+            }]);
+            let mut calls = Vec::new();
+            let mut native_parts = Vec::new();
+            process_gemini_response(
+                json!({"candidates": [{"content": {"role": "model", "parts": parts}}]}),
+                &mut String::new(),
+                &mut String::new(),
+                &mut Vec::new(),
+                "test",
+                &None,
+                &None,
+                &db,
+                &false,
+                &mut None,
+                &mut calls,
+                &mut native_parts,
+                &mut false,
+                &mut false,
+            )
+            .await
+            .unwrap();
+            assert_eq!(calls.len(), 1);
+            let call = &calls[0];
+            assert_eq!(call.id.as_deref(), Some("native-call"));
+            assert_eq!(call.name, "zero_arg_tool");
+            let metadata = call.provider_metadata.as_ref().unwrap();
+            assert_eq!(metadata["gemini_parts"], parts);
+            assert_eq!(metadata.get("function_argument_error").is_some(), !valid);
+            let mut executed = false;
+            let execution_call = call.clone();
+            let result = execute_valid_function_call(call, async {
+                executed = true;
+                Ok(ToolCallFunctionResponse {
+                    function_call: execution_call,
+                    response: "executed".into(),
+                })
+            })
+            .await;
+            assert_eq!(executed, valid);
+            assert_eq!(result.is_ok(), valid);
+        }
+    }
 
     #[tokio::test]
     async fn gemini_signature_round_trip_keeps_parallel_native_parts() {

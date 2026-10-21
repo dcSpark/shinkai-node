@@ -136,6 +136,20 @@ fn chat_payload(model: &str, messages: Value, tools: &[Value], max_tokens: usize
     payload
 }
 
+fn attach_together_reasoning(response: &mut LLMInferenceResponse) {
+    let Some(reasoning) = response.reasoning_content.as_ref().filter(|value| !value.is_empty()) else {
+        return;
+    };
+    // Together accepts reasoning_content on assistant history, including tool turns.
+    // https://docs.together.ai/docs/kimi-k3-quickstart#preserve-the-thinking-history
+    for call in &mut response.function_calls {
+        let metadata = call.provider_metadata.get_or_insert_with(|| json!({}));
+        if let Some(metadata) = metadata.as_object_mut() {
+            metadata.insert("together_reasoning_content".into(), json!(reasoning));
+        }
+    }
+}
+
 #[async_trait]
 impl LLMService for TogetherAI {
     async fn call_api(
@@ -183,7 +197,7 @@ impl LLMService for TogetherAI {
                 eprintln!("failed to add payload trace: {error}");
             }
         }
-        if payload["stream"].as_bool().unwrap_or(true) {
+        let mut response = if payload["stream"].as_bool().unwrap_or(true) {
             handle_streaming_response_with_identity_mode(
                 client,
                 url,
@@ -211,13 +225,142 @@ impl LLMService for TogetherAI {
                 None,
             )
             .await
-        }
+        }?;
+        attach_together_reasoning(&mut response);
+        Ok(response)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn together_reasoning_survives_streaming_and_nonstreaming_tool_history() {
+        use crate::llm_provider::execution::chains::inference_chain_trait::FunctionCall;
+        use shinkai_embedding::model_type::EmbeddingModelType;
+        use shinkai_message_primitives::schemas::subprompts::SubPromptType;
+
+        for stream in [false, true] {
+            let mut server = mockito::Server::new_async().await;
+            let calls = json!([
+                {"index":0, "id":"call_weather", "type":"function", "function":{"name":"weather", "arguments":"{\"city\":\"Santiago\"}"}},
+                {"index":1, "id":"call_broken", "type":"function", "function":{"name":"broken", "arguments":"[1]"}}
+            ]);
+            let body = if stream {
+                [
+                    json!({"choices":[{"index":0, "delta":{"reasoning_content":"Preserve "}}]}),
+                    json!({"choices":[{"index":0, "delta":{"reasoning":"the trace."}}]}),
+                    json!({"choices":[{"index":0, "delta":{"tool_calls":calls}, "finish_reason":"tool_calls"}]}),
+                ]
+                .into_iter()
+                .map(|chunk| format!("data: {chunk}\n\n"))
+                .collect::<String>()
+                    + "data: [DONE]\n\n"
+            } else {
+                json!({"id":"together-test", "object":"chat.completion", "created":1,
+                    "usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2},
+                    "choices":[{"index":0,"message":{"role":"assistant", "content":null, "reasoning":"Preserve the trace.", "tool_calls":calls},"finish_reason":"tool_calls"}]
+                }).to_string()
+            };
+            let mock = server
+                .mock("POST", "/v1/chat/completions")
+                .with_header(
+                    "content-type",
+                    if stream {
+                        "text/event-stream"
+                    } else {
+                        "application/json"
+                    },
+                )
+                .with_body(body)
+                .create_async()
+                .await;
+            let temp = tempfile::tempdir().unwrap();
+            let db = Arc::new(
+                SqliteManager::new(
+                    temp.path().join("history.db"),
+                    String::new(),
+                    EmbeddingModelType::default(),
+                )
+                .unwrap(),
+            );
+            let provider = TogetherAI {
+                model_type: "moonshotai/Kimi-K3".into(),
+            };
+            let model = LLMProviderInterface::TogetherAI(provider.clone());
+            let mut config = JobConfig::empty();
+            config.stream = Some(stream);
+            let response = provider
+                .call_api(
+                    &Client::new(),
+                    Some(&server.url()),
+                    Some(&"test-key".into()),
+                    Prompt::new(),
+                    model.clone(),
+                    None,
+                    None,
+                    Some(config),
+                    Arc::new(LLMStopper::new()),
+                    db,
+                    None,
+                )
+                .await
+                .unwrap();
+            mock.assert_async().await;
+            assert_eq!(response.reasoning_content.as_deref(), Some("Preserve the trace."));
+            assert_eq!(response.function_calls.len(), 2);
+            for call in &response.function_calls {
+                assert_eq!(
+                    call.provider_metadata.as_ref().unwrap()["together_reasoning_content"],
+                    "Preserve the trace."
+                );
+            }
+            let broken = response
+                .function_calls
+                .iter()
+                .find(|call| call.id.as_deref() == Some("call_broken"))
+                .unwrap();
+            assert!(broken.provider_metadata.as_ref().unwrap()["function_argument_error"].is_string());
+
+            let stored = serde_json::to_string(&response.function_calls).unwrap();
+            let calls: Vec<FunctionCall> = serde_json::from_str(&stored).unwrap();
+            let mut history = Prompt::new();
+            history.add_content(
+                "Continue after these results.".into(),
+                SubPromptType::UserLastMessage,
+                100,
+            );
+            for call in &calls {
+                history.add_function_call(json!({"name":call.name,"call_id":call.id,"arguments":call.arguments,"provider_metadata":call.provider_metadata}), 100);
+            }
+            for call in &calls {
+                history.add_function_call_response(json!({"function_call":call,"response":"done"}), 100);
+            }
+            let history = Prompt::from_json(&history.to_json().unwrap()).unwrap();
+            let prepared = openai_prepare_messages(&model, history).unwrap();
+            let PromptResultEnum::Value(messages) = prepared.messages else {
+                panic!("Expected messages")
+            };
+            let payload = chat_payload(
+                &provider.model_type,
+                messages,
+                &[],
+                prepared.remaining_output_tokens,
+                None,
+            );
+            let messages = payload["messages"].as_array().unwrap();
+            assert_eq!(messages.len(), 4); // User, one parallel assistant turn, and two results.
+            assert_eq!(messages[1]["reasoning_content"], "Preserve the trace.");
+            assert_eq!(messages[1]["tool_calls"].as_array().unwrap().len(), 2);
+            for call in messages[1]["tool_calls"].as_array().unwrap() {
+                assert!(call.get("provider_metadata").is_none());
+                assert!(call["function"].get("provider_metadata").is_none());
+            }
+            assert_eq!(messages[2]["tool_call_id"], "call_weather");
+            assert_eq!(messages[3]["tool_call_id"], "call_broken");
+        }
+    }
 
     #[test]
     fn together_request_uses_verified_output_budget_and_clamps_user_cap() {

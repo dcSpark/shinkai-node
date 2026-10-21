@@ -77,11 +77,10 @@ fn native_replay_payload(metadata: Option<&Value>) -> Option<(&'static str, &Val
     {
         return Some(("openai_responses", value));
     }
-    if let Some(value) = metadata
-        .get("deepseek_reasoning_content")
-        .filter(|value| value.is_string())
-    {
-        return Some(("deepseek_reasoning_content", value));
+    for key in ["deepseek_reasoning_content", "together_reasoning_content"] {
+        if let Some(value) = metadata.get(key).filter(|value| value.is_string()) {
+            return Some((key, value));
+        }
     }
     metadata
         .get("reasoning_details")
@@ -903,6 +902,7 @@ mod provider_history_tests {
                 json!({"role":"assistant","tool_calls":[],"reasoning_details":[{"data":opaque}]}),
             ),
             (json!({"deepseek_reasoning_content":opaque}), json!(opaque)),
+            (json!({"together_reasoning_content":opaque}), json!(opaque)),
             (json!({"reasoning_details":[{"data":opaque}]}), json!([{"data":opaque}])),
         ] {
             let mut prompt = Prompt::new();

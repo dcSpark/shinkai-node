@@ -317,6 +317,11 @@ fn restore_assistant_reasoning(
 ) {
     let Some(metadata) = metadata else { return };
     match model {
+        LLMProviderInterface::TogetherAI(_) => {
+            if let Some(content) = metadata.get("together_reasoning_content").and_then(|v| v.as_str()) {
+                message["reasoning_content"] = serde_json::json!(content);
+            }
+        }
         LLMProviderInterface::DeepSeek(_) => {
             if let Some(content) = metadata.get("deepseek_reasoning_content").and_then(|v| v.as_str()) {
                 message["reasoning_content"] = serde_json::json!(content);
@@ -517,16 +522,20 @@ mod tests {
     #[test]
     fn tool_history_restores_provider_reasoning_without_function_metadata() {
         use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-            DeepSeek, OpenAI, OpenRouter,
+            DeepSeek, OpenAI, OpenRouter, TogetherAI,
         };
         let details = json!([{"type": "reasoning.encrypted", "data": "signed-data", "index": 0}]);
         let metadata = json!({
             "deepseek_reasoning_content": "Earlier reasoning",
+            "together_reasoning_content": "Together reasoning",
             "reasoning_details": details,
             "openai_responses": {"output": [{"type": "reasoning", "id": "rs_1"}]},
             "internal": "must not reach the function schema"
         });
         let providers = [
+            LLMProviderInterface::TogetherAI(TogetherAI {
+                model_type: "moonshotai/Kimi-K3".into(),
+            }),
             LLMProviderInterface::DeepSeek(DeepSeek {
                 model_type: "deepseek-flash".to_string(),
             }),
@@ -555,6 +564,11 @@ mod tests {
                 json!({"name": "weather", "arguments": "{}"})
             );
             match model {
+                LLMProviderInterface::TogetherAI(_) => {
+                    assert_eq!(assistant["reasoning_content"], "Together reasoning");
+                    assert!(assistant.get("reasoning_details").is_none());
+                    assert!(assistant["tool_calls"][0].get("provider_metadata").is_none());
+                }
                 LLMProviderInterface::DeepSeek(_) => {
                     assert_eq!(assistant["reasoning_content"], "Earlier reasoning");
                     assert!(assistant.get("reasoning_details").is_none());
