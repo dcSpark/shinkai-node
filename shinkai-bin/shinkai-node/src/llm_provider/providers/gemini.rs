@@ -143,8 +143,12 @@ fn gemini_generation_config(model: &str, config: Option<&JobConfig>) -> serde_js
         let effort = config.and_then(|c| c.reasoning_effort.as_deref());
         if current_thinking {
             let level = match effort {
+                _ if model == "gemini-3.5-flash-lite" && config.and_then(|c| c.thinking) == Some(false) => "minimal",
+                Some("minimal") if model == "gemini-3.5-flash-lite" => "minimal",
                 Some("low") => "low",
+                Some("medium") if model == "gemini-3.5-flash-lite" => "medium",
                 Some("high" | "xhigh" | "max") => "high",
+                _ if model == "gemini-3.5-flash-lite" => "minimal",
                 _ if model.contains("pro") => "high",
                 _ => "medium",
             };
@@ -663,6 +667,38 @@ mod tests {
         }
         let value = gemini_generation_config("gemini-2.5-flash", Some(&config));
         assert_eq!(value["thinkingConfig"]["thinkingBudget"], 24576);
+    }
+
+    #[test]
+    fn test_flash_lite_minimal_thinking_contract() {
+        let model = "gemini-3.5-flash-lite";
+        assert_eq!(
+            gemini_generation_config(model, None)["thinkingConfig"]["thinkingLevel"],
+            "minimal"
+        );
+        let mut config = JobConfig::empty();
+        config.thinking = Some(true);
+        for effort in ["minimal", "low", "medium", "high"] {
+            config.reasoning_effort = Some(effort.into());
+            let value = gemini_generation_config(model, Some(&config));
+            assert_eq!(value["thinkingConfig"]["thinkingLevel"], effort);
+        }
+        config.thinking = Some(false);
+        config.reasoning_effort = Some("high".into());
+        let value = gemini_generation_config(model, Some(&config));
+        assert_eq!(value["thinkingConfig"]["thinkingLevel"], "minimal");
+        assert_eq!(value["thinkingConfig"]["includeThoughts"], false);
+        for other in ["gemini-3.8-flash", "gemini-4-argon"] {
+            config.reasoning_effort = Some("minimal".into());
+            assert_eq!(
+                gemini_generation_config(other, Some(&config))["thinkingConfig"]["thinkingLevel"],
+                "medium"
+            );
+            assert_eq!(
+                gemini_generation_config(other, None)["thinkingConfig"]["thinkingLevel"],
+                "medium"
+            );
+        }
     }
 
     async fn setup_test_db() -> SqliteManager {
