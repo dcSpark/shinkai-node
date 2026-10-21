@@ -127,10 +127,14 @@ struct GeminiError {
     status: String,
 }
 
-fn gemini_generation_config(model: &str, config: Option<&JobConfig>) -> serde_json::Value {
+fn gemini_generation_config(
+    model: &str,
+    config: Option<&JobConfig>,
+    remaining_output_tokens: usize,
+) -> serde_json::Value {
     let mut generation_config = json!({
         "temperature": config.and_then(|c| c.temperature).unwrap_or(1.0),
-        "maxOutputTokens": config.and_then(|c| c.max_tokens).unwrap_or(8192)
+        "maxOutputTokens": config.and_then(|c| c.max_tokens).unwrap_or(remaining_output_tokens as u64).min(remaining_output_tokens as u64)
     });
     if let Some(top_k) = config.and_then(|c| c.top_k) {
         generation_config["topK"] = json!(top_k);
@@ -208,7 +212,8 @@ impl LLMService for Gemini {
                     }
                 };
 
-                let generation_config = gemini_generation_config(&self.model_type, config.as_ref());
+                let generation_config =
+                    gemini_generation_config(&self.model_type, config.as_ref(), result.remaining_output_tokens);
 
                 let mut payload = json!({
                     "generationConfig": generation_config,
@@ -717,17 +722,62 @@ mod tests {
     }
 
     #[test]
+    fn gemini_request_output_uses_prepared_budget_and_user_cap() {
+        use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
+        use shinkai_message_primitives::schemas::subprompts::{SubPrompt, SubPromptType};
+        for id in [
+            "gemini-4-argon",
+            "gemini-3.8-flash",
+            "gemini-3.5-flash-lite",
+            "gemini-1.5-flash",
+        ] {
+            let model = LLMProviderInterface::Gemini(Gemini { model_type: id.into() });
+            let mut prompt = Prompt::new();
+            prompt.add_sub_prompts(vec![SubPrompt::Content(SubPromptType::User, "Hello".into(), 100)]);
+            let prepared = gemini_prepare_messages(&model, prompt).unwrap();
+            let budget = prepared.remaining_output_tokens;
+            assert_eq!(budget, ModelCapabilitiesManager::get_max_output_tokens(&model));
+            let request = json!({"generationConfig": gemini_generation_config(id, None, budget)});
+            assert_eq!(request["generationConfig"]["maxOutputTokens"], budget);
+            if id != "gemini-1.5-flash" {
+                assert_eq!(budget, 65_536);
+            }
+            let mut config = JobConfig::empty();
+            config.max_tokens = Some(1024);
+            assert_eq!(
+                gemini_generation_config(id, Some(&config), budget)["maxOutputTokens"],
+                1024
+            );
+            config.max_tokens = Some((budget + 1) as u64);
+            assert_eq!(
+                gemini_generation_config(id, Some(&config), budget)["maxOutputTokens"],
+                budget
+            );
+            let remaining = ModelCapabilitiesManager::get_remaining_output_tokens(
+                &model,
+                ModelCapabilitiesManager::get_max_tokens(&model) - 512,
+            );
+            assert_eq!(remaining, 512);
+            assert_eq!(
+                gemini_generation_config(id, Some(&config), remaining)["maxOutputTokens"],
+                512
+            );
+            assert_eq!(gemini_generation_config(id, None, remaining)["maxOutputTokens"], 512);
+        }
+    }
+
+    #[test]
     fn test_current_gemini_thinking_levels() {
         let mut config = JobConfig::empty();
         config.thinking = Some(true);
         config.reasoning_effort = Some("high".into());
         for model in ["gemini-4-argon", "gemini-3.8-flash", "gemini-3.5-flash-lite"] {
-            let value = gemini_generation_config(model, Some(&config));
+            let value = gemini_generation_config(model, Some(&config), 65_536);
             assert_eq!(value["thinkingConfig"]["thinkingLevel"], "high");
             assert!(value["thinkingConfig"].get("thinkingBudget").is_none());
             assert!(value.get("topK").is_none());
         }
-        let value = gemini_generation_config("gemini-2.5-flash", Some(&config));
+        let value = gemini_generation_config("gemini-2.5-flash", Some(&config), 65_536);
         assert_eq!(value["thinkingConfig"]["thinkingBudget"], 24576);
     }
 
@@ -735,29 +785,29 @@ mod tests {
     fn test_flash_lite_minimal_thinking_contract() {
         let model = "gemini-3.5-flash-lite";
         assert_eq!(
-            gemini_generation_config(model, None)["thinkingConfig"]["thinkingLevel"],
+            gemini_generation_config(model, None, 65_536)["thinkingConfig"]["thinkingLevel"],
             "minimal"
         );
         let mut config = JobConfig::empty();
         config.thinking = Some(true);
         for effort in ["minimal", "low", "medium", "high"] {
             config.reasoning_effort = Some(effort.into());
-            let value = gemini_generation_config(model, Some(&config));
+            let value = gemini_generation_config(model, Some(&config), 65_536);
             assert_eq!(value["thinkingConfig"]["thinkingLevel"], effort);
         }
         config.thinking = Some(false);
         config.reasoning_effort = Some("high".into());
-        let value = gemini_generation_config(model, Some(&config));
+        let value = gemini_generation_config(model, Some(&config), 65_536);
         assert_eq!(value["thinkingConfig"]["thinkingLevel"], "minimal");
         assert_eq!(value["thinkingConfig"]["includeThoughts"], false);
         for other in ["gemini-3.8-flash", "gemini-4-argon"] {
             config.reasoning_effort = Some("minimal".into());
             assert_eq!(
-                gemini_generation_config(other, Some(&config))["thinkingConfig"]["thinkingLevel"],
+                gemini_generation_config(other, Some(&config), 65_536)["thinkingConfig"]["thinkingLevel"],
                 "medium"
             );
             assert_eq!(
-                gemini_generation_config(other, None)["thinkingConfig"]["thinkingLevel"],
+                gemini_generation_config(other, None, 65_536)["thinkingConfig"]["thinkingLevel"],
                 "medium"
             );
         }

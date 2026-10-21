@@ -928,7 +928,6 @@ pub async fn handle_streaming_response_with_identity_mode(
     let mut reasoning_content = String::new();
     let mut buffer = String::new();
     let mut function_calls: Vec<FunctionCall> = Vec::new();
-    let mut error_message: Option<String> = None;
     let mut partial_fc = PartialFunctionCall {
         identity_mode,
         indexed_calls: Default::default(),
@@ -1015,7 +1014,7 @@ pub async fn handle_streaming_response_with_identity_mode(
                 buffer.push_str(&chunk_str);
 
                 // Process complete messages in the buffer
-                if let Ok(Some(err)) = parse_openai_stream_chunk(
+                if let Some(err) = parse_openai_stream_chunk(
                     &mut buffer,
                     &mut response_text,
                     &mut reasoning_content,
@@ -1026,9 +1025,9 @@ pub async fn handle_streaming_response_with_identity_mode(
                     inbox_name.clone(),
                     &session_id,
                 )
-                .await
+                .await?
                 {
-                    error_message = Some(err);
+                    return Err(LLMProviderError::LLMServiceUnexpectedError(err));
                 }
 
                 // Handle WebSocket updates for function calls
@@ -1055,12 +1054,6 @@ pub async fn handle_streaming_response_with_identity_mode(
     // If there's an unfinalized function call at the end, finalize it
     if !partial_fc.indexed_calls.is_empty() || partial_fc.name.is_some() && !partial_fc.arguments.is_empty() {
         finalize_function_call_sync(&mut partial_fc, &mut function_calls, &tools);
-    }
-
-    if let Some(ref error_message) = error_message {
-        if response_text.is_empty() {
-            return Err(LLMProviderError::LLMServiceUnexpectedError(error_message.to_string()));
-        }
     }
 
     // Create the response object
@@ -2408,6 +2401,80 @@ mod tests {
             ]
         });
         assert_eq!(serde_json::to_value(&fc.arguments).unwrap(), expected_args);
+    }
+
+    #[tokio::test]
+    async fn shared_chat_sse_errors_fail_before_or_after_partial_text() {
+        for partial in [false, true] {
+            let mut server = mockito::Server::new_async().await;
+            let prefix = if partial {
+                "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"partial answer\"}}]}\n\n"
+            } else {
+                ""
+            };
+            let body = format!(
+                "{prefix}data: {{\"error\":{{\"code\":\"provider_failed\",\"message\":\"generation failed\"}}}}\n\n"
+            );
+            let mock = server
+                .mock("POST", "/chat/completions")
+                .with_header("content-type", "text/event-stream")
+                .with_body(body)
+                .create_async()
+                .await;
+            let result = handle_streaming_response_with_identity_mode(
+                &Client::new(),
+                format!("{}/chat/completions", server.url()),
+                json!({"stream":true}),
+                "test-key".into(),
+                None,
+                None,
+                Arc::new(LLMStopper::new()),
+                "test".into(),
+                None,
+                None,
+                ToolIdentityMode::Complete,
+            )
+            .await;
+            mock.assert_async().await;
+            let error = result.unwrap_err().to_string();
+            assert!(error.contains("provider_failed"), "{error}");
+            assert!(error.contains("generation failed"), "{error}");
+        }
+    }
+
+    #[tokio::test]
+    async fn shared_chat_sse_completion_and_deliberate_stop_remain_successful() {
+        for stopped in [false, true] {
+            let mut server = mockito::Server::new_async().await;
+            let body = "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"complete answer\"}}]}\n\ndata: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
+            let mock = server
+                .mock("POST", "/chat/completions")
+                .with_header("content-type", "text/event-stream")
+                .with_body(body)
+                .create_async()
+                .await;
+            let stopper = Arc::new(LLMStopper::new());
+            let inbox = InboxName::get_job_inbox_name_from_params("test-stopped-job".into()).unwrap();
+            if stopped {
+                stopper.stop(&inbox.to_string());
+            }
+            let response = handle_streaming_response(
+                &Client::new(),
+                format!("{}/chat/completions", server.url()),
+                json!({"stream":true}),
+                "test-key".into(),
+                if stopped { Some(inbox) } else { None },
+                None,
+                stopper,
+                "test".into(),
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+            mock.assert_async().await;
+            assert_eq!(response.response_string, if stopped { "" } else { "complete answer" });
+        }
     }
 
     #[tokio::test]

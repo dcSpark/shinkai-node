@@ -418,7 +418,9 @@ pub struct FunctionCall {
 impl FunctionCall {
     pub fn to_metadata(&self) -> FunctionCallMetadata {
         FunctionCallMetadata {
-            provider_metadata: self.provider_metadata.clone(),
+            // Final message metadata is public. Replay state stays on the internal
+            // FunctionCall used to build subsequent tool turns.
+            provider_metadata: None,
             name: self.name.clone(),
             arguments: self.arguments.clone(),
             tool_router_key: self.tool_router_key.clone(),
@@ -831,11 +833,14 @@ mod provider_metadata_tests {
     use serde_json::json;
 
     #[test]
-    fn test_stored_tool_call_provider_metadata_round_trip() {
+    fn test_internal_replay_metadata_round_trip_excludes_public_tool_metadata() {
         let legacy = json!({"name": "tool", "arguments": {}, "tool_router_key": null,
             "response": null, "index": 0, "id": "call-1", "type": "function"});
         let mut call: FunctionCall = serde_json::from_value(legacy).unwrap();
         assert!(call.provider_metadata.is_none());
+        call.arguments.insert("city".into(), json!("Santiago"));
+        call.tool_router_key = Some("local:::weather".into());
+        call.response = Some("sunny".into());
         call.provider_metadata = Some(json!({"claude_content": [
             {"type": "thinking", "thinking": "private", "signature": "signed-value"}
         ]}));
@@ -849,8 +854,27 @@ mod provider_metadata_tests {
             loaded.function_call.provider_metadata,
             stored.function_call.provider_metadata
         );
+        let result = InferenceChainResult::with_full_details(
+            "done".into(),
+            None,
+            None,
+            None,
+            Some(vec![loaded.function_call.clone()]),
+            Vec::new(),
+        );
+        let public = result.tool_calls_metadata().unwrap();
+        assert_eq!(public.len(), 1);
+        let metadata = &public[0];
+        assert!(metadata.provider_metadata.is_none());
+        assert_eq!(metadata.name, loaded.function_call.name);
+        assert_eq!(metadata.arguments, loaded.function_call.arguments);
+        assert_eq!(metadata.tool_router_key, loaded.function_call.tool_router_key);
+        assert_eq!(metadata.response, loaded.function_call.response);
+        let encoded = serde_json::to_value(metadata).unwrap();
+        assert!(encoded.get("provider_metadata").is_none());
+        // Producing public metadata must not consume the signed replay state.
         assert_eq!(
-            loaded.function_call.to_metadata().provider_metadata,
+            loaded.function_call.provider_metadata,
             stored.function_call.provider_metadata
         );
     }
